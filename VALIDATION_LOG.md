@@ -66,3 +66,30 @@ cleanly with optional heavy deps guarded.
 | e2e offline pipeline (venv) | PIPELINE OK (5/5 accepted) | release bundle + SHA verified, no dup manifest |
 | `pytest` (7 test files) | 30 passed | full unit/integration suite green |
 | interface import check | CLI/REST/MCP/WEB import | see task ledger |
+
+## Phase P — build-gaps revision (2026-08-08, honest re-baseline)
+
+Rebuilt high-value missing subsystems on the persisted workspace, then re-ran the full
+suite from a stable git-archive export (`/tmp/knovaryn_ci`) to avoid OneDrive churn.
+
+| Command | Result | Notes |
+|---|---:|---|
+| `uv run pytest -q -p no:cacheprovider` (9 test files) | **38 passed** | includes new `test_workspace_control.py` (5) + `test_rest_api.py` (3) |
+| workspace control-plane lifecycle | ✅ create→source→job→run→validate→version→export→publish(dry-run) | real SQLite, offline fake provider |
+| license report + publication gate | ✅ MIT=allowed, none=review, cc-by-nd=blocked; gate blocks on unresolved | `tests: test_license_report_and_publication_gate`, `test_publish_blocked_on_unapproved_source` |
+| REST control plane (TestClient) | ✅ full lifecycle over HTTP | `tests/test_rest_api.py` |
+| MCP tool suite | ✅ all 17 spec tools present; module imports clean | `interfaces/mcp/server.py` |
+| deepseek budget profile + live provider | ✅ gateway builds `LiteLLMProvider`; config accepts profile | `profiles.py`, `litellm_provider.py` |
+
+Honest remaining gate status (NOT green, pre-existing on baseline):
+
+| Gate | Result | Scope |
+|---|---:|---|
+| `ruff check src tests` | 🔶 ~400 style violations (mostly E501) | pre-existing across tree; new files largely formatted |
+| `ruff format --check src tests` | 🔶 not green | pre-existing baseline |
+| `mypy src` | 🔶 79 errors / 27 files | includes pre-existing `service.py`, `gateway.py`; new interface modules mostly clean |
+| Alembic migrations | 🔶 no `migrations/` dir exists despite `alembic` dep | schema via SQLAlchemy `create_all` only |
+
+These gates are reported honestly in `BUILD_LEDGER.md` (§26/§36 + Gates table) and are **not**
+marked as passing. Fixing the full lint/type baseline is tracked as open follow-up work.
+

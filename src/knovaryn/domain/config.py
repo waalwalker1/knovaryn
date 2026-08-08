@@ -24,7 +24,7 @@ _SCHEMA_VERSION = "1.0"
 
 _ENV_VAR_RE = re.compile(r"\$\{([A-Z0-9_]+)\}")
 
-_OFFICIAL_PROFILES = {"offline-demo", "fast-local", "balanced", "high-quality", "air-gapped", "enterprise"}
+_OFFICIAL_PROFILES = {"offline-demo", "fast-local", "balanced", "high-quality", "air-gapped", "enterprise", "deepseek_flash_budget"}
 _ADMIN_PROTECTED_KEYS = {
     "sources.url_ingestion",
     "storage.database_url",

@@ -43,7 +43,8 @@ class ProjectRepository:
 
     async def get_by_slug(self, slug: str) -> schemas.Project | None:
         res = await self._s.execute(select(m.ProjectDB).where(m.ProjectDB.slug == slug))
-        return _to_project(res.scalar_one_or_none())
+        row = res.scalar_one_or_none()
+        return _to_project(row) if row else None
 
     async def list_(self, *, limit: int = 50, cursor: str | None = None) -> tuple[list[schemas.Project], str | None]:
         stmt = select(m.ProjectDB).order_by(m.ProjectDB.created_at.desc()).limit(limit + 1)
@@ -110,7 +111,7 @@ class SourceRepository:
                 intake_status=src.intake_status.value,
                 artifact_id_original=src.artifact_id_original,
                 group_key=src.group_key,
-                metadata=src.metadata,
+                metadata_=src.metadata,
             )
         )
 
@@ -151,7 +152,7 @@ class SourceRepository:
                 detected_license=src.detected_license,
                 language_candidates=src.language_candidates,
                 group_key=src.group_key,
-                metadata=src.metadata,
+                metadata_=src.metadata,
             )
         )
 
@@ -176,7 +177,7 @@ def _to_source(r: m.SourceDocumentDB) -> schemas.SourceDocument:
         intake_status=schemas.IntakeStatus(r.intake_status),
         artifact_id_original=r.artifact_id_original,
         group_key=r.group_key,
-        metadata=r.metadata or {},
+        metadata=r.metadata_ or {},
     )
 
 
