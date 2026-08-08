@@ -1,0 +1,105 @@
+# Knovaryn Kubernetes deployment (spec §29). Runs the offline REST API + web
+# console as a single Deployment behind a ClusterIP Service. State is a PV/PVC
+# so the operator retains dataset artifacts and DB across pod reschedules.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: knovaryn
+  labels:
+    app: knovaryn
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: knovaryn
+  template:
+    metadata:
+      labels:
+        app: knovaryn
+    spec:
+      serviceAccountName: knovaryn
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+      containers:
+        - name: knovaryn
+          image: knovaryn:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8000
+          env:
+            - name: KNOVARYN_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: knovaryn-secrets
+                  key: api_token
+                  optional: true
+          volumeMounts:
+            - name: state
+              mountPath: /opt/knovaryn/.knovaryn
+          readinessProbe:
+            httpGet:
+              path: /v1/health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+      volumes:
+        - name: state
+          persistentVolumeClaim:
+            claimName: knovaryn-state
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: knovaryn
+spec:
+  selector:
+    app: knovaryn
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: knovaryn-state
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: knovaryn
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: knovaryn-secrets
+type: Opaque
+stringData:
+  # Empty by default (local mode). Set to a real token to enforce auth.
+  api_token: ""
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: knovaryn-config
+data:
+  knovaryn.yaml: |
+    server:
+      host: "0.0.0.0"
+      port: 8000
+    storage:
+      artifact_root: "/opt/knovaryn/.knovaryn/artifacts"

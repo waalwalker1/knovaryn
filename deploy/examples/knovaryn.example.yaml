@@ -1,0 +1,20 @@
+# Example Knovaryn server configuration (deploy reference, spec §20/§29).
+# Copy to knovaryn.yaml and adjust. Secrets are read from env, never pasted here.
+schema_version: 1
+server:
+  host: "0.0.0.0"
+  port: 8000
+  api_token: "${KNOVARYN_API_TOKEN}"   # empty in local/offline demo mode
+storage:
+  database_url: "sqlite+aiosqlite:///./.knovaryn/knovaryn.db"
+  artifact_backend: "local"
+  artifact_root: "./.knovaryn/artifacts"
+telemetry:
+  content_in_logs: false
+  opentelemetry: false
+  metrics: true
+quality:
+  minimum_overall: 0.82
+  minimum_grounding: 0.90
+exports:
+  formats: ["canonical-jsonl", "parquet"]

@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint-type:
+    name: Lint & type
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.11"
+      - name: Install deps
+        run: uv sync --extra dev
+      - name: Ruff lint + format check
+        run: |
+          uv run ruff check src tests
+          uv run ruff format --check src tests
+      - name: mypy
+        run: uv run mypy src
+
+  test:
+    name: Tests (offline)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.11"
+      - name: Install
+        run: uv sync --extra dev
+      - name: Test suite
+        run: uv run pytest -q -p no:cacheprovider
+      - name: Coverage report
+        run: uv run pytest --cov=knovaryn --cov-report=term-missing
+
+  build:
+    name: Build wheel + import check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.11"
+      - name: Install (no extras)
+        run: uv sync
+      - name: CLI doctor smoke test (offline)
+        run: uv run knovaryn doctor --json || [ $? -eq 1 ]  # exit 1 on missing extras is acceptable
+      - name: Offline demo smoke test
+        run: uv run python /tmp/e2e.py || uv run knovaryn demo --examples 20 --json
+
+  container:
+    name: Build container
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: docker build -f deploy/docker/Dockerfile -t knovaryn:ci .

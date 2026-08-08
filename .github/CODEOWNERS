@@ -1,0 +1,29 @@
+# Knovaryn CODEOWNERS
+#
+# This file declares which maintainers are automatically requested for review
+# when files change. It is a placeholder until maintainers are appointed; the
+# @knovaryn/maintainers team below should be replaced with real handles/teams
+# once the project is public.
+#
+# See https://docs.github.com/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default owner for everything not otherwise matched.
+* @knovaryn/maintainers
+
+# Root governance and community files.
+/CONTRIBUTING.md @knovaryn/maintainers
+/GOVERNANCE.md  @knovaryn/maintainers
+/SUPPORT.md     @knovaryn/maintainers
+/MAINTAINERS.md @knovaryn/maintainers
+/CODE_OF_CONDUCT.md @knovaryn/maintainers
+/SECURITY.md    @knovaryn/maintainers
+/ROADMAP.md     @knovaryn/maintainers
+/CHANGELOG.md   @knovaryn/maintainers
+
+# Documentation (any change to docs/ requires a docs-aware review).
+/docs/          @knovaryn/maintainers
+
+# Security-sensitive areas: always pull in the security maintainer(s).
+/src/knovaryn/infrastructure/intake/   @knovaryn/maintainers
+/src/knovaryn/infrastructure/auth/     @knovaryn/maintainers
+/SECURITY.md                           @knovaryn/maintainers

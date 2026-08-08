@@ -1,0 +1,22 @@
+# Knovaryn quickstart compose (spec §29). Serves the offline REST API + web
+# console. Persists state under ./data (mounted to /opt/knovaryn/.knovaryn).
+services:
+  knovaryn:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile
+    image: knovaryn:latest
+    container_name: knovaryn
+    ports:
+      - "8000:8000"
+    environment:
+      # Set to enforce bearer auth on REST/POST endpoints; empty = local mode.
+      KNOVARYN_API_TOKEN: "${KNOVARYN_API_TOKEN:-}"
+    volumes:
+      - ./data:/opt/knovaryn/.knovaryn
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8000/v1/health',timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3

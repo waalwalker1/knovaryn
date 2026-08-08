@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+build/
+dist/
+*.whl
+*.egg
+
+# Environments
+.venv/
+venv/
+env/
+
+# Local state (never commit secrets or local DBs)
+.knovaryn/
+*.db
+*.db-wal
+*.db-shm
+
+# Secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+id_rsa*
+id_ed25519*
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Docs build
+site/
