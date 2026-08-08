@@ -1,0 +1,136 @@
+[project]
+name = "knovaryn"
+version = "0.1.0"
+description = "Open, MCP-native training-data foundry: turn permitted documents into traceable, quality-gated SFT and preference datasets."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Apache-2.0" }
+authors = [{ name = "Knovaryn maintainers" }]
+keywords = ["mcp", "training-data", "sft", "dpo", "dataset", "docling", "llm"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+dependencies = [
+    "pydantic>=2.6,<3",
+    "pyyaml>=6.0",
+    "typer>=0.12",
+    "rich>=13.7",
+    "fastapi>=0.110",
+    "uvicorn>=0.29",
+    "jinja2>=3.1",
+    "sqlalchemy[asyncio]>=2.0",
+    "aiosqlite>=0.20",
+    "asyncpg>=0.29; platform_system != 'Windows'",
+    "alembic>=1.13",
+    "aiofiles>=23.2",
+    "httpx>=0.27",
+    "python-multipart>=0.0.9",
+    "sse-starlette>=2.1",
+    "structlog>=24.1",
+    "uuid6>=2024.7.10",
+]
+
+[project.scripts]
+knovaryn = "knovaryn.interfaces.cli.main:app"
+
+[project.optional-dependencies]
+# Heavy/opt-in extras are NOT required for the offline demo or CI (fake provider).
+docling = [
+    "docling>=2.26",
+]
+docetl = [
+    "docetl>=0.1",
+]
+litellm = [
+    "litellm>=1.45",
+]
+s3 = [
+    "aioboto3>=13",
+]
+parquet = [
+    "pyarrow>=16",
+]
+hub = [
+    "huggingface-hub>=0.23",
+]
+ml = [
+    "scikit-learn>=1.4",
+    "numpy>=1.26",
+]
+dev = [
+    "pytest>=8.1",
+    "pytest-asyncio>=0.23",
+    "pytest-cov>=5.0",
+    "hypothesis>=6.100",
+    "ruff>=0.4",
+    "mypy>=1.10",
+    "pre-commit>=3.7",
+    "mkdocs-material>=9.5",
+    "mkdocs>=1.6",
+    "aioresponses>=0.7",
+    "respx>=0.21",
+    "build>=1.2",
+    "twine>=5.0",
+    "pip-audit>=2.7",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/knovaryn"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W", "B", "UP", "C4", "SIM", "B008"]
+ignore = ["B008"]
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_untyped_calls = false
+check_untyped_defs = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+strict_equality = true
+exclude = ["migrations/versions/", "tests/", "benchmarks/"]
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+addopts = "-ra --strict-markers"
+markers = [
+    "live: opt-in tests requiring external credentials (skip by default)",
+    "docling: requires docling extra",
+    "docetl: requires docetl extra",
+    "s3: requires s3 extra",
+]
+
+[tool.coverage.run]
+source = ["knovaryn"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+fail_under = 70
+
+[tool.hatch.metadata]
+allow-direct-references = true
