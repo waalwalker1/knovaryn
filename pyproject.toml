@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Open, MCP-native training-data foundry: turn permitted documents into traceable, quality-gated SFT and preference datasets."
 readme = "README.md"
 requires-python = ">=3.11"
-license = { text = "Apache-2.0" }
+license = "Apache-2.0"
 authors = [{ name = "Knovaryn maintainers" }]
 keywords = ["mcp", "training-data", "sft", "dpo", "dataset", "docling", "llm"]
 classifiers = [

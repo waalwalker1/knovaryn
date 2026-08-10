@@ -83,6 +83,7 @@ nav:
       - ADR-0005 LiteLLM & providers: adr/0005-litellm-and-providers.md
       - ADR-0006 Storage backends: adr/0006-storage-backends.md
   - Marketing:
+      - Positioning: marketing/positioning.md
       - Peer comparison: marketing/peer-comparison.md
       - Benchmark methodology: marketing/benchmark-methodology.md
       - Launch plan: marketing/launch-checklist.md
