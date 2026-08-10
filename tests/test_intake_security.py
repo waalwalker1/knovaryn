@@ -26,7 +26,6 @@ from knovaryn.infrastructure.intake.url import (
     resolve_all,
 )
 
-
 # ---------------------------------------------------------------------------
 # §8.3 — local path policy
 # ---------------------------------------------------------------------------
@@ -166,14 +165,18 @@ def test_validate_url_metadata_host_blocked(monkeypatch) -> None:
 
 def test_validate_url_private_resolution_blocked(monkeypatch) -> None:
     monkeypatch.setattr(
-        "knovaryn.infrastructure.intake.url.resolve_all", lambda h: [ipaddress.ip_address("10.0.0.5")]
+        "knovaryn.infrastructure.intake.url.resolve_all",
+        lambda h: [ipaddress.ip_address("10.0.0.5")],
     )
     with pytest.raises(SSRFError):
         _validate_url("https://example.com/x", URLPolicy(enabled=True))
 
 
 def test_validate_url_allowlist_rejects_other_host(monkeypatch) -> None:
-    monkeypatch.setattr("knovaryn.infrastructure.intake.url.resolve_all", lambda h: [ipaddress.ip_address("8.8.8.8")])
+    monkeypatch.setattr(
+        "knovaryn.infrastructure.intake.url.resolve_all",
+        lambda h: [ipaddress.ip_address("8.8.8.8")],
+    )
     policy = URLPolicy(enabled=True, allowlist=["trusted.example"])
     with pytest.raises(SSRFError):
         _validate_url("https://evil.example/x", policy)
@@ -181,7 +184,8 @@ def test_validate_url_allowlist_rejects_other_host(monkeypatch) -> None:
 
 def test_validate_url_allowlist_exact_match_ok(monkeypatch) -> None:
     monkeypatch.setattr(
-        "knovaryn.infrastructure.intake.url.resolve_all", lambda h: [ipaddress.ip_address("8.8.8.8")]
+        "knovaryn.infrastructure.intake.url.resolve_all",
+        lambda h: [ipaddress.ip_address("8.8.8.8")],
     )
     policy = URLPolicy(enabled=True, allowlist=["example.com"])
     url = _validate_url("https://example.com/x", policy)
@@ -189,13 +193,19 @@ def test_validate_url_allowlist_exact_match_ok(monkeypatch) -> None:
 
 
 def test_validate_url_credentials_rejected(monkeypatch) -> None:
-    monkeypatch.setattr("knovaryn.infrastructure.intake.url.resolve_all", lambda h: [ipaddress.ip_address("8.8.8.8")])
+    monkeypatch.setattr(
+        "knovaryn.infrastructure.intake.url.resolve_all",
+        lambda h: [ipaddress.ip_address("8.8.8.8")],
+    )
     with pytest.raises(SSRFError):
         _validate_url("https://user:pass@example.com/x", URLPolicy(enabled=True))
 
 
 def test_validate_url_http_allowed_when_configured(monkeypatch) -> None:
-    monkeypatch.setattr("knovaryn.infrastructure.intake.url.resolve_all", lambda h: [ipaddress.ip_address("8.8.8.8")])
+    monkeypatch.setattr(
+        "knovaryn.infrastructure.intake.url.resolve_all",
+        lambda h: [ipaddress.ip_address("8.8.8.8")],
+    )
     url = _validate_url("http://example.com/x", URLPolicy(enabled=True, allow_http=True))
     assert str(url).startswith("http://example.com")
 

@@ -35,26 +35,25 @@ from knovaryn.domain.schemas import (
     TrainingExample,
 )
 
-
 # ---------------------------------------------------------------------------
 # §6.4 — provenance minimum
 # ---------------------------------------------------------------------------
 
 
 def _example(**overrides):
-    base = dict(
-        id="ex1",
-        project_id="p",
-        topology=Topology.sft,
-        system_messages=["You are careful."],
-        prompt_messages=[CanonicalMessage(role="user", content="task")],
-        chosen_messages=[CanonicalMessage(role="assistant", content="answer")],
-        source_document_ids=["doc1"],
-        source_span_ids=["span1"],
-        content_hash="abc123",
-        generation_candidate_ids=["gen1"],
-        quality_status=QualityStatus.accepted,
-    )
+    base = {
+        "id": "ex1",
+        "project_id": "p",
+        "topology": Topology.sft,
+        "system_messages": ["You are careful."],
+        "prompt_messages": [CanonicalMessage(role="user", content="task")],
+        "chosen_messages": [CanonicalMessage(role="assistant", content="answer")],
+        "source_document_ids": ["doc1"],
+        "source_span_ids": ["span1"],
+        "content_hash": "abc123",
+        "generation_candidate_ids": ["gen1"],
+        "quality_status": QualityStatus.accepted,
+    }
     base.update(overrides)
     return TrainingExample(**base)
 
@@ -82,9 +81,7 @@ def test_provenance_minimum_flags_each_missing(override, stripped_field) -> None
 
 
 def test_provenance_minimum_evidence_optional_when_require_false() -> None:
-    ok = check_provenance_minimum(
-        _example(source_span_ids=[]), require_evidence=False
-    )
+    ok = check_provenance_minimum(_example(source_span_ids=[]), require_evidence=False)
     assert ok.ok is True  # span ids are not required when evidence is not required
 
 
@@ -116,9 +113,7 @@ def test_acceptance_clears_all_floors() -> None:
 
 def test_acceptance_low_grounding_rejected() -> None:
     p = AcceptancePolicy()
-    accepted, reasons, status = p.assess(
-        {"grounding": 0.5, "overall": 0.95}, is_preference=False
-    )
+    accepted, reasons, status = p.assess({"grounding": 0.5, "overall": 0.95}, is_preference=False)
     assert accepted is False
     assert "grounding<0.9" in reasons
     assert status == QualityStatus.rejected
@@ -318,14 +313,14 @@ def test_content_hash_for_messages() -> None:
 
 
 def test_fingerprint_varies_on_model_and_sources() -> None:
-    base = dict(
-        messages=[{"role": "user", "content": "q"}],
-        prompt_template_version="v1",
-        model="m",
-        sampling={"temperature": 0.0},
-        schema_hash="s",
-        source_hashes=["a", "b"],
-    )
+    base = {
+        "messages": [{"role": "user", "content": "q"}],
+        "prompt_template_version": "v1",
+        "model": "m",
+        "sampling": {"temperature": 0.0},
+        "schema_hash": "s",
+        "source_hashes": ["a", "b"],
+    }
     fp1 = fingerprint(**base)
     assert len(fp1) == 64
     # model change -> different fingerprint
