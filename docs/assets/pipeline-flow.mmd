@@ -1,0 +1,58 @@
+%% Knovaryn — end-to-end pipeline flow
+%% Every training example is traced back to its source document.
+flowchart LR
+    subgraph INPUT["1 · Intake — permitted documents"]
+        direction TB
+        A1["Local files"] --> A2["Path + symlink checks"]
+        A3["Archives zip / tar"] --> A2
+        A4["URLs — opt-in"] --> A2
+        A2 --> A5["Preflight: SHA-256 · size · pages · license"]
+    end
+
+    subgraph PARSE["2 · Parse → canonical representation"]
+        direction TB
+        P1["Docling canonical JSON"] --> P2["Diagnostics + quality summary"]
+        P2 --> P3["Markdown — derivative output"]
+    end
+
+    subgraph SPLIT["3 · Split + chunk with provenance"]
+        direction TB
+        S1["Split at source group"] --> S2["Structure-aware chunking"]
+        S2 --> S3["Heading paths · spans · source_span_ids · sha256"]
+    end
+
+    subgraph GEN["4 · Generate examples"]
+        direction TB
+        G1["Planner: task + difficulty map"] --> G2["Prompt library"]
+        G2 --> G3["SFT · Preference · KTO · Eval"]
+        G3 --> G4["Model gateway — fake offline or LiteLLM"]
+    end
+
+    subgraph VAL["5 · Validate — gates quarantine failures"]
+        direction TB
+        V1["Schema / Grounding / Completeness"]
+        V2["Format / Refusal / Dedupe"]
+        V3["Contamination / Privacy / License"]
+        V1 --> V4{"All gates pass?"}
+        V2 --> V4
+        V3 --> V4
+        V4 -- fail --> V5["Quarantine"]
+        V4 -- pass --> V6["Review state"]
+    end
+
+    subgraph OUT["6 · Version + export + publish"]
+        direction TB
+        O1["Dataset version"] --> O2["Release bundle: card · manifest · reports · checksums"]
+        O2 --> O3["Exporters — JSONL + variations"]
+        O2 --> O4["Publish to Hugging Face — dry-run by default"]
+    end
+
+    A5 --> P1
+    P3 --> S1
+    S3 --> G1
+    G4 --> V1
+    V6 --> O1
+
+    style V5 fill:#fbe3e3,stroke:#b3261e
+    style A5 fill:#e8f0fe,stroke:#1a73e8
+    style O4 fill:#e8f0fe,stroke:#1a73e8

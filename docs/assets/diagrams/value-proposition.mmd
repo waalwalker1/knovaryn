@@ -1,0 +1,37 @@
+%% Knovaryn — Why it's useful (problem → value)
+flowchart TD
+    subgraph PAIN["Why teams struggle today"]
+        P1["Opaque pipelines — can't trace an example to its source"]
+        P2["No quality gates — weak rows ship silently"]
+        P3["Expensive work lost on a crash — no resume"]
+        P4["Licensing & privacy risk — no knowledge of rights"]
+        P5["Provider/trainer lock-in — can't switch"]
+        P6["No cost control — token bills run away"]
+    end
+
+    subgraph VALUE["What Knovaryn delivers"]
+        V1["Every example traced to doc · page · sentence (provenance)"]
+        V2["10 quality gates that quarantine failures"]
+        V3["Durable jobs — leases, heartbeats, resume from checkpoint"]
+        V4["License registry + publication gate · dry-run by default"]
+        V5["ModelGateway + trainer-native exporters — BYO model"]
+        V6["Cost ledger + budget caps (incl. deepseek_flash_budget)"]
+    end
+
+    P1 --> V1
+    P2 --> V2
+    P3 --> V3
+    P4 --> V4
+    P5 --> V5
+    P6 --> V6
+
+    V1 --> OUT["Trustworthy SFT, preference, KTO & eval datasets"]
+    V2 --> OUT
+    V3 --> OUT
+    V4 --> OUT
+    V5 --> OUT
+    V6 --> OUT
+
+    style PAIN fill:#fbe3e3,stroke:#b3261e
+    style VALUE fill:#e6f4ea,stroke:#188038
+    style OUT fill:#e8f0fe,stroke:#1a73e8,stroke-width:2px

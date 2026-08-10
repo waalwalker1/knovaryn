@@ -1,0 +1,58 @@
+%% Knovaryn — System Architecture
+%% One application-services core, four interfaces, durable-job engine
+flowchart LR
+    subgraph AGENTS["Host agents"]
+        MCPAG["Claude · Cursor · etc."]
+    end
+
+    subgraph INTERFACES["Four interfaces — same services"]
+        C["CLI<br/>(knovaryn)"]
+        M["MCP server<br/>(knovaryn_mcp — 17 tools)"]
+        R["REST + web console<br/>(knovaryn server)"]
+        S["Python SDK"]
+    end
+
+    subgraph CORE["Application-services core (domain + application)"]
+        WS["Workspace control plane"]
+        SRV["Services: projects · sources · jobs · datasets"]
+        POL["Domain policies & config"]
+    end
+
+    subgraph PIPELINE["Durable pipeline engine"]
+        IN["Intake & preflight"]
+        PA["Parse (Docling)"]
+        SP["Split & chunk"]
+        PL["Plan (dry-run cost)"]
+        GE["Generate (ModelGateway)"]
+        VA["Validate & quality gates"]
+        VE["Version & export"]
+        PU["Publish (dry-run)"]
+        IN --> PA --> SP --> PL --> GE --> VA --> VE --> PU
+    end
+
+    subgraph INFRA["Infrastructure"]
+        DB[("SQLite / Postgres")]
+        ART["Artifact store<br/>local / S3"]
+        MG["Model gateway<br/>fake offline · LiteLLM"]
+        AUTH["Auth / bearer + scopes"]
+        SEC["Secrets: env-only, redacted"]
+    end
+
+    AGENTS --> MCPAG --> M
+    C --> WS
+    M --> WS
+    R --> WS
+    S --> WS
+    WS --> SRV --> POL
+    SRV --> PIPELINE
+    PIPELINE --> DB
+    PIPELINE --> ART
+    GE --> MG
+    WS --> AUTH
+    R --> AUTH
+    MG --> SEC
+
+    style CORE fill:#e8f0fe,stroke:#1a73e8
+    style PIPELINE fill:#e6f4ea,stroke:#188038
+    style INFRA fill:#fef7e0,stroke:#b06000
+    style MG fill:#fce8e6,stroke:#c5221f

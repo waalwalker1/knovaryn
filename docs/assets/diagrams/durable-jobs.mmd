@@ -1,0 +1,23 @@
+%% Knovaryn — Durable job lifecycle
+%% The engine that makes expensive pipeline work resumable & safe
+flowchart LR
+    A["Create job<br/>(idempotency key)"] --> B["Enqueue"]
+    B --> C["Lease acquired<br/>(worker holds lease)"]
+    C --> D["Stage 1 … Stage N"]
+    D --> E{"Checkpoint<br/>per stage"}
+
+    E -->|"normal"| F["Stage complete → persist + heartbeats"]
+    F --> G["All stages done"]
+    G --> H["Record cost events + result"]
+    H --> I["Idempotent done state"]
+
+    E -->|"crash / kill / timeout"| J["Lease expires → re-lease"]
+    J --> K["Resume from last checkpoint<br/>(no re-gen of paid work)"]
+    K --> D
+
+    E -->|"budget cap hit"| L["Cancel with cost audit"]
+    L --> M["Partial state preserved"]
+
+    style E fill:#fef7e0,stroke:#b06000
+    style J fill:#fce8e6,stroke:#c5221f
+    style K fill:#e6f4ea,stroke:#188038
