@@ -63,8 +63,10 @@ plus the recorded reason. This is the difference between "we generated N example
 
 ## Honest status — what is disclosed, what is not "guaranteed"
 
-**Verified and reproducible today (all gates run, offline):**
-- **48 passing tests**, deterministic, offline (`uv run pytest -m "not live"`)
+**Verified and reproducible today (all gates run, offline, on PyPI):**
+- **0.1.0 live on [PyPI](https://pypi.org/project/knovaryn)** — `pip install knovaryn` works today
+- **233 passing tests**, deterministic, offline (`uv run pytest -m "not live"`)
+- **Branch coverage 70.03%**, above the configured `fail_under=70` gate (CI enforces it)
 - **ruff** lint + format clean, **mypy** clean (91 source files, 0 issues)
 - **Alembic** upgrade / `check` (no drift) / downgrade reversible
 - **mkdocs** builds; **wheel + sdist** build clean and install into a fresh venv
@@ -75,9 +77,9 @@ plus the recorded reason. This is the difference between "we generated N example
 - No guarantee of absence of bias or hallucination.
 - No guarantee that an accepted dataset improves any model.
 - Licensing gating is a safety rail, **not** legal clearance.
-- Coverage is a tracked gap: bridge coverage measures **~54%**, below a 70% internal
-  target that has not yet been met. All **48 tests pass**; the coverage *number* is the
-  open item, not test correctness.
+- Coverage meets the gate today, but the *value* of that coverage is only proven by
+  the community actually exercising the tool. A higher bar — independent review and
+  real-world runs — is still ahead.
 
 **Not yet proven externally:** no real users yet, no published reproducible benchmark
 numbers (the methodology exists), no 1.0 release gate pass. At 0.1.0 this is an *invite

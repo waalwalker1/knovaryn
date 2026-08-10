@@ -18,7 +18,7 @@ core**: CLI, the `knovaryn_mcp` MCP server, a REST + web console, and a Python
 SDK.
 
 It is real engineering, not a demo shell: ~10.7k lines of Python in `src/`,
-**48 passing test functions**, **19 live MCP tools**, a **deterministic
+**233 passing test functions** (branch coverage ≥ 70%, CI-enforced), a **deterministic
 offline provider** (no keys, no network), **enforced provenance**, and a
 **quarantining quality gate**.
 

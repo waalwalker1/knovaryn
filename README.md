@@ -71,6 +71,14 @@ lifecycle for building *trustworthy* datasets:
 
 ### 0. Install
 
+**Fastest — from PyPI** (no API keys, no source needed):
+
+```bash
+pip install knovaryn
+```
+
+**From source** (a clone with dev tooling):
+
 ```bash
 # install uv (https://docs.astral.sh/uv/) if needed, then:
 git clone https://github.com/waalwalker1/knovaryn.git
@@ -81,6 +89,9 @@ uv sync --dev
 > `uv sync --dev` installs the lean core + dev tooling. It **does not** require the
 > heavy optional extras (`docling`, `docetl`, `litellm`, `s3`, `hub`, `parquet`).
 > Optional extras are opt-in with `uv sync --all-extras --dev`.
+>
+> Either route: **verify the traceability claim in 90 seconds** — see the one-pager at
+> [`docs/marketing/traceability-verification.md`](docs/marketing/traceability-verification.md).
 
 ### 1. Doctor — check your environment
 
@@ -113,7 +124,7 @@ enforced when `KNOVARYN_API_TOKEN` is set.
 ### 4. Verify & run tests
 
 ```bash
-uv run pytest -m "not live" -q        # 48 tests, offline, deterministic
+uv run pytest -m "not live" -q        # 233 tests, offline, deterministic
 uv run ruff check src tests           # lint
 uv run mypy src/knovaryn              # types
 ```
@@ -199,7 +210,7 @@ idempotency, cancellation, retries, budgets, cost events, and crash recovery.
 │   ├── infrastructure/        # database, artifacts, docling, intake, models, auth, telemetry
 │   ├── interfaces/            # cli, mcp, rest
 │   └── prompts/               # versioned prompt library + manifest
-├── tests/                     # 48 offline tests (incl. migration + artifact CAS)
+├── tests/                     # 233 offline tests (incl. migration + artifact CAS)
 ├── benchmarks/                # offline pipeline benchmark
 ├── deploy/                    # Docker / Compose / Kubernetes reference
 ├── docs/                      # full documentation site (MkDocs)
