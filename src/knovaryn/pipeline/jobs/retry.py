@@ -7,9 +7,7 @@ Never retry a deterministic policy rejection.
 from __future__ import annotations
 
 import random
-import time
 from dataclasses import dataclass
-from typing import Any
 
 from ...domain.errors import (
     BudgetExceededError,
@@ -60,12 +58,16 @@ class BackoffResult:
     retry_after: str | None = None
 
 
-def backoff_delay(policy: RetryPolicy, attempt: int, *, retry_after_header: str | None = None) -> BackoffResult:
+def backoff_delay(
+    policy: RetryPolicy, attempt: int, *, retry_after_header: str | None = None
+) -> BackoffResult:
     """Exponential backoff with full jitter (bounded)."""
     if retry_after_header:
         try:
             secs = max(0.1, float(retry_after_header))
-            return BackoffResult(delay_s=min(secs, policy.max_delay_s), retry_after=retry_after_header)
+            return BackoffResult(
+                delay_s=min(secs, policy.max_delay_s), retry_after=retry_after_header
+            )
         except (TypeError, ValueError):
             pass
     cap = policy.base_delay_s * (policy.multiplier ** max(attempt, 0))

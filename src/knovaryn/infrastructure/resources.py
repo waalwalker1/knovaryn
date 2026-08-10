@@ -23,10 +23,23 @@ class ResourceProfile:
 def detect_resource_profile(*, prefer_cuda: bool = True) -> ResourceProfile:
     """Detect the best available accelerator (no network)."""
     if prefer_cuda and _cuda_available():
-        return ResourceProfile(accelerator="cuda", device_count=_cuda_count(), note="CUDA detected", warmup_models=True, ocr_thread_pool=4)
+        return ResourceProfile(
+            accelerator="cuda",
+            device_count=_cuda_count(),
+            note="CUDA detected",
+            warmup_models=True,
+            ocr_thread_pool=4,
+        )
     if _mps_available():
-        return ResourceProfile(accelerator="mps", device_count=1, note="Apple Silicon MPS detected", ocr_thread_pool=3)
-    return ResourceProfile(accelerator="cpu", device_count=0, note="CPU-only profile; heavy extras optional", ocr_thread_pool=2)
+        return ResourceProfile(
+            accelerator="mps", device_count=1, note="Apple Silicon MPS detected", ocr_thread_pool=3
+        )
+    return ResourceProfile(
+        accelerator="cpu",
+        device_count=0,
+        note="CPU-only profile; heavy extras optional",
+        ocr_thread_pool=2,
+    )
 
 
 def _cuda_available() -> bool:
@@ -52,7 +65,7 @@ def _cuda_count() -> int:
 def _mps_available() -> bool:
     if os.environ.get("KNOVARYN_FORCE_CPU"):
         return False
-    if not (sys_platform() == "darwin"):
+    if sys_platform() != "darwin":
         return False
     try:
         import torch  # noqa: F401

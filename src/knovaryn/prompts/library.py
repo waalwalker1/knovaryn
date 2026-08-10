@@ -84,7 +84,8 @@ def _build_registry() -> None:
                 system_template=_base_system(),
                 user_template=(
                     "Given the source material, determine whether the following response is "
-                    "a good or bad answer.\n\nSOURCE MATERIAL:\n{source_text}\n\nRESPONSE:\n{response}\n\n"
+                    "a good or bad answer.\n\nSOURCE MATERIAL:\n{source_text}\n\n"
+                    "RESPONSE:\n{response}\n\n"
                     "Answer GOOD or BAD with a one-line reason."
                 ),
             )

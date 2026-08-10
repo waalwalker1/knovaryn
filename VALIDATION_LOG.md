@@ -93,3 +93,37 @@ Honest remaining gate status (NOT green, pre-existing on baseline):
 These gates are reported honestly in `BUILD_LEDGER.md` (§26/§36 + Gates table) and are **not**
 marked as passing. Fixing the full lint/type baseline is tracked as open follow-up work.
 
+## Phase Q — gates green + migration baseline (2026-08-09 follow-up)
+
+The open lint/type baseline and the missing migration baseline (both flagged 🔶 in
+Phase P) were closed in a follow-up revision. Every command below was actually run.
+
+| Command | Result | Notes |
+|---|---:|---|
+| `uv run ruff check src tests` | ✅ "All checks passed!" | lint gate green (was 🔶, ~400 E501) |
+| `uv run ruff format --check src tests` | ✅ 100 files already formatted | format gate green (was 🔶) |
+| `uv run mypy src/knovaryn` | ✅ "Success: no issues found in 91 source files" | type gate green (was 🔶, 79 errors/27 files) |
+| `uv run pytest -m "not live"` | ✅ **48 passed** | was 38; +3 migration, +7 artifact-store tests |
+| `alembic upgrade head` (fresh SQLite) | ✅ upgrade 7373f061034e ran | migrations/ + alembic.ini added |
+| `alembic check` (after upgrade) | ✅ "No new upgrade operations detected" | baseline exactly matches ORM metadata (no drift) |
+| `alembic downgrade base` | ✅ reversed; only `alembic_version` remains | migration reversible (§21.1) |
+| `uv run mkdocs build` | ✅ "Documentation built in 0.42 seconds" | `mkdocs.yml` added (was missing → `make docs-build` failed) |
+| `uv build` | ✅ `knovaryn-0.1.0.tar.gz` + `-py3-none-any.whl` | wheel + sdist build clean |
+| Clean-install smoke (fresh venv, no extras) | ✅ | wheel installs; `knovaryn --help`, `doctor --json`, `version` work |
+| Offline `demo --examples 3 --json` (clean venv) | ✅ 2 parsed → 10 chunks → 7 SFT accepted | release.zip + result.json; **no API keys** required |
+| `benchmarks/bench_pipeline.py` | ✅ **1107.85 examples/s** (0.005 s, 2 src → 5 accepted) | §24.3 offline framework cost |
+
+New test files (all green):
+
+- `tests/test_migrations.py` — 3 tests: full metadata schema after `upgrade head`,
+  no autogenerate drift vs models, `downgrade base` reversible.
+- `tests/test_artifact_store.py` — 7 tests: put/get round-trip, content dedup,
+  corruption detection, missing-artifact NotFound, manifest metadata, streaming.
+
+Honest notes carried forward (not credentials-dependent but outside this env):
+
+- Docling/DocETL/litellm/S3 are opt-in extras not installed here; doctor reports
+  them as "not installed" and the offline path does not require them.
+- Live paid provider tests are explicitly opt-in and were not run (no credentials).
+- GPT/domain checks in CI run on GitHub, not executed against this repo's workflow.
+

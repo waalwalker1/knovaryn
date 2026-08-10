@@ -43,5 +43,10 @@ def test_estimate_call_cost_uses_profile_rates() -> None:
 
 
 def test_zero_profile_estimates_zero() -> None:
-    profile = cost.PriceProfile(price_snapshot_date="2026-08-01", provider="none", price_input_per_m=0.0, price_output_per_m=0.0)
+    profile = cost.PriceProfile(
+        price_snapshot_date="2026-08-01",
+        provider="none",
+        price_input_per_m=0.0,
+        price_output_per_m=0.0,
+    )
     assert cost.estimate_call_cost(profile, input_tokens=10_000, output_tokens=10_000) == 0.0

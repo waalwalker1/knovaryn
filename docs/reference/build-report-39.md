@@ -1,16 +1,15 @@
 # Knovaryn Build Report
 
-> Section 39 final implementation report — honest status. Written 2026-08-08.
+> Section 39 final implementation report — honest status. Written 2026-08-08; updated 2026-08-09.
 
 ## 1. Outcome
 
-- **Overall status: PARTIAL** — core pipeline, workspace control plane, MCP tool suite, REST
-  plane, license gate, and offline tests are verified green, but the engineering-quality gates
-  (`ruff`, `mypy`) are **red on the shipped baseline**, there is no Alembic migration set, and
-  the project-wide lint/type debt is not fully resolved.
+- **Overall status: COMPLETE (offline/fake-provider scope)** — the follow-up revision on
+  2026-08-09 closed the engineering-quality gates that were red on 2026-08-08 and added the
+  missing migration baseline. All offline gates verified green (see §4).
 - Repository path: `.../MircoApps/Omnitrain MCP/knovaryn` (commit to GitHub `waalwalker1/knovaryn`).
 - Implemented version: `0.1.0`.
-- Commit(s): prior commits `4cd88c3`, `30fcc38`, `26fd9c6`, `66a1d7c` (recovery of OneDrive-dehydrated files, lockfile regeneration). New work in this revision is uncommitted and staged for commit + push.
+- Commit(s): prior commits `4cd88c3`, `30fcc38`, `26fd9c6`, `66a1d7c` (recovery of OneDrive-dehydrated files, lockfile regeneration). New work (gates-green + migration baseline + docs) is uncommitted and staged for commit + push.
 
 ## 2. What was built
 
@@ -58,32 +57,45 @@ Built in this revision (highest-value missing subsystems):
 
 | Command | Result | Notes |
 |---|---:|---|
-| `uv run pytest -q -p no:cacheprovider` (9 test files) | ✅ 38 passed | offline, deterministic fake provider; from stable export `/tmp/knovaryn_ci` |
+| `uv run pytest -q -p no:cacheprovider` (11 test files) | ✅ 48 passed | offline, deterministic fake provider; includes new migration + artifact tests |
 | workspace control plane (workspace tests ×5) | ✅ | create→source→job→run→validate→version→export→publish(dry-run) |
 | license report + publication gate tests | ✅ | MIT=allowed, none=review, cc-by-nd=blocked; gate blocks unresolved |
 | REST control plane (TestClient tests ×3) | ✅ | full lifecycle over HTTP |
 | MCP module import + tool presence | ✅ | all 17 spec tools present; module imports clean |
 | deepseek profile + gateway build | ✅ | `build_gateway('deepseek_flash_budget')` = `ModelGateway(LiteLLMProvider)` |
-| `ruff check src tests` | 🔶 **RED** | ~400 style violations (mostly E501), pre-existing baseline |
-| `ruff format --check src tests` | 🔶 **RED** | not green on baseline |
-| `mypy src` | 🔶 **RED** | 79 errors / 27 files, incl. pre-existing `service.py`, `gateway.py` |
+| `ruff check src tests` | ✅ GREEN | "All checks passed!" (was 🔶 RED on 2026-08-08) |
+| `ruff format --check src tests` | ✅ GREEN | 102 files already formatted (was 🔶 RED) |
+| `mypy src/knovaryn` | ✅ GREEN | "no issues found in 91 source files" (was 🔶 RED) |
 | CLI doctor (offline) | ✅ | `knovaryn doctor` health checks |
-| offline demo pipeline | ✅ | runs end-to-end under fake provider |
-| container build / migration / clean-install | 🔶 not executed here | Dockerfile present; GitHub CI not run against this revision |
+| offline demo pipeline | ✅ | runs end-to-end under fake provider; verified on clean install (no API keys) |
+| `alembic upgrade head` (fresh SQLite) | ✅ | baseline revision `7373f061034e` (was 🔶 no migrations/) |
+| `alembic check` (post-upgrade) | ✅ | "No new upgrade operations detected" — no drift vs ORM metadata |
+| `alembic downgrade base` | ✅ | fully reversible; only `alembic_version` remains |
+| `uv run mkdocs build` | ✅ | docs site builds (was 🔶 `mkdocs.yml` missing → `make docs-build` failed) |
+| `uv build` | ✅ | wheel + sdist build clean |
+| clean-install smoke test (fresh venv, no extras) | ✅ | wheel installs; `knovaryn --help`/`version`/`doctor --json`/offline `demo` all work |
+| container build | 🔶 not executed here | Dockerfile present; GitHub CI (`docker build`) runs on `main` |
 
 ## 5. Test and benchmark facts
 
-- **38 tests pass** offline under the fake provider: `test_chunking`, `test_export`,
+- **48 tests pass** offline under the fake provider: `test_chunking`, `test_export`,
   `test_identity`, `test_intake_adversarial`, `test_pricing`, `test_split`, `test_validators`,
-  `test_rest_api`, `test_workspace_control`.
-- No performance benchmark numbers were measured in this environment; `docs/marketing/benchmark-methodology.md`
-  documents methodology only (§2.9: research numbers are not acceptance criteria).
+  `test_rest_api`, `test_workspace_control`, plus new `test_migrations` (3) and
+  `test_artifact_store` (7).
+- **Benchmark measured 2026-08-09** (`benchmarks/bench_pipeline.py`, offline fake provider,
+  macOS / CPython 3.13): **1107.85 examples/s** — 2 sources → 9 chunks → 5 accepted examples,
+  2200-byte release bundle, 0.005 s wall time. Deterministic inputs isolate framework cost.
+  Hardware/versions/limitations caveats belong in `docs/marketing/benchmark-methodology.md` (§24.3);
+  research numbers are not acceptance criteria (§2.9).
 
 ## 6. Security and governance checks
 
 - **Threat model:** `docs/security/threat-model.md` present; §15 licensing + §23 controls implemented
   (license gate, PII scanners, bearer guard, state-handle auth, adversarial-intake fixture).
-- **Outstanding findings:** ruff/mypy lint-type debt (see §9).
+- **Outstanding findings:** ruff/mypy/format gates are now green (2026-08-09); the previously
+  outstanding lint/type debt is resolved. Remaining non-blocking items: optional extras
+  (docling/docetl/litellm/s3/hub/parquet) not installed in this env; live provider tests not
+  run (no credentials); container build executes in GitHub CI only.
 - **Dependency/secret scan:** not run in this session (no credentials available).
 - **SBOM/signing readiness:** not yet configured.
 - **Name-clearance:** canonical identity `knovaryn` / server id `knovaryn_mcp` enforced via `identity.py`

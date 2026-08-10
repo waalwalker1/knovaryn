@@ -11,12 +11,8 @@ Implements real, runnable operational commands that share the framework-free
 
 from __future__ import annotations
 
-import os
-import shutil
 import tarfile
-import tempfile
-import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -49,14 +45,32 @@ def doctor(*, json_plain: bool = False) -> int:
         checks.append(("Core import", False, f"failed: {exc}"))
 
     # 2. optional extras
-    from ...infrastructure.docling.adapter import docling_available
     from ...infrastructure.docetl.adapter import docetl_available
+    from ...infrastructure.docling.adapter import docling_available
     from ...infrastructure.models.fake_provider import FakeProvider  # noqa: F401
     from ...infrastructure.publish.hf import hub_available
 
-    checks.append(("Docling (opt-in)", docling_available(), "available" if docling_available() else "not installed (safe fallback)"))
-    checks.append(("DocETL (opt-in)", docetl_available(), "available" if docetl_available() else "not installed"))
-    checks.append(("HF publish (opt-in)", hub_available(), "available" if hub_available() else "not installed"))
+    checks.append(
+        (
+            "Docling (opt-in)",
+            docling_available(),
+            "available" if docling_available() else "not installed (safe fallback)",
+        )
+    )
+    checks.append(
+        (
+            "DocETL (opt-in)",
+            docetl_available(),
+            "available" if docetl_available() else "not installed",
+        )
+    )
+    checks.append(
+        (
+            "HF publish (opt-in)",
+            hub_available(),
+            "available" if hub_available() else "not installed",
+        )
+    )
     checks.append(("Fake provider (offline)", True, "ok"))
 
     # 3. resource profile (accelerator detection)
@@ -94,11 +108,13 @@ def doctor(*, json_plain: bool = False) -> int:
     console.print(table)
 
     if json_plain:
-        console.print_json(__import__("json").dumps([{"component": n, "ok": o, "detail": d} for n, o, d in checks]))
+        console.print_json(
+            __import__("json").dumps([{"component": n, "ok": o, "detail": d} for n, o, d in checks])
+        )
     return 0 if all(ok for _, ok, _ in checks) else 1
 
 
-def _db_file(cfg: dict[str, Any]) -> str | None:
+def _db_file(cfg: Any) -> str | None:
     url = cfg.get("storage", {}).get("database_url") or ""
     if url.startswith("sqlite"):
         # sqlite+aiosqlite:///./.knovaryn/knovaryn.db
@@ -135,14 +151,16 @@ def backup(*, out: Path | None = None, json_plain: bool = False) -> int:
         return 1
     dest = out or Path("knovaryn-backups")
     dest.mkdir(parents=True, exist_ok=True)
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     archive = dest / f"knovaryn-backup-{stamp}.tar.gz"
     with tarfile.open(archive, "w:gz") as tar:
         tar.add(state, arcname=state.name, filter=lambda info: _exclude_pycache(info))
     size = archive.stat().st_size
     console.print(f"[green]Backup written:[/green] {archive} ({size} bytes)")
     if json_plain:
-        console.print_json(__import__("json").dumps({"path": str(archive), "bytes": size, "state": str(state)}))
+        console.print_json(
+            __import__("json").dumps({"path": str(archive), "bytes": size, "state": str(state)})
+        )
     return 0
 
 
@@ -210,7 +228,9 @@ def repair(*, json_plain: bool = False) -> int:
             console.print_json(__import__("json").dumps({"fixed": fixed, "problems": problems}))
         return 1
     if json_plain:
-        console.print_json(__import__("json").dumps({"fixed": fixed, "problems": problems, "ok": True}))
+        console.print_json(
+            __import__("json").dumps({"fixed": fixed, "problems": problems, "ok": True})
+        )
     console.print("[green]Repair complete: nothing to fix.[/green]")
     return 0
 

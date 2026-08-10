@@ -11,7 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from ..domain.schemas import DatasetPlan, TaskFamily, Topology
+from ..domain.schemas import DatasetPlan, Topology
 
 _TOPOLOGIES = [Topology.sft, Topology.preference, Topology.kto, Topology.evaluation]
 _DIFFICULTIES = ["basic", "intermediate", "advanced"]
@@ -46,7 +46,9 @@ def _normalize(weights: dict[str, float]) -> dict[str, float]:
 
 def plan(plan: DatasetPlan, *, chunk_count: int) -> PlanResult:
     families = _normalize(plan.effective_proportions())
-    difficulty = _normalize(plan.difficulty_distribution or {"basic": 0.3, "intermediate": 0.5, "advanced": 0.2})
+    difficulty = _normalize(
+        plan.difficulty_distribution or {"basic": 0.3, "intermediate": 0.5, "advanced": 0.2}
+    )
     topology_weights = _topology_weights(plan)
 
     out = PlanResult()
@@ -57,7 +59,11 @@ def plan(plan: DatasetPlan, *, chunk_count: int) -> PlanResult:
                 count = int(round(chunk_count * topo_weight * fam_weight * diff_weight))
                 if count <= 0:
                     continue
-                out.specs.append(AssignmentSpec(topology=topology, task_family=family, difficulty=diff, per_chunk=count))
+                out.specs.append(
+                    AssignmentSpec(
+                        topology=topology, task_family=family, difficulty=diff, per_chunk=count
+                    )
+                )
                 out.distribution_matrix[f"{topology}/{family}/{diff}"] = count
     out.total_expected_examples = sum(s.per_chunk for s in out.specs)
     return out
@@ -66,7 +72,9 @@ def plan(plan: DatasetPlan, *, chunk_count: int) -> PlanResult:
 def _topology_weights(plan: DatasetPlan) -> list[tuple[str, float]]:
     # Default: SFT-dominant with smaller preference/eval/KTO presence.
     # If the plan carries explicit topology proportions, honor them.
-    explicit = plan.metadata.get("topology_proportions") if isinstance(plan.metadata, dict) else None
+    explicit = (
+        plan.metadata.get("topology_proportions") if isinstance(plan.metadata, dict) else None
+    )
     _valid = [t.value for t in _TOPOLOGIES]
     if isinstance(explicit, dict) and explicit:
         weights = _normalize({k: v for k, v in explicit.items() if k in _valid})

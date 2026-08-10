@@ -14,19 +14,21 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
-_current: contextvars.ContextVar["_Span | None"] = contextvars.ContextVar("knovaryn_trace", default=None)
+_current: contextvars.ContextVar[_Span | None] = contextvars.ContextVar(
+    "knovaryn_trace", default=None
+)
 
 
 @dataclass
 class _Span:
     name: str
-    parent: "_Span | None" = None
+    parent: _Span | None = None
     attributes: dict[str, Any] = field(default_factory=dict)
-    children: list["_Span"] = field(default_factory=list)
+    children: list[_Span] = field(default_factory=list)
     start_mono: float = 0.0
     duration_ms: float | None = None
 
-    def child(self, name: str) -> "_Span":
+    def child(self, name: str) -> _Span:
         c = _Span(name=name, parent=self, start_mono=time.monotonic())
         self.children.append(c)
         return c
@@ -41,9 +43,13 @@ class TraceContext:
         self._span: _Span | None = None
         self._tok: contextvars.Token | None = None
 
-    def __enter__(self) -> "TraceContext":
+    def __enter__(self) -> TraceContext:
         parent = _current.get()
-        self._span = parent.child(self._name) if parent else _Span(name=self._name, start_mono=time.monotonic())
+        self._span = (
+            parent.child(self._name)
+            if parent
+            else _Span(name=self._name, start_mono=time.monotonic())
+        )
         self._span.attributes.update(self._attributes)
         self._tok = _current.set(self._span)
         return self

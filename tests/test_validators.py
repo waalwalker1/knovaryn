@@ -18,30 +18,49 @@ def _sft_example() -> TrainingExample:
         topology=Topology.sft,
         system_messages=["You are a careful assistant."],
         prompt_messages=[CanonicalMessage(role="user", content="Summarize the lifecycle.")],
-        chosen_messages=[CanonicalMessage(role="assistant", content="Data preparation comes first, then training, then evaluation.")],
+        chosen_messages=[
+            CanonicalMessage(
+                role="assistant",
+                content="Data preparation comes first, then training, then evaluation.",
+            )
+        ],
         source_span_ids=["span1"],
     )
 
 
 def test_grounding_validator_accepts_grounded_answer() -> None:
     ex = _sft_example()
-    ctx = ValidatorContext(source_texts={"span1": "Data preparation comes first. Then model training. Then evaluation."})
+    ctx = ValidatorContext(
+        source_texts={
+            "span1": "Data preparation comes first. Then model training. Then evaluation."
+        }
+    )
     assessment = __import__("asyncio").run(GroundingValidator().assess(ex, ctx))
     assert assessment.score >= 0.4
 
 
 def test_assemble_decision_returns_overall() -> None:
     ex = _sft_example()
-    ctx = ValidatorContext(source_texts={"span1": "Data preparation comes first. Then model training. Then evaluation."})
+    ctx = ValidatorContext(
+        source_texts={
+            "span1": "Data preparation comes first. Then model training. Then evaluation."
+        }
+    )
     import asyncio
 
     grounding = asyncio.run(GroundingValidator().assess(ex, ctx))
-    from knovaryn.pipeline.quality.validators import CompletenessValidator, FormatValidator, RefusalValidator
+    from knovaryn.pipeline.quality.validators import (
+        CompletenessValidator,
+        FormatValidator,
+        RefusalValidator,
+    )
 
     complete = asyncio.run(CompletenessValidator().assess(ex, ctx))
     fmt = asyncio.run(FormatValidator().assess(ex, ctx))
     refusal = asyncio.run(RefusalValidator().assess(ex, ctx))
-    overall = assemble_decision([grounding, complete, fmt, refusal], example_id=ex.id, is_preference=False)
+    overall = assemble_decision(
+        [grounding, complete, fmt, refusal], example_id=ex.id, is_preference=False
+    )
     assert overall.validator_name == "overall"
     assert overall.status in (QualityStatus.accepted, QualityStatus.review, QualityStatus.rejected)
 

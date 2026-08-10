@@ -17,8 +17,9 @@ shared by all routes.
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import Any, AsyncIterator
+from typing import Any
 
 from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -320,50 +321,73 @@ def web_console() -> Any:
     """Minimal web console dashboard backed by the REST control plane."""
     from fastapi.responses import HTMLResponse
 
-    html = """<!doctype html><html lang="en"><head>
-<meta charset="utf-8"><title>Knovaryn Console</title>
-<style>body{font-family:system-ui,sans-serif;max-width:820px;margin:36px auto;padding:0 16px;color:#1a1a1a}
-h1{font-size:1.5rem}h2{font-size:1.1rem;margin-top:28px}
-input,select{font:inherit;padding:7px 10px;border:1px solid #d4d4d8;border-radius:8px;margin:3px 0}
-button{padding:8px 14px;font-size:.95rem;cursor:pointer;border:0;border-radius:8px;background:#2563eb;color:#fff;margin:3px 4px 3px 0}
-button.sec{background:#6b7280}pre{background:#f4f4f5;padding:14px;border-radius:8px;overflow:auto;font-size:.85rem}
-label{display:block;font-weight:600;margin-top:10px;font-size:.85rem}.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}</style>
-</head><body>
-<h1>Knovaryn Console</h1>
-<p>Training-data foundry. Server: <code>knovaryn_mcp</code> · offline default (fake provider).</p>
-
-<h2>Project</h2>
-<input id="slug" placeholder="my-project"><input id="name" placeholder="Display name" style="width:220px">
-<button onclick="post('/v1/projects',{slug:slug.value,display_name:name.value})">Create project</button>
-<button class="sec" onclick="get('/v1/projects')">List projects</button>
-
-<h2>Source</h2>
-<input id="pid" placeholder="project_id"><input id="srcname" placeholder="source name">
-<textarea id="srccontent" rows="3" style="width:100%" placeholder="markdown content"></textarea>
-<button onclick="post('/v1/projects/'+pid.value+'/sources',{original_name:srcname.value,content:srccontent.value})">Add source</button>
-
-<h2>Pipeline</h2>
-<div class="row"><button onclick="post('/v1/projects/'+pid.value+'/pipeline',{})">Queue pipeline</button>
-<button onclick="get('/v1/jobs?project_id='+pid.value)">List jobs</button></div>
-
-<h2>Run &amp; export</h2>
-<input id="jid" placeholder="job_id" style="width:240px"><button onclick="post('/v1/jobs/'+jid.value+'/run',{})">Run job</button>
-<button onclick="post('/v1/projects/'+pid.value+'/version',{})">Create version</button>
-<button onclick="post('/v1/projects/'+pid.value+'/export',{})">Export</button>
-<button class="sec" onclick="post('/v1/projects/'+pid.value+'/publish',{dry_run:true,confirm:true,repo_id:'local/dry-run'})">Publish (dry-run)</button>
-
-<h2>Demo</h2>
-<button onclick="fetch('/v1/demo',{method:'POST'}).then(r=>r.json()).then(render)">Run full offline demo</button>
-
-<pre id="out">Use the buttons above; output appears here.</pre>
-<script>
-async function j(url,opts) { const r=await fetch(url,{method:(opts&&opts.method)||'GET',headers:{'Content-Type':'application/json'},body:opts&&opts.body?JSON.stringify(opts.body):undefined}); return {status:r.status, body:await r.text()}; }
-async function get(url){const r=await j(url);render(parse(r));}
-async function post(url,body){const r=await j(url,{method:'POST',body});render(parse(r));}
-function parse(r){try{return JSON.parse(r.body)}catch(e){return {status:r.status,raw:r.body}}}
-function render(x){document.getElementById('out').textContent=JSON.stringify(x,null,2);}
-</script>
-</body></html>"""
+    html = (
+        '<!doctype html><html lang="en"><head>\n'
+        + '<meta charset="utf-8"><title>Knovaryn Console</title>\n'
+        + "<style>body{font-family:system-ui,sans-serif;max-width:820px;margin:36px auto;"
+        "padding:0 16px;color:#1a1a1a}\n"
+        + "h1{font-size:1.5rem}h2{font-size:1.1rem;margin-top:28px}\n"
+        + "input,select{font:inherit;padding:7px 10px;border:1px solid #d4d4d8;border-rad"
+        "ius:8px;margin:3px 0}\n"
+        + "button{padding:8px 14px;font-size:.95rem;cursor:pointer;border:0;border-radius"
+        ":8px;background:#2563eb;color:#fff;margin:3px 4px 3px 0}\n"
+        + "button.sec{background:#6b7280}pre{background:#f4f4f5;padding:14px;border-radiu"
+        "s:8px;overflow:auto;font-size:.85rem}\n"
+        + "label{display:block;font-weight:600;margin-top:10px;font-size:.85rem}.row{disp"
+        "lay:flex;gap:8px;align-items:center;flex-wrap:wrap}</style>\n"
+        + "</head><body>\n"
+        + "<h1>Knovaryn Console</h1>\n"
+        + "<p>Training-data foundry. Server: <code>knovaryn_mcp</code> · offline default "
+        "(fake provider).</p>\n"
+        + "\n"
+        + "<h2>Project</h2>\n"
+        + '<input id="slug" placeholder="my-project"><input id="name" placeholder="Displa'
+        'y name" style="width:220px">\n'
+        + "<button onclick=\"post('/v1/projects',{slug:slug.value,display_name:name.value}"
+        ')">Create project</button>\n'
+        + '<button class="sec" onclick="get(\'/v1/projects\')">List projects</button>\n'
+        + "\n"
+        + "<h2>Source</h2>\n"
+        + '<input id="pid" placeholder="project_id"><input id="srcname" placeholder="sour'
+        'ce name">\n'
+        + '<textarea id="srccontent" rows="3" style="width:100%" placeholder="markdown co'
+        'ntent"></textarea>\n'
+        + "<button onclick=\"post('/v1/projects/'+pid.value+'/sources',{original_name:srcn"
+        'ame.value,content:srccontent.value})">Add source</button>\n'
+        + "\n"
+        + "<h2>Pipeline</h2>\n"
+        + "<div class=\"row\"><button onclick=\"post('/v1/projects/'+pid.value+'/pipeline',{"
+        '})">Queue pipeline</button>\n'
+        + "<button onclick=\"get('/v1/jobs?project_id='+pid.value)\">List jobs</button></di"
+        "v>\n"
+        + "\n"
+        + "<h2>Run &amp; export</h2>\n"
+        + '<input id="jid" placeholder="job_id" style="width:240px"><button onclick="post'
+        "('/v1/jobs/'+jid.value+'/run',{})\">Run job</button>\n"
+        + "<button onclick=\"post('/v1/projects/'+pid.value+'/version',{})\">Create version"
+        "</button>\n"
+        + "<button onclick=\"post('/v1/projects/'+pid.value+'/export',{})\">Export</button>\n"
+        + "<button class=\"sec\" onclick=\"post('/v1/projects/'+pid.value+'/publish',{dry_ru"
+        "n:true,confirm:true,repo_id:'local/dry-run'})\">Publish (dry-run)</button>\n"
+        + "\n"
+        + "<h2>Demo</h2>\n"
+        + "<button onclick=\"fetch('/v1/demo',{method:'POST'}).then(r=>r.json()).then(rend"
+        'er)">Run full offline demo</button>\n'
+        + "\n"
+        + '<pre id="out">Use the buttons above; output appears here.</pre>\n'
+        + "<script>\n"
+        + "async function j(url,opts) { const r=await fetch(url,{method:(opts&&opts.metho"
+        "d)||'GET',headers:{'Content-Type':'application/json'},body:opts&&opts.body?JSO"
+        "N.stringify(opts.body):undefined}); return {status:r.status, body:await r.text"
+        "()}; }\n"
+        + "async function get(url){const r=await j(url);render(parse(r));}\n"
+        + "async function post(url,body){const r=await j(url,{method:'POST',body});render"
+        "(parse(r));}\n"
+        + "function parse(r){try{return JSON.parse(r.body)}catch(e){return {status:r.stat"
+        "us,raw:r.body}}}\n"
+        + "function render(x){document.getElementById('out').textContent=JSON.stringify(x"
+        ",null,2);}\n" + "</script>\n" + "</body></html>"
+    )
     return HTMLResponse(html)
 
 
@@ -372,13 +396,20 @@ _DEMO_SOURCES = [
         "MLOps lifecycle overview",
         """# MLOps Lifecycle
 ## Data preparation
-Data preparation is the first step of any machine learning project. It involves collecting raw data, cleaning it, and transforming it into a usable format. Practitioners must document the provenance of every data source to keep the dataset auditable.
+Data preparation is the first step of any machine learning project. It involves
+collecting raw data, cleaning it, and transforming it into a usable format.
+Practitioners must document the provenance of every data source to keep the
+dataset auditable.
 ## Model training
-Model training consumes the prepared data. The training process optimizes model weights against a loss function. Hyperparameters such as the learning rate and batch size materially affect the final model quality.
+Model training consumes the prepared data. The training process optimizes model
+weights against a loss function. Hyperparameters such as the learning rate and
+batch size materially affect the final model quality.
 ## Evaluation
-Evaluation measures model performance on held-out data. A held-out test set must never be used to tune hyperparameters.
+Evaluation measures model performance on held-out data. A held-out test set must
+never be used to tune hyperparameters.
 ## Deployment and monitoring
-Once deployed, models require ongoing monitoring for drift. Concept drift occurs when the statistical properties of the input distribution change over time.
+Once deployed, models require ongoing monitoring for drift. Concept drift occurs
+when the statistical properties of the input distribution change over time.
 """,
     ),
 ]

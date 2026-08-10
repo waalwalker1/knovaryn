@@ -6,7 +6,7 @@ artifact IDs (sha256 / manifest handles). No framework logic here.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import (
@@ -18,13 +18,12 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
-    UniqueConstraint,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
 def utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class Base(DeclarativeBase):
@@ -40,12 +39,14 @@ class ProjectDB(Base):
     description: Mapped[str] = mapped_column(Text, default="")
     owner_principal: Mapped[str] = mapped_column(String(255), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
     default_profile: Mapped[str] = mapped_column(String(64), default="balanced")
     status: Mapped[str] = mapped_column(String(32), default="active")
     tags: Mapped[list] = mapped_column(JSON, default=list)
 
-    sources: Mapped[list["SourceDocumentDB"]] = relationship(back_populates="project")
+    sources: Mapped[list[SourceDocumentDB]] = relationship(back_populates="project")
 
 
 class SourceDocumentDB(Base):
@@ -84,7 +85,9 @@ class ParsedDocumentDB(Base):
     parser_name: Mapped[str] = mapped_column(String(128))
     parser_version: Mapped[str] = mapped_column(String(64))
     parser_config_hash: Mapped[str] = mapped_column(String(64))
-    canonical_docling_json_artifact_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    canonical_docling_json_artifact_id: Mapped[str | None] = mapped_column(
+        String(64), nullable=True
+    )
     markdown_artifact_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     text_artifact_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     diagnostics_artifact_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
@@ -157,9 +160,13 @@ class TrainingExampleDB(Base):
     private_audit_metadata: Mapped[dict] = mapped_column(JSON, default=dict)
     content_hash: Mapped[str] = mapped_column(String(64), index=True)
     split: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
-    version_id: Mapped[str | None] = mapped_column(ForeignKey("dataset_versions.id"), nullable=True, index=True)
+    version_id: Mapped[str | None] = mapped_column(
+        ForeignKey("dataset_versions.id"), nullable=True, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
 
 
 class QualityAssessmentDB(Base):
@@ -219,11 +226,15 @@ class JobDB(Base):
     idempotency_key: Mapped[str | None] = mapped_column(String(255), nullable=True, unique=True)
     input_config_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     lease_owner: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    lease_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     attempt_count: Mapped[int] = mapped_column(Integer, default=0)
     max_attempts: Mapped[int] = mapped_column(Integer, default=3)
-    cancellation_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    cancellation_requested_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     estimated_cost: Mapped[float] = mapped_column(Float, default=0.0)
     actual_cost: Mapped[float] = mapped_column(Float, default=0.0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

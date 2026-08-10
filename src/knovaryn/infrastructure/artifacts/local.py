@@ -9,9 +9,10 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import datetime, timezone
+from collections.abc import AsyncIterator
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, AsyncIterator
+from typing import Any, cast
 
 import aiofiles
 
@@ -22,7 +23,7 @@ _MANIFEST_SUFFIX = ".manifest.json"
 
 
 def utcnow_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 class LocalArtifactStore:
@@ -84,9 +85,13 @@ class LocalArtifactStore:
             manifest = await self.get_meta(sha256)
         return manifest
 
-    async def put_stream(self, producer: dict[str, Any], *, media_type: str, parent: str | None = None):
+    async def put_stream(
+        self, producer: dict[str, Any], *, media_type: str, parent: str | None = None
+    ) -> Any:
         class _Writer:
-            def __init__(self, store: "LocalArtifactStore", producer: dict[str, Any], media_type: str) -> None:
+            def __init__(
+                self, store: LocalArtifactStore, producer: dict[str, Any], media_type: str
+            ) -> None:
                 self._store = store
                 self._producer = producer
                 self._media_type = media_type
@@ -117,7 +122,9 @@ class LocalArtifactStore:
                     "privacy": "restricted",
                     "encryption": None,
                 }
-                async with aiofiles.open(self._store._manifest_path(sha), "w", encoding="utf-8") as fh:
+                async with aiofiles.open(
+                    self._store._manifest_path(sha), "w", encoding="utf-8"
+                ) as fh:
                     await fh.write(json.dumps(manifest, sort_keys=True))
                 return manifest
 
@@ -132,7 +139,7 @@ class LocalArtifactStore:
             data = await fh.read()
         if hashlib.sha256(data).hexdigest() != sha:
             raise CorruptedArtifactError(f"artifact {artifact_id_or_sha} failed checksum")
-        return data
+        return cast(bytes, data)
 
     async def get_meta(self, artifact_id_or_sha: str) -> dict[str, Any]:
         sha = _resolve(self, artifact_id_or_sha)
@@ -155,8 +162,8 @@ class LocalArtifactStore:
                 "privacy": "restricted",
                 "encryption": None,
             }
-        async with aiofiles.open(mpath, "r", encoding="utf-8") as fh:
-            return json.loads(await fh.read())
+        async with aiofiles.open(mpath, encoding="utf-8") as fh:
+            return cast(dict[str, Any], json.loads(await fh.read()))
 
     async def exists(self, artifact_id_or_sha: str) -> bool:
         try:
@@ -193,10 +200,10 @@ def _resolve(store: LocalArtifactStore, artifact_id_or_sha: str) -> str:
             try:
                 import json as _json
 
-                with open(m, "r", encoding="utf-8") as fh:
+                with open(m, encoding="utf-8") as fh:
                     data = _json.load(fh)
                 if data.get("artifact_id") == artifact_id_or_sha:
-                    return data["sha256"]
+                    return cast(str, data["sha256"])
             except Exception:
                 continue
         raise NotFoundError(f"artifact {artifact_id_or_sha} not found")

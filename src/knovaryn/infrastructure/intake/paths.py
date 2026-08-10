@@ -7,7 +7,6 @@ untrusted arguments.
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 from ...domain.errors import PathTraversalError
@@ -36,16 +35,15 @@ def is_within(child: Path, roots: list[Path]) -> bool:
     return False
 
 
-def validate_local_path(path_str: str, *, allowed_roots: list[str], follow_symlinks: bool = False) -> Path:
+def validate_local_path(
+    path_str: str, *, allowed_roots: list[str], follow_symlinks: bool = False
+) -> Path:
     """Return the real, allowed path or raise PathTraversalError."""
     # Never expand env vars or shell syntax from untrusted input.
     if "$" in path_str or "`" in path_str or ";" in path_str or "|" in path_str or "\n" in path_str:
         raise PathTraversalError("path contains shell/expansion syntax")
     raw = Path(path_str)
-    if raw.is_absolute():
-        candidate = raw
-    else:
-        candidate = Path.cwd() / raw
+    candidate = raw if raw.is_absolute() else Path.cwd() / raw
 
     roots = resolve_allowed_roots(allowed_roots)
     if not follow_symlinks:

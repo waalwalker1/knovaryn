@@ -45,9 +45,18 @@ def constant_time_equal(a: str, b: str) -> bool:
 def new_handle(mint_prefix: str) -> str:
     """Mint a fresh random handle under a known-safe prefix."""
     if not mint_prefix.startswith(_ALLOWED_PREFIXES):
-        raise ValueError(f"invalid prefix {mint_prefix!r} — not in allowed families {_ALLOWED_PREFIXES}")
+        raise ValueError(
+            f"invalid prefix {mint_prefix!r} — not in allowed families {_ALLOWED_PREFIXES}"
+        )
     token = secrets.token_hex(8)
     return f"{mint_prefix}{token}"
 
 
-__all__ = ["is_valid_handle", "assert_safe_handle", "safe_key", "constant_time_equal", "new_handle", "_ALLOWED_PREFIXES"]
+__all__ = [
+    "is_valid_handle",
+    "assert_safe_handle",
+    "safe_key",
+    "constant_time_equal",
+    "new_handle",
+    "_ALLOWED_PREFIXES",
+]

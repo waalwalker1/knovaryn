@@ -10,7 +10,6 @@ from __future__ import annotations
 import hashlib
 import random
 from dataclasses import dataclass, field
-from typing import Any
 
 from ..domain.errors import ConfigurationError
 from ..domain.schemas import SourceDocument
@@ -28,7 +27,7 @@ class SplitAssignment:
 
 
 def _stable_bucket(group_key: str, seed: int, ratios: tuple[float, float]) -> int:
-    digest = hashlib.sha256(f"{seed}:{group_key}".encode("utf-8")).hexdigest()
+    digest = hashlib.sha256(f"{seed}:{group_key}".encode()).hexdigest()
     r = int(digest[:8], 16) / 0xFFFFFFFF
     train, val = ratios
     if r < train:

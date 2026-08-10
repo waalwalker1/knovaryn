@@ -11,7 +11,8 @@ from __future__ import annotations
 
 import asyncio
 import importlib.util
-from typing import TYPE_CHECKING, Any, Coroutine, TypeVar
+from collections.abc import Coroutine
+from typing import TYPE_CHECKING, Any, TypeVar
 
 from ...domain.errors import ConfigurationError
 
@@ -36,11 +37,10 @@ class _WorkspaceHolder:
     """Lazily-created singleton workspace shared across tools."""
 
     def __init__(self) -> None:
-        from ...application.workspace import Workspace
 
-        self._workspace: "Workspace | None" = None
+        self._workspace: Workspace | None = None
 
-    def get(self) -> "Workspace":
+    def get(self) -> Workspace:
         from ...application.workspace import Workspace
 
         if self._workspace is None:
@@ -154,7 +154,7 @@ def build_server() -> Any:
                     media_type=media_type,
                     content=content,
                     declared_license=declared_license,
-                    source_kind="upload",
+                    source_kind=SourceKind.upload,
                 )
             )
         except Exception as exc:  # noqa: BLE001
@@ -249,7 +249,10 @@ def build_server() -> Any:
             "job_id": job.id,
             "state": job.state.value,
             "job_type": job.job_type,
-            "message": "job queued — run knovaryn_get_job to poll, then knovaryn_run_job to execute offline",
+            "message": (
+                "job queued — run knovaryn_get_job to poll, "
+                "then knovaryn_run_job to execute offline"
+            ),
         }
 
     @mcp.tool()
@@ -452,7 +455,7 @@ def build_server() -> Any:
 
     # ------------------------------------------------------------------ utils
     async def _audit_review(
-        workspace: "Workspace", example_id: str, decision: str, note: str, relabel: str | None
+        workspace: Workspace, example_id: str, decision: str, note: str, relabel: str | None
     ) -> None:
         from ...domain.ids import IdGenerator
         from ...infrastructure.database.repositories import AuditRepository
@@ -479,22 +482,33 @@ _DEMO_SOURCES = [
         "MLOps lifecycle overview",
         """# MLOps Lifecycle
 ## Data preparation
-Data preparation is the first step of any machine learning project. It involves collecting raw data, cleaning it, and transforming it into a usable format. Practitioners must document the provenance of every data source to keep the dataset auditable.
+Data preparation is the first step of any machine learning project. It involves
+collecting raw data, cleaning it, and transforming it into a usable format.
+Practitioners must document the provenance of every data source to keep the
+dataset auditable.
 ## Model training
-Model training consumes the prepared data. The training process optimizes model weights against a loss function. Hyperparameters such as the learning rate and batch size materially affect the final model quality.
+Model training consumes the prepared data. The training process optimizes model
+weights against a loss function. Hyperparameters such as the learning rate and
+batch size materially affect the final model quality.
 ## Evaluation
-Evaluation measures model performance on held-out data. A held-out test set must never be used to tune hyperparameters.
+Evaluation measures model performance on held-out data. A held-out test set must
+never be used to tune hyperparameters.
 """,
     ),
     (
         "Incident response runbook",
         """# Incident Response Runbook
 ## Triage
-Upon receiving an alert, the on-call engineer first confirms the alert is genuine and not a false positive. The engineer classifies severity as low, medium, high, or critical.
+Upon receiving an alert, the on-call engineer first confirms the alert is genuine
+and not a false positive. The engineer classifies severity as low, medium, high,
+or critical.
 ## Containment
-Containment isolates the affected component to prevent further damage. For a compromised service, this may mean rotating credentials and removing network egress.
+Containment isolates the affected component to prevent further damage. For a
+compromised service, this may mean rotating credentials and removing network
+egress.
 ## Recovery
-Recovery restores service from a known-good backup. The team verifies data integrity before declaring recovery complete.
+Recovery restores service from a known-good backup. The team verifies data
+integrity before declaring recovery complete.
 """,
     ),
 ]

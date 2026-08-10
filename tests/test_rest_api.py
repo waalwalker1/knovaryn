@@ -50,7 +50,8 @@ def test_full_rest_lifecycle(client):
         "# Widgets\n## Assembly\n"
         "The widget is assembled from a base plate and a lid. The lid must be torqued to 5 N·m. "
         "Assembly takes about three minutes per unit.\n## Inspection\n"
-        "Each unit is inspected for cracks before it ships. Units with visible defects are quarantined and reworked.\n"
+        "Each unit is inspected for cracks before it ships. Units with visible "
+        "defects are quarantined and reworked.\n"
     )
     r = client.post(
         f"/v1/projects/{proj['id']}/sources",

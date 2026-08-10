@@ -10,7 +10,6 @@ from __future__ import annotations
 import asyncio
 import json
 from pathlib import Path
-from typing import Any
 
 import typer
 from rich.console import Console
@@ -27,25 +26,40 @@ _DEMO_SOURCES = [
         "MLOps lifecycle overview",
         """# MLOps Lifecycle
 ## Data preparation
-Data preparation is the first step of any machine learning project. It involves collecting raw data, cleaning it, and transforming it into a usable format. Practitioners must document the provenance of every data source to keep the dataset auditable.
+Data preparation is the first step of any machine learning project. It involves
+collecting raw data, cleaning it, and transforming it into a usable format.
+Practitioners must document the provenance of every data source to keep the
+dataset auditable.
 ## Model training
-Model training consumes the prepared data. The training process optimizes model weights against a loss function. Hyperparameters such as the learning rate and batch size materially affect the final model quality.
+Model training consumes the prepared data. The training process optimizes model
+weights against a loss function. Hyperparameters such as the learning rate and
+batch size materially affect the final model quality.
 ## Evaluation
-Evaluation measures model performance on held-out data. A held-out test set must never be used to tune hyperparameters, because doing so leaks signal and inflates reported accuracy.
+Evaluation measures model performance on held-out data. A held-out test set must
+never be used to tune hyperparameters, because doing so leaks signal and inflates
+reported accuracy.
 ## Deployment and monitoring
-Once deployed, models require ongoing monitoring for drift. Concept drift occurs when the statistical properties of the input distribution change over time, degrading performance even when the model is unchanged.""",
+Once deployed, models require ongoing monitoring for drift. Concept drift occurs
+when the statistical properties of the input distribution change over time,
+degrading performance even when the model is unchanged.""",
     ),
     (
         "Incident response runbook",
         """# Incident Response Runbook
 ## Triage
-Upon receiving an alert, the on-call engineer first confirms the alert is genuine and not a false positive. The engineer classifies severity as low, medium, high, or critical.
+Upon receiving an alert, the on-call engineer first confirms the alert is genuine
+and not a false positive. The engineer classifies severity as low, medium, high,
+or critical.
 ## Containment
-Containment isolates the affected component to prevent further damage. For a compromised service, this may mean rotating credentials and removing network egress.
+Containment isolates the affected component to prevent further damage. For a
+compromised service, this may mean rotating credentials and removing network
+egress.
 ## Recovery
-Recovery restores service from a known-good backup. The team verifies data integrity before declaring recovery complete.
+Recovery restores service from a known-good backup. The team verifies data
+integrity before declaring recovery complete.
 ## Postmortem
-A blameless postmortem documents the incident timeline, root cause, and corrective actions. The report is shared with the whole engineering organization.""",
+A blameless postmortem documents the incident timeline, root cause, and
+corrective actions. The report is shared with the whole engineering organization.""",
     ),
 ]
 
@@ -61,17 +75,20 @@ def _version() -> str:
 
 @app.command("demo")
 def demo(
-    out: Path = typer.Option(Path("knovaryn-demo"), "--out", "-o", help="Output dir for the release bundle."),
+    out: Path = typer.Option(
+        Path("knovaryn-demo"), "--out", "-o", help="Output dir for the release bundle."
+    ),
     examples: int = typer.Option(1200, "--examples", help="Maximum dataset examples."),
     json_plain: bool = typer.Option(False, "--json", help="Print machine-readable result."),
 ) -> None:
     """Run the fully-offline end-to-end pipeline on bundled sample documents."""
-    import traceback
 
     from ...application.service import ProjectService
 
     ids = IdGenerator()
-    project = Project(id=ids.new_handle("proj"), slug="demo", display_name="Knovaryn Demo", owner_principal="cli")
+    project = Project(
+        id=ids.new_handle("proj"), slug="demo", display_name="Knovaryn Demo", owner_principal="cli"
+    )
     plan = DatasetPlan(
         target_audience="ML engineers",
         task_family_proportions={"factual_explanation": 0.5, "procedure": 0.3, "comparison": 0.2},
@@ -96,7 +113,9 @@ def demo(
         contents.append(text)
 
     svc = ProjectService(ids=ids)
-    result = asyncio.run(svc.run_pipeline(project=project, sources=sources, contents=contents, plan=plan))
+    result = asyncio.run(
+        svc.run_pipeline(project=project, sources=sources, contents=contents, plan=plan)
+    )
 
     out.mkdir(parents=True, exist_ok=True)
     bundle_path = out / "release.zip"
@@ -113,7 +132,9 @@ def demo(
     table.add_row("Sources parsed", str(len(result.parsed)))
     table.add_row("Chunks produced", str(len(result.chunks)))
     table.add_row("Examples generated", str(len(result.examples)))
-    table.add_row("Accepted", str(sum(1 for e in result.examples if e.quality_status.value == "accepted")))
+    table.add_row(
+        "Accepted", str(sum(1 for e in result.examples if e.quality_status.value == "accepted"))
+    )
     table.add_row("Quality report", json.dumps(result.quality.get("status_counts", {})))
     table.add_row("Version", str(result.version.semantic_version if result.version else "n/a"))
     table.add_row("Release bundle", str(bundle_path))
@@ -124,7 +145,9 @@ def demo(
 
 
 @app.command("doctor")
-def doctor(json_plain: bool = typer.Option(False, "--json", help="Machine-readable output.")) -> None:
+def doctor(
+    json_plain: bool = typer.Option(False, "--json", help="Machine-readable output."),
+) -> None:
     """Check environment, configuration, and storage health (non-zero exit on failure)."""
     from .commands import doctor as _doctor
 
@@ -132,7 +155,9 @@ def doctor(json_plain: bool = typer.Option(False, "--json", help="Machine-readab
 
 
 @app.command("repair")
-def repair(json_plain: bool = typer.Option(False, "--json", help="Machine-readable output.")) -> None:
+def repair(
+    json_plain: bool = typer.Option(False, "--json", help="Machine-readable output."),
+) -> None:
     """Verify database integrity and reconcile missing artifact blobs."""
     from .commands import repair as _repair
 
@@ -141,7 +166,9 @@ def repair(json_plain: bool = typer.Option(False, "--json", help="Machine-readab
 
 @app.command("backup")
 def backup(
-    out: Path = typer.Option(Path("knovaryn-backups"), "--out", "-o", help="Backup output directory."),
+    out: Path = typer.Option(
+        Path("knovaryn-backups"), "--out", "-o", help="Backup output directory."
+    ),
     json_plain: bool = typer.Option(False, "--json", help="Machine-readable output."),
 ) -> None:
     """Snapshot the local state directory into a timestamped archive."""

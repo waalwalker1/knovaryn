@@ -25,8 +25,16 @@ def _doc(text: str) -> dict:
 
 def test_chunk_document_produces_chunks() -> None:
     text = "\n".join(
-        ["# Doc", "## Intro", "This is the opening paragraph that explains the topic in sufficient detail."]
-        + [f"## Section {i}\nParagraph {i} with a reasonable amount of descriptive text for chunking." for i in range(5)]
+        [
+            "# Doc",
+            "## Intro",
+            "This is the opening paragraph that explains the topic in sufficient detail.",
+        ]
+        + [
+            f"## Section {i}\nParagraph {i} with a reasonable amount of "
+            f"descriptive text for chunking."
+            for i in range(5)
+        ]
     )
     doc = _doc(text)
     cfg = ChunkCfg(target_tokens=60, min_tokens=10, max_tokens=200)

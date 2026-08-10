@@ -9,13 +9,13 @@ imports provider clients.
 from __future__ import annotations
 
 import time
-from typing import Any
+from contextlib import suppress
+from typing import Any, cast
 
-from ...domain.errors import BudgetExceededError, ProviderError, UnsupportedOperationError
+from ...domain.errors import UnsupportedOperationError
 from ...domain.hashing import fingerprint as make_fingerprint
-from ...domain.schemas import utcnow
 from .call_cache import CallCache
-from .capabilities import Capability, CapabilityCache, ProviderCapabilities
+from .capabilities import Capability, CapabilityCache
 from .cost import PriceProfile, build_cost_entry, estimate_call_cost
 from .fake_provider import FakeProvider
 
@@ -48,7 +48,9 @@ class ModelGateway:
         self.price_profile = price_profile
         self._cache = call_cache or CallCache(store=_NullStore())
         self._caps = capability_cache or CapabilityCache()
-        self._fake = fake or FakeProvider(temperature=temperature, max_output_tokens=max_output_tokens)
+        self._fake = fake or FakeProvider(
+            temperature=temperature, max_output_tokens=max_output_tokens
+        )
         self._real = real_provider
         self._budget = budget
         self._cost_repo = cost_repo
@@ -100,7 +102,7 @@ class ModelGateway:
         )
         cached = await self._cache.get(fp)
         if cached is not None:
-            return cached
+            return cast(dict[str, Any], cached)
 
         start = time.monotonic()
         if self._is_fake(model):
@@ -147,7 +149,8 @@ class ModelGateway:
                 output_tokens=entry["output_tokens"],
             )
         if self._cost_repo is not None:
-            try:
+            # cost recording must never block generation
+            with suppress(Exception):
                 await self._cost_repo.record(
                     {
                         **entry,
@@ -156,8 +159,6 @@ class ModelGateway:
                         "stage": self._stage,
                     }
                 )
-            except Exception:
-                pass  # cost recording must never block generation
 
         await self._cache.put(fp, result)
         return result
@@ -169,10 +170,10 @@ class ModelGateway:
 class _NullStore:
     """Best-effort placeholder store that never holds data (tests without CAS)."""
 
-    async def put(self, *a, **k) -> dict:  # noqa: ANN001, ANN002, ANN003
+    async def put(self, *a: Any, **k: Any) -> dict:
         return {}
 
-    async def get(self, *a) -> bytes:  # noqa: ANN001, ANN002
+    async def get(self, *a: Any) -> bytes:
         from ...domain.errors import NotFoundError
 
         raise NotFoundError("null store")
@@ -185,4 +186,6 @@ def estimate_generation_cost(
     profile: PriceProfile,
     calls: int,
 ) -> float:
-    return round(estimate_call_cost(profile, input_tokens=tokens_in, output_tokens=tokens_out) * calls, 6)
+    return round(
+        estimate_call_cost(profile, input_tokens=tokens_in, output_tokens=tokens_out) * calls, 6
+    )

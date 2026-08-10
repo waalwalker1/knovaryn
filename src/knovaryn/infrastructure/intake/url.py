@@ -33,7 +33,14 @@ class URLPolicy:
 
 
 def _is_private(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
-    if ip.is_loopback or ip.is_link_local or ip.is_private or ip.is_multicast or ip.is_reserved or ip.is_unspecified:
+    if (
+        ip.is_loopback
+        or ip.is_link_local
+        or ip.is_private
+        or ip.is_multicast
+        or ip.is_reserved
+        or ip.is_unspecified
+    ):
         return True
     if isinstance(ip, ipaddress.IPv4Address):
         # carrier-grade NAT 100.64.0.0/10 and metadata-style ranges
@@ -70,10 +77,12 @@ def _validate_url(url: str, policy: URLPolicy) -> httpx.URL:
         raise SSRFError("URL has no host")
     host = parsed.hostname
 
-    if policy.allowlist:
-        # enterprise mode: exact hostname allowlist
-        if host not in policy.allowlist and not any(host.endswith("." + h) for h in policy.allowlist if h.startswith("*.")):
-            raise SSRFError(f"host {host!r} not in allowlist")
+    if (
+        policy.allowlist
+        and host not in policy.allowlist
+        and not any(host.endswith("." + h) for h in policy.allowlist if h.startswith("*."))
+    ):
+        raise SSRFError(f"host {host!r} not in allowlist")
 
     # block metadata/cloud-credential hosts early
     metadata_hostnames = ("metadata.google.internal", "169.254.169.254")
@@ -91,11 +100,13 @@ def _validate_url(url: str, policy: URLPolicy) -> httpx.URL:
     return httpx.URL(urlunparse(parsed))
 
 
-async def safe_fetch(url: str, policy: URLPolicy, *, headers: dict[str, str] | None = None) -> dict[str, Any]:
+async def safe_fetch(
+    url: str, policy: URLPolicy, *, headers: dict[str, str] | None = None
+) -> dict[str, Any]:
     """Fetch a URL through validated redirects, returning metadata + content."""
     origin = _validate_url(url, policy)  # raises if disabled
     current = origin
-    results = {}
+    results: dict[str, Any] = {}
 
     async with httpx.AsyncClient(follow_redirects=False, timeout=policy.timeout_s) as client:
         for hop in range(policy.max_redirects + 1):

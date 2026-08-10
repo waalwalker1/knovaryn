@@ -26,7 +26,7 @@ class ChunkCfg:
     max_heading_depth: int = 6
 
     @classmethod
-    def from_dict(cls, d: dict[str, Any]) -> "ChunkCfg":
+    def from_dict(cls, d: dict[str, Any]) -> ChunkCfg:
         return cls(
             target_tokens=int(d.get("target_tokens", 900)),
             min_tokens=int(d.get("min_tokens", 180)),

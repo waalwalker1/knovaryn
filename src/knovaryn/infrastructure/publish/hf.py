@@ -46,9 +46,12 @@ class HFPublisher:
     def _require_authorization(self, *, action: str) -> None:
         if not self.authorized:
             raise PolicyBlockError(
-                f"Refusing to publish to Hugging Face ({action}). Explicit authorization "
-                "is required before any external publication. Pass authorized=True and "
-                "confirm the target repo."
+                [action],
+                message=(
+                    f"Refusing to publish to Hugging Face ({action}). Explicit "
+                    "authorization is required before any external publication. "
+                    "Pass authorized=True and confirm the target repo."
+                ),
             )
         if not self.token:
             raise ConfigurationError(
@@ -90,4 +93,6 @@ class HFPublisher:
 
         revision = api.model_info(self.repo_id, repo_type="dataset", token=self.token).sha
         url = f"https://huggingface.co/datasets/{self.repo_id}"
-        return PublicationRecord(repo_id=self.repo_id, version=bundle.version, revision=revision, url=url)
+        return PublicationRecord(
+            repo_id=self.repo_id, version=bundle.version, revision=revision, url=url
+        )

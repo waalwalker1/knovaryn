@@ -77,11 +77,14 @@ def diagnose_example(example: TrainingExample) -> ArtifactDiagnostic:
     low = chosen.lower()
     if any(w in low for w in ("cannot answer", "not available", "cannot determine")):
         diag.diagnostics["refusal_present"] = True
-        if not detect_injection_patterns(prompt):
+        if (
+            not detect_injection_patterns(prompt)
+            and _prompt_text(example)
+            and len(example.source_span_ids) > 0
+        ):
             # legitimate refusal is fine only when genuinely unanswerable
-            if _prompt_text(example) and len(example.source_span_ids) > 0:
-                reasons.append("possible_false_refusal")
-                resistance -= 0.2
+            reasons.append("possible_false_refusal")
+            resistance -= 0.2
 
     diag.reasons = reasons
     diag.artifact_resistance = max(0.0, round(resistance, 3))
@@ -97,7 +100,11 @@ def _assistant_text(ex: TrainingExample) -> str:
 
 
 def _prompt_text(ex: TrainingExample) -> str:
-    parts = [m.content for m in ex.prompt_messages + ex.chosen_messages + ex.rejected_messages if m.role in ("user", "system")]
+    parts = [
+        m.content
+        for m in ex.prompt_messages + ex.chosen_messages + ex.rejected_messages
+        if m.role in ("user", "system")
+    ]
     return " ".join(parts)
 
 

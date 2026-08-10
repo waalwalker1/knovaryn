@@ -10,12 +10,28 @@ from __future__ import annotations
 
 import io
 import zipfile
+from collections.abc import AsyncIterator
 from pathlib import PurePosixPath
-from typing import AsyncIterator
 
 from ...domain.errors import ArchiveBombError, IntakeError
 
-_SAFE_SUFFIXES = {".pdf", ".docx", ".pptx", ".xlsx", ".html", ".htm", ".md", ".txt", ".png", ".jpg", ".jpeg", ".csv", ".json", ".epub", ".xml"}
+_SAFE_SUFFIXES = {
+    ".pdf",
+    ".docx",
+    ".pptx",
+    ".xlsx",
+    ".html",
+    ".htm",
+    ".md",
+    ".txt",
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".csv",
+    ".json",
+    ".epub",
+    ".xml",
+}
 
 _MAX_MEMBERS = 2000
 _MAX_COMPRESSED_RATIO = 200.0

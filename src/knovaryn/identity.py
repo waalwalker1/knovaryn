@@ -9,7 +9,7 @@ product surfaces.
 
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 
 # --- Brand ---
 DISPLAY_NAME = "Knovaryn"
@@ -36,7 +36,7 @@ ARTIFACT_DIR = "artifacts"
 LEGACY_IDENTIFIERS = ("OmniTrain", "omnitrain", "OMNITRAIN")
 
 
-class ResourceScope(str, Enum):
+class ResourceScope(StrEnum):
     """Least-privilege OAuth-style scopes (spec §23.2)."""
 
     PROJECTS_READ = "projects:read"

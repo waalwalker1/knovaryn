@@ -34,7 +34,8 @@ class BudgetState:
     def check(self, *, dt_s: float = 0.0) -> None:
         if self.spent_cost_usd >= self.maximum_cost_usd:
             raise BudgetExceededError(
-                "hard budget would be exceeded (cost)", details={"spent": self.spent_cost_usd, "max": self.maximum_cost_usd}
+                "hard budget would be exceeded (cost)",
+                details={"spent": self.spent_cost_usd, "max": self.maximum_cost_usd},
             )
         if self.calls_made >= self.maximum_calls:
             raise BudgetExceededError("hard budget would be exceeded (calls)")
@@ -42,12 +43,17 @@ class BudgetState:
             raise BudgetExceededError("hard budget would be exceeded (examples)")
         if self.maximum_input_tokens is not None and self.input_tokens >= self.maximum_input_tokens:
             raise BudgetExceededError("hard budget would be exceeded (input tokens)")
-        if self.maximum_output_tokens is not None and self.output_tokens >= self.maximum_output_tokens:
+        if (
+            self.maximum_output_tokens is not None
+            and self.output_tokens >= self.maximum_output_tokens
+        ):
             raise BudgetExceededError("hard budget would be exceeded (output tokens)")
         if self.maximum_duration_s is not None and dt_s >= self.maximum_duration_s:
             raise BudgetExceededError("hard budget would be exceeded (duration)")
 
-    def account_call(self, *, cost_usd: float, input_tokens: int = 0, output_tokens: int = 0, count: int = 1) -> None:
+    def account_call(
+        self, *, cost_usd: float, input_tokens: int = 0, output_tokens: int = 0, count: int = 1
+    ) -> None:
         self.spent_cost_usd += cost_usd
         self.calls_made += count
         self.input_tokens += input_tokens
@@ -68,7 +74,14 @@ class BudgetState:
         }
 
 
-def estimate_job_cost(*, tokens_in: int, tokens_out: int, price_input_per_m: float, price_output_per_m: float, calls: int) -> float:
+def estimate_job_cost(
+    *,
+    tokens_in: int,
+    tokens_out: int,
+    price_input_per_m: float,
+    price_output_per_m: float,
+    calls: int,
+) -> float:
     """Deterministic cost estimate (input+output at given per-1M prices)."""
     input_cost = (tokens_in / 1_000_000) * price_input_per_m
     output_cost = (tokens_out / 1_000_000) * price_output_per_m

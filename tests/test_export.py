@@ -5,21 +5,27 @@ from __future__ import annotations
 import json
 
 from knovaryn.domain.schemas import CanonicalMessage, QualityStatus, Topology, TrainingExample
-from knovaryn.pipeline.export.exporters import export_jsonl, example_row
+from knovaryn.pipeline.export.exporters import example_row, export_jsonl
 from knovaryn.pipeline.export.release import build_release_bundle
 
 
 def _ex(topology: Topology) -> TrainingExample:
     if topology == Topology.preference:
         return TrainingExample(
-            id="ex-p", project_id="p", topology=Topology.preference, quality_status=QualityStatus.accepted,
+            id="ex-p",
+            project_id="p",
+            topology=Topology.preference,
+            quality_status=QualityStatus.accepted,
             prompt_messages=[CanonicalMessage(role="user", content="q")],
             chosen_messages=[CanonicalMessage(role="assistant", content="good")],
             rejected_messages=[CanonicalMessage(role="assistant", content="bad")],
             split="train",
         )
     return TrainingExample(
-        id="ex-s", project_id="p", topology=Topology.sft, quality_status=QualityStatus.accepted,
+        id="ex-s",
+        project_id="p",
+        topology=Topology.sft,
+        quality_status=QualityStatus.accepted,
         system_messages=["be careful"],
         prompt_messages=[CanonicalMessage(role="user", content="q")],
         chosen_messages=[CanonicalMessage(role="assistant", content="a")],

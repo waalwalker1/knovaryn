@@ -9,15 +9,13 @@ create immutable source artifact → schedule parsing only after preflight passe
 from __future__ import annotations
 
 import asyncio
-import io
 import mimetypes
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from ...domain import schemas
-from ...domain.errors import ArchiveBombError, ConfigurationError, IntakeError, PathTraversalError
+from ...domain.errors import ArchiveBombError, IntakeError
 from ...domain.hashing import ContentHasher
 from ...domain.ids import IdGenerator
 from ...domain.policies import default_license_status, detect_injection_patterns
@@ -80,7 +78,9 @@ class IntakeService:
         head = data[:_MAGIC_MAX]
         media_type, from_magic = sniff_media_type(name, head)
         if not from_magic:
-            warnings.append(f"media type inferred from extension ({media_type}); magic bytes unrecognized")
+            warnings.append(
+                f"media type inferred from extension ({media_type}); magic bytes unrecognized"
+            )
 
         # detect zip-office subkinds
         if media_type == "application/zip":
@@ -96,7 +96,10 @@ class IntakeService:
         # license + privacy pre-scan (deterministic)
         license_status = default_license_status(declared_license)
         injection_hits = []
-        if media_type in ("text/markdown", "text/plain", "text/html", "text/xml") or "text" in media_type:
+        if (
+            media_type in ("text/markdown", "text/plain", "text/html", "text/xml")
+            or "text" in media_type
+        ):
             try:
                 text = data.decode("utf-8", errors="ignore")
                 injection_hits = detect_injection_patterns(text)
@@ -107,7 +110,11 @@ class IntakeService:
         manifest = await self._store.put(
             data,
             media_type=media_type,
-            producer={"component": "intake", "component_version": "1", "config_hash": ContentHasher.cfg_hash({"kind": source_kind.value})},
+            producer={
+                "component": "intake",
+                "component_version": "1",
+                "config_hash": ContentHasher.cfg_hash({"kind": source_kind.value}),
+            },
             privacy="restricted",
         )
 
@@ -132,12 +139,18 @@ class IntakeService:
             },
         )
         if injection_hits:
-            warnings.append(f"document shows {len(injection_hits)} prompt-injection pattern(s); evidence-only handling enforced")
+            warnings.append(
+                "document shows "
+                f"{len(injection_hits)} prompt-injection pattern(s); "
+                "evidence-only handling enforced"
+            )
 
         # archive verification if it is a zip-based format we trust
         if verify_archive and media_type == "application/zip":
             try:
-                await asyncio.to_thread(_validate_zip_safe, data, max_uncompressed_bytes=max_file_bytes)
+                await asyncio.to_thread(
+                    _validate_zip_safe, data, max_uncompressed_bytes=max_file_bytes
+                )
                 warnings.append("zip archive structure verified")
             except ArchiveBombError:
                 raise
@@ -146,7 +159,13 @@ class IntakeService:
                 source.metadata["intake_error"] = exc.message
                 raise IntakeError(f"unsafe archive: {exc.message}") from exc
 
-        return IntakeResult(source=source, artifact_id=manifest["artifact_id"], preflight_ok=True, warnings=warnings, injection_hits=injection_hits)
+        return IntakeResult(
+            source=source,
+            artifact_id=manifest["artifact_id"],
+            preflight_ok=True,
+            warnings=warnings,
+            injection_hits=injection_hits,
+        )
 
 
 def _zip_subtype(name: str) -> str:

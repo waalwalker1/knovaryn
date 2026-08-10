@@ -9,12 +9,20 @@ provider; cancel-safe and idempotent via the incoming ``StageContext``.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal, cast
 
 from ..domain.errors import ProviderError
-from ..domain.schemas import GeneratedBatch, GeneratedSFTCandidate
-from ..domain.schemas import utcnow
-from ..prompts.library import get_template, render
+from ..domain.schemas import (
+    CanonicalMessage,
+    EvidenceRef,
+    GeneratedBatch,
+    GeneratedEvaluationCandidate,
+    GeneratedKTOCandidate,
+    GeneratedPreferenceCandidate,
+    GeneratedSFTCandidate,
+    SupportType,
+)
+from ..prompts.library import get_template
 from ..prompts.manifest import PromptManifest, build_prompt_usage_record
 from .planner import AssignmentSpec, PlanResult
 
@@ -52,7 +60,7 @@ class GenerationOutcome:
         }
 
 
-def _topology_of(candidate) -> str:  # noqa: ANN001
+def _topology_of(candidate: Any) -> str:
     if hasattr(candidate, "prompt_messages"):
         return "preference"
     if hasattr(candidate, "desirability"):
@@ -88,7 +96,6 @@ class Generator:
                 break
             per_plan = spec.per_chunk
             # allocate across chunks round robin, capped per chunk
-            per_chunk = max(1, per_plan // len(chunks)) if per_plan else 1
             remaining = per_plan
             idx = 0
             guard = 0
@@ -117,7 +124,15 @@ class Generator:
                 remaining -= len(batch.candidates)
         return outcome
 
-    async def _generate_one(self, *, spec: AssignmentSpec, chunk, source_text: str, source_span_ids: list[str], seed: int) -> tuple[GeneratedBatch, Any]:
+    async def _generate_one(
+        self,
+        *,
+        spec: AssignmentSpec,
+        chunk: Any,
+        source_text: str,
+        source_span_ids: list[str],
+        seed: int,
+    ) -> tuple[GeneratedBatch, Any]:
         outcome = await self._gateway.generate(
             prompt_template_version=self._template_version(spec),
             sampling={"temperature": 0.3, "max_output_tokens": 1200},
@@ -154,15 +169,22 @@ class Generator:
         except KeyError:
             return "1"
 
-    def _candidate_from_body(self, body: dict[str, Any], spec: AssignmentSpec, chunk_id: str) -> GeneratedBatch:
-        import json
+    def _candidate_from_body(
+        self, body: dict[str, Any], spec: AssignmentSpec, chunk_id: str
+    ) -> GeneratedBatch:
 
         topo = spec.topology
-        cand = None
+        cand: (
+            GeneratedSFTCandidate
+            | GeneratedPreferenceCandidate
+            | GeneratedKTOCandidate
+            | GeneratedEvaluationCandidate
+            | None
+        ) = None
         if topo == "sft":
             cand = GeneratedSFTCandidate(
                 task_family=spec.task_family,
-                difficulty=spec.difficulty,
+                difficulty=cast(Literal["basic", "intermediate", "advanced"], spec.difficulty),
                 messages=_coerce_messages(body.get("messages")),
                 evidence=_coerce_evidence(body.get("evidence")),
                 answerability=body.get("answerability", "answerable"),
@@ -173,47 +195,49 @@ class Generator:
             try:
                 cand = _generic_candidate(body, spec)
             except Exception as exc:  # noqa: BLE001
-                raise ProviderError(f"candidate parse failed for {topo}: {exc}", retryable=False) from exc
-        return GeneratedBatch(candidates=[cand], generation_note=body.get("concise_generation_note", ""))
+                raise ProviderError(
+                    f"candidate parse failed for {topo}: {exc}", retryable=False
+                ) from exc
+        return GeneratedBatch(
+            candidates=[cand], generation_note=body.get("concise_generation_note", "")
+        )
 
 
-def _coerce_messages(raw) -> list:  # noqa: ANN001
-    from ..domain.schemas import CanonicalMessage
-
+def _coerce_messages(raw: Any) -> list[CanonicalMessage]:
     if not isinstance(raw, list):
         return [CanonicalMessage(role="user", content="")]
-    out = []
+    out: list[CanonicalMessage] = []
     for m in raw:
-        out.append(CanonicalMessage(
-            role=m.get("role", "user"),
-            content=m.get("content", ""),
-            name=m.get("name"),
-            tool_call_id=m.get("tool_call_id"),
-        ))
+        out.append(
+            CanonicalMessage(
+                role=m.get("role", "user"),
+                content=m.get("content", ""),
+                name=m.get("name"),
+                tool_call_id=m.get("tool_call_id"),
+            )
+        )
     return out
 
 
-def _coerce_evidence(raw) -> list:  # noqa: ANN001
-    from ..domain.schemas import EvidenceRef, SupportType
-
+def _coerce_evidence(raw: Any) -> list[EvidenceRef]:
     if not isinstance(raw, list):
         return []
-    out = []
+    out: list[EvidenceRef] = []
     for e in raw:
         if isinstance(e, dict):
-            out.append(EvidenceRef(span_id=e.get("span_id", ""), support_type=e.get("support_type", SupportType.direct)))
+            out.append(
+                EvidenceRef(
+                    span_id=e.get("span_id", ""),
+                    support_type=e.get("support_type", SupportType.direct),
+                )
+            )
     return out
 
 
-def _generic_candidate(body: dict[str, Any], spec: AssignmentSpec):  # noqa: ANN001
+def _generic_candidate(
+    body: dict[str, Any], spec: AssignmentSpec
+) -> GeneratedPreferenceCandidate | GeneratedKTOCandidate | GeneratedEvaluationCandidate:
     """Build the topology-specific candidate from the canonical fake-provider body."""
-    from ..domain.schemas import (
-        CanonicalMessage,
-        GeneratedEvaluationCandidate,
-        GeneratedKTOCandidate,
-        GeneratedPreferenceCandidate,
-    )
-
     topo = spec.topology
     if topo == "preference":
         return GeneratedPreferenceCandidate(

@@ -9,14 +9,16 @@ by example id.
 from __future__ import annotations
 
 import json
+from collections.abc import Iterable
+from contextlib import suppress
 from dataclasses import dataclass
-from typing import Any, Iterable
+from typing import Any
 
 from ...domain.hashing import ContentHasher
-from ...domain.schemas import Topology, TrainingExample
+from ...domain.schemas import CanonicalMessage, Topology, TrainingExample
 
 
-def _messages_json(messages) -> list[dict[str, Any]]:  # noqa: ANN001
+def _messages_json(messages: Iterable[CanonicalMessage]) -> list[dict[str, Any]]:
     return [{"role": m.role, "content": m.content} for m in messages]
 
 
@@ -82,7 +84,6 @@ class ExportResult:
 
 def export_jsonl(examples: Iterable[TrainingExample], *, path: str = "") -> ExportResult:
     """Write accepted examples as JSONL, one JSON object per line."""
-    import tempfile
 
     lines: list[str] = []
     for ex in examples:
@@ -92,7 +93,9 @@ def export_jsonl(examples: Iterable[TrainingExample], *, path: str = "") -> Expo
     sha = ContentHasher.sha256_text(text)
     if path:
         _atomic_write(path, data)
-    return ExportResult(rows=len(lines), format="jsonl", byte_size=len(data), sha256=sha, path=path, bytes=data)
+    return ExportResult(
+        rows=len(lines), format="jsonl", byte_size=len(data), sha256=sha, path=path, bytes=data
+    )
 
 
 def export_parquet(examples: Iterable[TrainingExample], *, path: str = "") -> ExportResult:
@@ -117,7 +120,14 @@ def export_parquet(examples: Iterable[TrainingExample], *, path: str = "") -> Ex
 
     buf = io.BytesIO()
     frame.to_parquet(buf, index=False)
-    return ExportResult(rows=len(rows), format="parquet", byte_size=buf.getbuffer().nbytes, sha256=sha, path=path, bytes=buf.getvalue())
+    return ExportResult(
+        rows=len(rows),
+        format="parquet",
+        byte_size=buf.getbuffer().nbytes,
+        sha256=sha,
+        path=path,
+        bytes=buf.getvalue(),
+    )
 
 
 def _atomic_write(path: str, data: bytes) -> None:
@@ -132,7 +142,5 @@ def _atomic_write(path: str, data: bytes) -> None:
         os.replace(tmp, path)
     finally:
         if os.path.exists(tmp):
-            try:
+            with suppress(OSError):
                 os.remove(tmp)
-            except OSError:
-                pass

@@ -12,8 +12,8 @@ import asyncio
 import json
 from typing import Any
 
-from ...domain.hashing import ContentHasher
 from ...domain.errors import NotFoundError
+from ...domain.hashing import ContentHasher
 
 
 class CallCache:

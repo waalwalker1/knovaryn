@@ -9,10 +9,8 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Any
 
 from .schemas import LicenseStatus, QualityStatus, TrainingExample
-
 
 # ---------------------------------------------------------------------------
 # Section 6.4 — provenance minimum for an exportable example
@@ -25,7 +23,9 @@ class ProvenanceCheck:
     missing: list[str] = field(default_factory=list)
 
 
-def check_provenance_minimum(ex: TrainingExample, *, require_evidence: bool = True) -> ProvenanceCheck:
+def check_provenance_minimum(
+    ex: TrainingExample, *, require_evidence: bool = True
+) -> ProvenanceCheck:
     missing: list[str] = []
     if not ex.source_document_ids:
         missing.append("source_document_ids")
@@ -57,7 +57,9 @@ class AcceptancePolicy:
     require_evidence: bool = True
     judge_disagreement: str = "review"
 
-    def assess(self, dims: dict[str, float], *, is_preference: bool) -> tuple[bool, list[str], QualityStatus]:
+    def assess(
+        self, dims: dict[str, float], *, is_preference: bool
+    ) -> tuple[bool, list[str], QualityStatus]:
         reasons: list[str] = []
         overall = dims.get("overall", sum(dims.values()) / max(len(dims), 1))
         if dims.get("grounding", 1.0) < self.minimum_grounding:
@@ -97,7 +99,9 @@ def length_ratio(chosen_text: str, rejected_text: str) -> float:
     return c / r
 
 
-def check_length_band(chosen_text: str, rejected_text: str, *, lo: float = 0.80, hi: float = 1.25) -> tuple[bool, float]:
+def check_length_band(
+    chosen_text: str, rejected_text: str, *, lo: float = 0.80, hi: float = 1.25
+) -> tuple[bool, float]:
     ratio = length_ratio(chosen_text, rejected_text)
     return (lo <= ratio <= hi), ratio
 
@@ -121,7 +125,7 @@ class ArtifactFeatures:
     has_format: bool
 
     @classmethod
-    def from_text(cls, text: str) -> "ArtifactFeatures":
+    def from_text(cls, text: str) -> ArtifactFeatures:
         return cls(
             token_count=len(text.split()),
             bullet_count=len(_FORMAT_MARKERS.findall(text)),
@@ -133,12 +137,21 @@ class ArtifactFeatures:
         )
 
 
-def preference_is_trivially_separable(chosen: str, rejected: str, *, threshold: float = 0.2) -> tuple[bool, dict[str, float]]:
+def preference_is_trivially_separable(
+    chosen: str, rejected: str, *, threshold: float = 0.2
+) -> tuple[bool, dict[str, float]]:
     """Estimate whether chosen/negative labels are trivially separable by
     superficial features (§14.7). Return (separable?, feature deltas 0..1).
     """
     lift: dict[str, float] = {}
-    for name in ("token_count", "bullet_count", "heading_count", "refusal_count", "citation_count", "punct_count"):
+    for name in (
+        "token_count",
+        "bullet_count",
+        "heading_count",
+        "refusal_count",
+        "citation_count",
+        "punct_count",
+    ):
         c = getattr(ArtifactFeatures.from_text(chosen), name)
         r = getattr(ArtifactFeatures.from_text(rejected), name)
         denom = max(c, r, 1)
@@ -162,7 +175,11 @@ def default_license_status(declared: str | None) -> LicenseStatus:
     d = declared.strip().lower()
     if d in {"unknown", "", "unlicensed", "proprietary-not-declared"}:
         return LicenseStatus.unknown
-    if d.startswith("public domain") or "cc0" in d or d in {"mit", "apache-2.0", "apache 2.0", "bsd", "bsd-3-clause", "unlicense"}:
+    if (
+        d.startswith("public domain")
+        or "cc0" in d
+        or d in {"mit", "apache-2.0", "apache 2.0", "bsd", "bsd-3-clause", "unlicense"}
+    ):
         return LicenseStatus.allowed
     if d in {"proprietary", "closed", "all rights reserved", "confidential"}:
         return LicenseStatus.blocked

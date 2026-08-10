@@ -10,10 +10,9 @@ from __future__ import annotations
 
 import abc
 from dataclasses import dataclass, field
-from typing import Any
 
-from ...domain.schemas import QualityAssessment, QualityStatus, TrainingExample
 from ...domain.policies import AcceptancePolicy
+from ...domain.schemas import QualityAssessment, QualityStatus, TrainingExample
 
 
 @dataclass
@@ -134,7 +133,10 @@ class RefusalValidator(BaseValidator):
 
     async def assess(self, example: TrainingExample, ctx: ValidatorContext) -> QualityAssessment:
         answer_text = _assistant_text(example).lower()
-        is_refusal = any(w in answer_text for w in ("cannot answer", "not available", "cannot determine", "unable to"))
+        is_refusal = any(
+            w in answer_text
+            for w in ("cannot answer", "not available", "cannot determine", "unable to")
+        )
         evidence_text = " ".join(ctx.source_texts.values())
         has_evidence = bool(evidence_text.strip())
         if is_refusal and has_evidence:
@@ -221,11 +223,52 @@ def _prompt_text(example: TrainingExample) -> str:
 
 
 _STOPWORDS = {
-    "a", "an", "the", "and", "or", "but", "of", "to", "in", "on", "for", "with",
-    "is", "are", "was", "were", "be", "been", "by", "as", "at", "from", "it",
-    "this", "that", "according", "provided", "material", "based", "following",
-    "key", "about", "you", "your", "would", "should", "could", "will", "can",
-    "not", "no", "any", "please", "answer", "question", "source",
+    "a",
+    "an",
+    "the",
+    "and",
+    "or",
+    "but",
+    "of",
+    "to",
+    "in",
+    "on",
+    "for",
+    "with",
+    "is",
+    "are",
+    "was",
+    "were",
+    "be",
+    "been",
+    "by",
+    "as",
+    "at",
+    "from",
+    "it",
+    "this",
+    "that",
+    "according",
+    "provided",
+    "material",
+    "based",
+    "following",
+    "key",
+    "about",
+    "you",
+    "your",
+    "would",
+    "should",
+    "could",
+    "will",
+    "can",
+    "not",
+    "no",
+    "any",
+    "please",
+    "answer",
+    "question",
+    "source",
 }
 
 

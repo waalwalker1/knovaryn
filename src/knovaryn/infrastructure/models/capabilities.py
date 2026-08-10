@@ -9,11 +9,11 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 
-class Capability(str, Enum):
+class Capability(StrEnum):
     STRUCTURED_OUTPUT = "structured_json_schema"
     TOOL_USE = "tool_use"
     IMAGE_INPUT = "image_input"

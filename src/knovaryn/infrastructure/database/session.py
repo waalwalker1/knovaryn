@@ -7,18 +7,23 @@ scope/transaction helper used by repositories and application services.
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import AsyncIterator
+from typing import Any
 
 from sqlalchemy import event
-from sqlalchemy.engine import Engine, make_url
-from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.engine import make_url
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 
-from ...domain.errors import ConfigurationError
 from .models import Base
 
 
-def _sqlite_onconnect(dbapi_conn, _record):
+def _sqlite_onconnect(dbapi_conn: Any, _record: Any) -> None:
     cur = dbapi_conn.cursor()
     cur.execute("PRAGMA journal_mode=WAL")
     cur.execute("PRAGMA foreign_keys=ON")
@@ -34,8 +39,8 @@ def create_engine(database_url: str, *, echo: bool = False) -> AsyncEngine:
     engine = create_async_engine(database_url, **kwargs)
     if url.drivername.startswith("sqlite"):
         # apply PRAGMAs on the raw sync connection (async engine uses aiosqlite)
-        @event.listens_for(engine.sync_engine, "connect")  # type: ignore[attr-defined]
-        def _set_sqlite_pragma(dbapi_conn, conn_record):  # noqa: ANN001
+        @event.listens_for(engine.sync_engine, "connect")
+        def _set_sqlite_pragma(dbapi_conn: Any, conn_record: Any) -> None:
             _sqlite_onconnect(dbapi_conn, conn_record)
 
     return engine
@@ -44,7 +49,9 @@ def create_engine(database_url: str, *, echo: bool = False) -> AsyncEngine:
 class Database:
     def __init__(self, database_url: str, *, echo: bool = False) -> None:
         self.engine = create_engine(database_url, echo=echo)
-        self.session_factory = async_sessionmaker(self.engine, class_=AsyncSession, expire_on_commit=False)
+        self.session_factory = async_sessionmaker(
+            self.engine, class_=AsyncSession, expire_on_commit=False
+        )
 
     async def create_all(self) -> None:
         async with self.engine.begin() as conn:

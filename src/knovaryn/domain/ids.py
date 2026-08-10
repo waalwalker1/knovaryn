@@ -9,8 +9,9 @@ from __future__ import annotations
 
 import secrets
 import uuid
+from collections.abc import Callable
 from functools import wraps
-from typing import Callable, TypeVar
+from typing import TypeVar
 
 import uuid6
 
@@ -42,7 +43,9 @@ def make_id_generator() -> IdGenerator:
     return IdGenerator()
 
 
-def with_deterministic_ids(deterministic: bool = False) -> Callable[[T], T]:
+def with_deterministic_ids(
+    deterministic: bool = False,
+) -> Callable[[Callable[..., T]], Callable[..., T]]:
     """Decorator helper to make a function use deterministic ids (tests)."""
 
     def deco(fn: Callable[..., T]) -> Callable[..., T]:

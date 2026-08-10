@@ -10,11 +10,8 @@ gateway; a live gateway swaps in seamlessly.
 
 from __future__ import annotations
 
-import asyncio
-import tempfile
 from dataclasses import dataclass, field
-from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from ..domain.hashing import ContentHasher, normalize_hash
 from ..domain.ids import IdGenerator
@@ -22,20 +19,22 @@ from ..domain.schemas import (
     Chunk,
     DatasetPlan,
     DatasetVersion,
+    ExtractionStatus,
     ParsedDocument,
     Project,
     QualityStatus,
     SourceDocument,
     Topology,
     TrainingExample,
-    utcnow,
 )
-from ..infrastructure.models.gateway import ModelGateway
-from ..infrastructure.models.fake_provider import FakeProvider
 from ..infrastructure.chunking.structure_aware import ChunkCfg, chunk_document
-from ..pipeline.planner import plan as plan_dataset
+from ..infrastructure.models.gateway import ModelGateway
+from ..pipeline.export.exporters import export_jsonl
+from ..pipeline.export.release import build_release_bundle
 from ..pipeline.generate import Generator
+from ..pipeline.planner import plan as plan_dataset
 from ..pipeline.quality.artifact import diagnose_example
+from ..pipeline.quality.reports import build_quality_report
 from ..pipeline.quality.validators import (
     CompletenessValidator,
     FormatValidator,
@@ -44,10 +43,7 @@ from ..pipeline.quality.validators import (
     ValidatorContext,
     assemble_decision,
 )
-from ..pipeline.quality.reports import build_quality_report
 from ..pipeline.split import assign_splits
-from ..pipeline.export.exporters import export_jsonl
-from ..pipeline.export.release import build_release_bundle
 
 
 @dataclass
@@ -68,7 +64,9 @@ class PipelineResult:
             "parsed_count": len(self.parsed),
             "chunk_count": len(self.chunks),
             "example_count": len(self.examples),
-            "accepted_count": sum(1 for e in self.examples if e.quality_status == QualityStatus.accepted),
+            "accepted_count": sum(
+                1 for e in self.examples if e.quality_status == QualityStatus.accepted
+            ),
             "quality": self.quality,
             "release_sha256": self.release_sha256,
             "version": self.version.semantic_version if self.version else None,
@@ -93,7 +91,9 @@ class ProjectService:
         if gateway is not None:
             self._gateway = gateway
         else:
-            self._gateway = ModelGateway(generator_model="fake", critic_model="fake", verifier_model="fake")
+            self._gateway = ModelGateway(
+                generator_model="fake", critic_model="fake", verifier_model="fake"
+            )
 
     # -- intake + parse (text fallback, docling optional) --------------------
     async def ingest_and_parse(
@@ -113,7 +113,7 @@ class ProjectService:
             canonical_docling_json_artifact_id=self._ids.new_handle("art"),
             markdown_artifact_id=self._ids.new_handle("art"),
             text_artifact_id=self._ids.new_handle("art"),
-            extraction_status="parsed",
+            extraction_status=ExtractionStatus.parsed,
             extraction_quality_summary=outcome.diagnostics,
         )
         return parsed, outcome.canonical_json
@@ -153,12 +153,20 @@ class ProjectService:
         contents: list[str],
         plan: DatasetPlan | None = None,
     ) -> PipelineResult:
-        plan = plan or DatasetPlan(task_family_proportions={"factual_explanation": 0.5, "procedure": 0.3, "comparison": 0.2})
+        plan = plan or DatasetPlan(
+            task_family_proportions={
+                "factual_explanation": 0.5,
+                "procedure": 0.3,
+                "comparison": 0.2,
+            }
+        )
         result = PipelineResult(project=project)
 
         # parse + chunk each source
-        for source, content in zip(sources, contents):
-            parsed, canonical = await self.ingest_and_parse(project=project, source=source, content=content)
+        for source, content in zip(sources, contents, strict=True):
+            parsed, canonical = await self.ingest_and_parse(
+                project=project, source=source, content=content
+            )
             result.parsed.append(parsed)
             result.chunks.extend(self.chunk_document(parsed=parsed, canonical=canonical))
 
@@ -169,8 +177,7 @@ class ProjectService:
         # source-group split at SOURCE level before generation
         split = assign_splits(sources, strategy="grouped_random", seed=42)
         chunk_split = {
-            c.id: split.split_of(_chunk_source(c, sources)) or "train"
-            for c in result.chunks
+            c.id: split.split_of(_chunk_source(c, sources)) or "train" for c in result.chunks
         }
         result.notes.append(f"split: {split.strategy}")
 
@@ -250,30 +257,48 @@ class ProjectService:
             result.release_sha256 = bundle.sha256()
         return result
 
-    async def _validate(self, ex: TrainingExample, ctx: ValidatorContext, *, is_preference: bool) -> Any:
+    async def _validate(
+        self, ex: TrainingExample, ctx: ValidatorContext, *, is_preference: bool
+    ) -> Any:
         grounding = await GroundingValidator().assess(ex, ctx)
         complete = await CompletenessValidator().assess(ex, ctx)
         fmt = await FormatValidator().assess(ex, ctx)
         refusal = await RefusalValidator().assess(ex, ctx)
         diag = diagnose_example(ex)
         artifact = _artifact_assessment(ex, diag)
-        overall = assemble_decision([grounding, complete, fmt, refusal, artifact], example_id=ex.id, is_preference=is_preference)
+        overall = assemble_decision(
+            [grounding, complete, fmt, refusal, artifact],
+            example_id=ex.id,
+            is_preference=is_preference,
+        )
         return overall
 
 
-def _candidate_to_example(*, ex_id: str, project_id: str, topo: str, cand, source_span_ids: list[str], split: str) -> TrainingExample:
-    from ..domain.schemas import CanonicalMessage, EvidenceRef
+def _candidate_to_example(
+    *, ex_id: str, project_id: str, topo: str, cand: Any, source_span_ids: list[str], split: str
+) -> TrainingExample:
+    from ..domain.schemas import CanonicalMessage
 
     if topo == "preference":
         return TrainingExample(
             id=ex_id,
             project_id=project_id,
             topology=Topology.preference,
-            prompt_messages=[CanonicalMessage(role="user", content=(cand.prompt_messages[0].content if cand.prompt_messages else ""))],
+            prompt_messages=[
+                CanonicalMessage(
+                    role="user",
+                    content=(cand.prompt_messages[0].content if cand.prompt_messages else ""),
+                )
+            ],
             chosen_messages=cand.chosen_messages,
             rejected_messages=cand.rejected_messages,
             source_span_ids=source_span_ids,
-            content_hash=ContentHasher.cfg_hash({"c": [m.content for m in cand.chosen_messages], "r": [m.content for m in cand.rejected_messages]}),
+            content_hash=ContentHasher.cfg_hash(
+                {
+                    "c": [m.content for m in cand.chosen_messages],
+                    "r": [m.content for m in cand.rejected_messages],
+                }
+            ),
             split=split,
         )
     if topo == "kto":
@@ -294,7 +319,9 @@ def _candidate_to_example(*, ex_id: str, project_id: str, topo: str, cand, sourc
             project_id=project_id,
             topology=Topology.evaluation,
             prompt_messages=[CanonicalMessage(role="user", content=cand.question)],
-            chosen_messages=[CanonicalMessage(role="assistant", content=cand.reference_answer or "")],
+            chosen_messages=[
+                CanonicalMessage(role="assistant", content=cand.reference_answer or "")
+            ],
             source_span_ids=source_span_ids,
             content_hash=ContentHasher.cfg_hash([cand.question, cand.reference_answer or ""]),
             split=split,
@@ -313,8 +340,12 @@ def _candidate_to_example(*, ex_id: str, project_id: str, topo: str, cand, sourc
     )
 
 
-def _topology_of_candidate(cand) -> str:  # noqa: ANN001
-    from ..domain.schemas import GeneratedEvaluationCandidate, GeneratedKTOCandidate, GeneratedPreferenceCandidate
+def _topology_of_candidate(cand: Any) -> str:
+    from ..domain.schemas import (
+        GeneratedEvaluationCandidate,
+        GeneratedKTOCandidate,
+        GeneratedPreferenceCandidate,
+    )
 
     if isinstance(cand, GeneratedPreferenceCandidate):
         return "preference"
@@ -325,14 +356,14 @@ def _topology_of_candidate(cand) -> str:  # noqa: ANN001
     return "sft"
 
 
-def _candidate_span_ids(cand) -> list[str]:  # noqa: ANN001
+def _candidate_span_ids(cand: Any) -> list[str]:
     return [e.span_id for e in cand.evidence if e.span_id]
 
 
-def _candidate_chunk(cand) -> str:  # noqa: ANN001
+def _candidate_chunk(cand: Any) -> str:
     for e in cand.evidence:
         if e.span_id:
-            return e.span_id.split("_")[0]
+            return cast(str, e.span_id.split("_")[0])
     return ""
 
 
@@ -342,12 +373,16 @@ def _chunk_source(chunk: Chunk, sources: list[SourceDocument]) -> str:
     return chunk.metadata.get("source_id") or (sources[0].id if sources else "")
 
 
-def _dims_from(assessment) -> dict[str, float]:  # noqa: ANN001
-    ev = assessment.evidence.get("per_validator", {}) if isinstance(assessment.evidence, dict) else {}
+def _dims_from(assessment: Any) -> dict[str, float]:
+    ev = (
+        assessment.evidence.get("per_validator", {})
+        if isinstance(assessment.evidence, dict)
+        else {}
+    )
     return dict(ev) if isinstance(ev, dict) else {}
 
 
-def _artifact_assessment(ex: TrainingExample, diag) -> Any:  # noqa: ANN001
+def _artifact_assessment(ex: TrainingExample, diag: Any) -> Any:
     from ..domain.schemas import QualityAssessment
 
     score = diag.artifact_resistance
@@ -369,7 +404,7 @@ def _split_bytes(examples: list[TrainingExample]) -> dict[str, bytes]:
     for split in ("train", "validation", "test"):
         use = [e for e in examples if e.split == split]
         out[split] = export_jsonl(use, path="").bytes
-    return {k: v for k, v in out.items()}
+    return dict(out)
 
 
 def _default_readme(project: Project, examples: list[TrainingExample]) -> str:

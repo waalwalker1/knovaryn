@@ -45,7 +45,13 @@ class PolicyBlockError(KnovarynError):
 
     code = "policy_block"
 
-    def __init__(self, reason_codes: list[str], message: str | None = None, *, details: dict[str, Any] | None = None) -> None:
+    def __init__(
+        self,
+        reason_codes: list[str],
+        message: str | None = None,
+        *,
+        details: dict[str, Any] | None = None,
+    ) -> None:
         if message is None:
             message = "Blocked by policy: " + ", ".join(reason_codes)
         self.reason_codes = reason_codes

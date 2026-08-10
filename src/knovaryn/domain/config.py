@@ -24,7 +24,15 @@ _SCHEMA_VERSION = "1.0"
 
 _ENV_VAR_RE = re.compile(r"\$\{([A-Z0-9_]+)\}")
 
-_OFFICIAL_PROFILES = {"offline-demo", "fast-local", "balanced", "high-quality", "air-gapped", "enterprise", "deepseek_flash_budget"}
+_OFFICIAL_PROFILES = {
+    "offline-demo",
+    "fast-local",
+    "balanced",
+    "high-quality",
+    "air-gapped",
+    "enterprise",
+    "deepseek_flash_budget",
+}
 _ADMIN_PROTECTED_KEYS = {
     "sources.url_ingestion",
     "storage.database_url",
@@ -35,9 +43,11 @@ _ADMIN_PROTECTED_KEYS = {
 def _resolve_env(value: Any) -> Any:
     """Resolve ``${ENV}`` placeholders in strings from the environment."""
     if isinstance(value, str):
+
         def repl(m: re.Match[str]) -> str:
             name = m.group(1)
             return os.environ.get(name, m.group(0))
+
         return _ENV_VAR_RE.sub(repl, value)
     if isinstance(value, dict):
         return {k: _resolve_env(v) for k, v in value.items()}
@@ -113,12 +123,22 @@ _DEFAULTS: dict[str, Any] = {
         },
         "difficulty": {"basic": 0.25, "intermediate": 0.50, "advanced": 0.25},
         "target_examples": 2000,
-        "split": {"strategy": "grouped_random", "train": 0.80, "validation": 0.10, "test": 0.10, "seed": 42},
+        "split": {
+            "strategy": "grouped_random",
+            "train": 0.80,
+            "validation": 0.10,
+            "test": 0.10,
+            "seed": 42,
+        },
     },
     "models": {
         "profile": "balanced",
         "provider_base_url": "${KNOVARYN_DEEPSEEK_BASE_URL}",
-        "generator": {"model": "${KNOVARYN_GENERATOR_MODEL}", "temperature": 0.3, "max_output_tokens": 2400},
+        "generator": {
+            "model": "${KNOVARYN_GENERATOR_MODEL}",
+            "temperature": 0.3,
+            "max_output_tokens": 2400,
+        },
         "critic": {"model": "${KNOVARYN_CRITIC_MODEL}", "temperature": 0.0},
         "verifier": {"model": "${KNOVARYN_VERIFIER_MODEL}", "temperature": 0.0},
         "embedding": {"model": "${KNOVARYN_EMBEDDING_MODEL}"},
@@ -193,7 +213,6 @@ class Configuration:
         if not isinstance(cur, dict):
             raise ConfigurationError(f"cannot set {dotted}: parent is not a mapping")
         cur[parts[-1]] = value
-        self.provenance[dotted] = value  # type: ignore[assignment]
         self.provenance[dotted] = provenance
 
     def value_provenance(self, dotted: str) -> str | None:
@@ -205,7 +224,7 @@ class Configuration:
 
 def _parse_yaml(path: str) -> dict[str, Any]:
     try:
-        with open(path, "r", encoding="utf-8") as fh:
+        with open(path, encoding="utf-8") as fh:
             raw = yaml.safe_load(fh) or {}
     except OSError as exc:  # pragma: no cover - IO
         raise ConfigurationError(f"cannot read config file {path}: {exc}") from exc
@@ -266,7 +285,7 @@ def _collect_env(prefix: str) -> dict[str, Any]:
     for key, val in os.environ.items():
         if not key.startswith(prefix):
             continue
-        rel = key[len(prefix):].lower()
+        rel = key[len(prefix) :].lower()
         parts = rel.split("_")
         cur: Any = out
         for p in parts[:-1]:

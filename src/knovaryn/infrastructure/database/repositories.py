@@ -6,6 +6,7 @@ Primary-key lookup by UUIDv7 string handle; never expose sequential ids.
 
 from __future__ import annotations
 
+from datetime import UTC
 from typing import Any
 
 from sqlalchemy import func, select, update
@@ -46,7 +47,9 @@ class ProjectRepository:
         row = res.scalar_one_or_none()
         return _to_project(row) if row else None
 
-    async def list_(self, *, limit: int = 50, cursor: str | None = None) -> tuple[list[schemas.Project], str | None]:
+    async def list_(
+        self, *, limit: int = 50, cursor: str | None = None
+    ) -> tuple[list[schemas.Project], str | None]:
         stmt = select(m.ProjectDB).order_by(m.ProjectDB.created_at.desc()).limit(limit + 1)
         if cursor:
             stmt = stmt.where(m.ProjectDB.id < cursor)
@@ -137,7 +140,11 @@ class SourceRepository:
         return [_to_source(r) for r in rows], next_cursor
 
     async def count_by_project(self, project_id: str) -> int:
-        stmt = select(func.count()).select_from(m.SourceDocumentDB).where(m.SourceDocumentDB.project_id == project_id)
+        stmt = (
+            select(func.count())
+            .select_from(m.SourceDocumentDB)
+            .where(m.SourceDocumentDB.project_id == project_id)
+        )
         return int((await self._s.execute(stmt)).scalar_one())
 
     async def save(self, src: schemas.SourceDocument) -> None:
@@ -224,9 +231,9 @@ class JobRepository:
 
     async def claim_eligible(self, *, worker: str, lease_seconds: int = 300) -> schemas.Job | None:
         """Atomically claim one eligible queued/retry_wait job (best-effort local)."""
-        from datetime import datetime, timedelta, timezone
+        from datetime import datetime, timedelta
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         stmt = (
             select(m.JobDB)
             .where(
@@ -249,7 +256,9 @@ class JobRepository:
         await self._s.flush()
         return _job_from_row(row)
 
-    async def list_(self, *, project_id: str | None = None, limit: int = 50, cursor: str | None = None) -> tuple[list[schemas.Job], str | None]:
+    async def list_(
+        self, *, project_id: str | None = None, limit: int = 50, cursor: str | None = None
+    ) -> tuple[list[schemas.Job], str | None]:
         stmt = select(m.JobDB).order_by(m.JobDB.created_at.desc()).limit(limit + 1)
         if project_id:
             stmt = stmt.where(m.JobDB.project_id == project_id)
@@ -263,9 +272,8 @@ class JobRepository:
 
     async def append_event(self, job_id: str, event: schemas.JobEvent) -> None:
         # compute sequence
-        stmt = (
-            select(func.coalesce(func.max(m.JobEventDB.sequence), 0) + 1)
-            .where(m.JobEventDB.job_id == job_id)
+        stmt = select(func.coalesce(func.max(m.JobEventDB.sequence), 0) + 1).where(
+            m.JobEventDB.job_id == job_id
         )
         seq = int((await self._s.execute(stmt)).scalar_one())
         event.sequence = seq
@@ -283,7 +291,9 @@ class JobRepository:
             )
         )
 
-    async def get_events(self, job_id: str, *, cursor: int | None = None, limit: int = 100) -> tuple[list[schemas.JobEvent], int | None]:
+    async def get_events(
+        self, job_id: str, *, cursor: int | None = None, limit: int = 100
+    ) -> tuple[list[schemas.JobEvent], int | None]:
         stmt = (
             select(m.JobEventDB)
             .where(m.JobEventDB.job_id == job_id)
@@ -383,7 +393,13 @@ class ExampleRepository:
         return _example_from_row(row) if row else None
 
     async def list_by_project(
-        self, project_id: str, *, status: str | None = None, version_id: str | None = None, limit: int = 100, cursor: str | None = None
+        self,
+        project_id: str,
+        *,
+        status: str | None = None,
+        version_id: str | None = None,
+        limit: int = 100,
+        cursor: str | None = None,
     ) -> tuple[list[schemas.TrainingExample], str | None]:
         stmt = select(m.TrainingExampleDB).where(m.TrainingExampleDB.project_id == project_id)
         if status:
@@ -399,10 +415,16 @@ class ExampleRepository:
         next_cursor = rows[-1].id if has_more and rows else None
         return [_example_from_row(r) for r in rows], next_cursor
 
-    async def count_accepted_by_project(self, project_id: str, *, version_id: str | None = None) -> int:
-        stmt = select(func.count()).select_from(m.TrainingExampleDB).where(
-            m.TrainingExampleDB.project_id == project_id,
-            m.TrainingExampleDB.quality_status == "accepted",
+    async def count_accepted_by_project(
+        self, project_id: str, *, version_id: str | None = None
+    ) -> int:
+        stmt = (
+            select(func.count())
+            .select_from(m.TrainingExampleDB)
+            .where(
+                m.TrainingExampleDB.project_id == project_id,
+                m.TrainingExampleDB.quality_status == "accepted",
+            )
         )
         if version_id:
             stmt = stmt.where(m.TrainingExampleDB.version_id == version_id)
@@ -411,7 +433,10 @@ class ExampleRepository:
     async def assign_version(self, project_id: str, version_id: str) -> None:
         await self._s.execute(
             update(m.TrainingExampleDB)
-            .where(m.TrainingExampleDB.project_id == project_id, m.TrainingExampleDB.quality_status == "accepted")
+            .where(
+                m.TrainingExampleDB.project_id == project_id,
+                m.TrainingExampleDB.quality_status == "accepted",
+            )
             .values(version_id=version_id)
         )
 
@@ -582,7 +607,9 @@ class CostLedgerRepository:
         )
 
     async def sum_by_job(self, job_id: str) -> float:
-        stmt = select(func.coalesce(func.sum(m.CostLedgerDB.estimated_cost), 0.0)).where(m.CostLedgerDB.job_id == job_id)
+        stmt = select(func.coalesce(func.sum(m.CostLedgerDB.estimated_cost), 0.0)).where(
+            m.CostLedgerDB.job_id == job_id
+        )
         return float((await self._s.execute(stmt)).scalar_one())
 
 
@@ -591,7 +618,15 @@ class AuditRepository:
         self._s = session
         self._ids = ids
 
-    async def record(self, *, principal: str, event_type: str, project_id: str | None, summary: str, payload: dict[str, Any]) -> None:
+    async def record(
+        self,
+        *,
+        principal: str,
+        event_type: str,
+        project_id: str | None,
+        summary: str,
+        payload: dict[str, Any],
+    ) -> None:
         self._s.add(
             m.AuditEventDB(
                 id=self._ids.new(),

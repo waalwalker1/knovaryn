@@ -12,7 +12,11 @@ import zipfile
 
 import pytest
 
-from knovaryn.domain.errors import ArchiveBombError, IntakeError
+from knovaryn.domain.errors import (
+    ArchiveBombError,
+    IntakeError,
+    PathTraversalError,
+)
 from knovaryn.infrastructure.intake.archive import validate_zip_archive
 from knovaryn.infrastructure.intake.intake import sniff_media_type
 from knovaryn.infrastructure.intake.paths import validate_local_path
@@ -74,14 +78,14 @@ def test_magic_bytes_pdf() -> None:
 
 def test_path_traversal_rejected(tmp_path) -> None:  # noqa: ANN001
     root = str(tmp_path / "safe")
-    with pytest.raises(Exception):
+    with pytest.raises(PathTraversalError):
         validate_local_path("../etc/passwd", allowed_roots=[root])
 
 
 def test_absolute_path_outside_root_rejected(tmp_path) -> None:  # noqa: ANN001
     root = str(tmp_path / "safe")
     outside = tmp_path / "other" / "file.txt"
-    with pytest.raises(Exception):
+    with pytest.raises(PathTraversalError):
         validate_local_path(str(outside), allowed_roots=[root])
 
 

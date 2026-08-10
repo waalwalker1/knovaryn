@@ -6,16 +6,15 @@ candidates. Domain layer imports only Pydantic — never framework clients.
 
 from __future__ import annotations
 
-import re
-from datetime import datetime, timezone
-from enum import Enum
+from datetime import UTC, datetime
+from enum import StrEnum
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 def utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 # ---------------------------------------------------------------------------
@@ -23,7 +22,7 @@ def utcnow() -> datetime:
 # ---------------------------------------------------------------------------
 
 
-class SourceKind(str, Enum):
+class SourceKind(StrEnum):
     upload = "upload"
     local_path = "local_path"
     url = "url"
@@ -31,14 +30,14 @@ class SourceKind(str, Enum):
     dataset = "dataset"
 
 
-class LicenseStatus(str, Enum):
+class LicenseStatus(StrEnum):
     allowed = "allowed"
     review = "review"
     blocked = "blocked"
     unknown = "unknown"
 
 
-class IntakeStatus(str, Enum):
+class IntakeStatus(StrEnum):
     pending = "pending"
     preflight_ok = "preflight_ok"
     preflight_failed = "preflight_failed"
@@ -46,7 +45,7 @@ class IntakeStatus(str, Enum):
     completed = "completed"
 
 
-class ExtractionStatus(str, Enum):
+class ExtractionStatus(StrEnum):
     pending = "pending"
     parsing = "parsing"
     parsed = "parsed"
@@ -54,21 +53,21 @@ class ExtractionStatus(str, Enum):
     partial = "partial"
 
 
-class Topology(str, Enum):
+class Topology(StrEnum):
     sft = "sft"
     preference = "preference"
     kto = "kto"
     evaluation = "evaluation"
 
 
-class QualityStatus(str, Enum):
+class QualityStatus(StrEnum):
     accepted = "accepted"
     review = "review"
     rejected = "rejected"
     blocked = "blocked"
 
 
-class JobState(str, Enum):
+class JobState(StrEnum):
     queued = "queued"
     leased = "leased"
     running = "running"
@@ -81,7 +80,7 @@ class JobState(str, Enum):
     cancelled = "cancelled"
 
 
-class ReleaseStatus(str, Enum):
+class ReleaseStatus(StrEnum):
     draft = "draft"
     reviewed = "reviewed"
     approved = "approved"
@@ -89,13 +88,13 @@ class ReleaseStatus(str, Enum):
     withdrawn = "withdrawn"
 
 
-class SupportType(str, Enum):
+class SupportType(StrEnum):
     direct = "direct"
     derived = "derived"
     context = "context"
 
 
-class TaskFamily(str, Enum):
+class TaskFamily(StrEnum):
     factual_explanation = "factual_explanation"
     procedure = "procedure"
     troubleshooting = "troubleshooting"

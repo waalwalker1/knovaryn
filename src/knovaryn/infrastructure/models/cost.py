@@ -7,10 +7,8 @@ provider reports a reconciled total.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
-
-from ...domain.errors import ConfigurationError
 
 
 @dataclass
@@ -22,13 +20,17 @@ class PriceProfile:
     price_cached_input_per_m: float | None = None
 
     @classmethod
-    def from_config(cls, cfg: dict[str, Any]) -> "PriceProfile":
+    def from_config(cls, cfg: dict[str, Any]) -> PriceProfile:
         return cls(
             price_snapshot_date=cfg.get("price_snapshot_date", ""),
             provider=cfg.get("provider", "unknown"),
             price_input_per_m=float(cfg.get("price_input_per_m", 0.0)),
             price_output_per_m=float(cfg.get("price_output_per_m", 0.0)),
-            price_cached_input_per_m=(float(cfg["price_cached_input_per_m"]) if cfg.get("price_cached_input_per_m") is not None else None),
+            price_cached_input_per_m=(
+                float(cfg["price_cached_input_per_m"])
+                if cfg.get("price_cached_input_per_m") is not None
+                else None
+            ),
         )
 
 
@@ -66,9 +68,21 @@ def build_cost_entry(
     """Normalize usage + computed estimate into a cost-ledger entry."""
     usage = usage or {}
     input_tokens = int(usage.get("input_tokens", 0))
-    cached_input = int(usage.get("cached_input_tokens", 0) or usage.get("prompt_tokens_details", {}).get("cached_tokens", 0))
+    cached_input = int(
+        usage.get("cached_input_tokens", 0)
+        or usage.get("prompt_tokens_details", {}).get("cached_tokens", 0)
+    )
     output_tokens = int(usage.get("output_tokens", 0))
-    est = estimate_call_cost(profile, input_tokens=input_tokens, cached_input_tokens=cached_input, output_tokens=output_tokens) if profile else 0.0
+    est = (
+        estimate_call_cost(
+            profile,
+            input_tokens=input_tokens,
+            cached_input_tokens=cached_input,
+            output_tokens=output_tokens,
+        )
+        if profile
+        else 0.0
+    )
     return {
         "provider": provider,
         "model": model,

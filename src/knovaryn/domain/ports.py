@@ -6,7 +6,7 @@ implementations. No external framework types leak through these.
 
 from __future__ import annotations
 
-from typing import Any, AsyncIterator, Protocol, runtime_checkable
+from typing import Any, Protocol
 
 
 class Clock(Protocol):
@@ -46,9 +46,12 @@ class ArtifactStore(Protocol):
     ) -> dict[str, Any]: ...
     async def get(self, artifact_id: str) -> bytes: ...
     async def get_meta(self, artifact_id: str) -> dict[str, Any]: ...
-    async def put_stream(self, producer: dict[str, Any], *, media_type: str, parent: str | None = None):
+    async def put_stream(
+        self, producer: dict[str, Any], *, media_type: str, parent: str | None = None
+    ) -> Any:
         """Return an async writer for large artifacts."""
         ...
+
     async def exists(self, artifact_id: str) -> bool: ...
 
 
@@ -65,9 +68,13 @@ class JobRepository(Protocol):
     async def get(self, job_id: str) -> Any | None: ...
     async def save(self, job: Any) -> None: ...
     async def claim_eligible(self, *, worker: str) -> Any | None: ...
-    async def list_(self, *, project_id: str | None, limit: int, cursor: str | None) -> tuple[list[Any], str | None]: ...
+    async def list_(
+        self, *, project_id: str | None, limit: int, cursor: str | None
+    ) -> tuple[list[Any], str | None]: ...
     async def append_event(self, job_id: str, event: Any) -> None: ...
-    async def get_events(self, job_id: str, *, cursor: int | None, limit: int) -> tuple[list[Any], int | None]: ...
+    async def get_events(
+        self, job_id: str, *, cursor: int | None, limit: int
+    ) -> tuple[list[Any], int | None]: ...
 
 
 class DocumentParser(Protocol):
@@ -92,6 +99,7 @@ class EmbeddingGateway(Protocol):
 class Validator(Protocol):
     name: str
     version: str
+
     async def validate(self, example: Any, *, context: dict[str, Any]) -> Any: ...
 
 
@@ -111,6 +119,7 @@ class LicensePolicy(Protocol):
 
 class DatasetExporter(Protocol):
     name: str
+
     async def export(self, version: Any, *, writer: Any, options: dict[str, Any]) -> Any: ...
 
 

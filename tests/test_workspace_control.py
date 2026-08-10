@@ -25,9 +25,11 @@ def run(coro):
 
 CONTENT = """# Widgets
 ## Assembly
-The widget is assembled from a base plate and a lid. The lid must be torqued to 5 N·m. Assembly takes about three minutes per unit.
+The widget is assembled from a base plate and a lid.
+The lid must be torqued to 5 N·m. Assembly takes about three minutes per unit.
 ## Inspection
-Each unit is inspected for cracks before it ships. Units with visible defects are quarantined and reworked.
+Each unit is inspected for cracks before it ships.
+Units with visible defects are quarantined and reworked.
 """
 
 

@@ -1,0 +1,87 @@
+site_name: Knovaryn
+site_description: >-
+  Open, MCP-native training-data foundry: turn permitted documents into
+  traceable, quality-gated SFT and preference datasets.
+site_url: https://knovaryn.github.io/
+repo_url: https://github.com/knovaryn/knovaryn
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+  icon:
+    repo: fontawesome/brands/github
+
+plugins:
+  - search
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - toc:
+      permalink: true
+
+nav:
+  - Home: index.md
+  - Concepts:
+      - Overview: concepts/overview.md
+      - Provenance: concepts/provenance.md
+      - Quality: concepts/quality.md
+      - Preference data: concepts/preference-data.md
+  - Architecture:
+      - Overview: architecture/overview.md
+      - Durable jobs: architecture/jobs.md
+      - Data flow: architecture/diagram.md
+      - Security: architecture/security.md
+  - Guides:
+      - Quickstart: guides/quickstart.md
+      - First real project: guides/first-real-project.md
+      - MCP clients: guides/mcp-clients.md
+  - Deployment:
+      - Profiles: deployment/profiles.md
+      - Docker: deployment/docker.md
+  - Security:
+      - Hardening: security/hardening.md
+      - Privacy & licensing: security/privacy-licensing.md
+  - Reference:
+      - CLI: reference/cli.md
+      - Configuration: reference/config.md
+      - Exporters: reference/exporters.md
+      - Build report: reference/build-report-39.md
+  - ADRs:
+      - Index: adr/index.md
+      - ADR-0001 Dependency baseline: adr/0001-dependency-baseline.md
+      - ADR-0002 MCP & FastMCP: adr/0002-mcp-and-fastmcp.md
+      - ADR-0003 Docling resource guard: adr/0003-docling-resource-guard.md
+      - ADR-0004 DocETL profile: adr/0004-docetl-profile.md
+      - ADR-0005 LiteLLM & providers: adr/0005-litellm-and-providers.md
+      - ADR-0006 Storage backends: adr/0006-storage-backends.md
+  - Marketing:
+      - Peer comparison: marketing/peer-comparison.md
+      - Benchmark methodology: marketing/benchmark-methodology.md
+      - Launch plan: marketing/launch-checklist.md

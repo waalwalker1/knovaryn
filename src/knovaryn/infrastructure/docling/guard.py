@@ -32,7 +32,7 @@ class DoclingResourceGuard:
     async def persist_and_release(self, persist: Any) -> CleanupPath:
         """Persist the artifact first, then release backing resources."""
         # 1. persist (serialize) the canonical output synchronously before release
-        persisted = await persist(self.result)
+        await persist(self.result)
         # 2. release resources
         path = self._release()
         self.cleanup_path = path
@@ -54,8 +54,6 @@ class DoclingResourceGuard:
             except Exception:  # noqa: BLE001
                 log.debug("public close() failed; continuing")
         # Path B: input backend unload via feature detection (guarded, private)
-        backend = getattr(r, "input", None)
-        unload = getattr(backend, "unload", None) or getattr(getattr(r, "input", None), "_backend", lambda: None)
         target = getattr(r, "input", None)
         backend_attr = getattr(target, "_backend", None)
         alloc = getattr(backend_attr, "unload", None)

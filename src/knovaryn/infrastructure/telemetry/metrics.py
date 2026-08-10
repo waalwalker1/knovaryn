@@ -37,17 +37,24 @@ class MetricsRegistry:
         return {
             "counters": dict(self.counters),
             "gauges": dict(self.gauges),
-            "histograms": {k: {"count": len(v), "sum": round(sum(v), 4), "mean": round(sum(v) / len(v), 4) if v else 0.0} for k, v in self.histograms.items()},
+            "histograms": {
+                k: {
+                    "count": len(v),
+                    "sum": round(sum(v), 4),
+                    "mean": round(sum(v) / len(v), 4) if v else 0.0,
+                }
+                for k, v in self.histograms.items()
+            },
         }
 
     def render_prometheus(self) -> str:
         lines: list[str] = []
-        for key, value in sorted(self.counters.items()):
+        for key, count in sorted(self.counters.items()):
             lines.append(f"# TYPE {key} counter")
-            lines.append(f"{key} {value}")
-        for key, value in sorted(self.gauges.items()):
+            lines.append(f"{key} {count}")
+        for key, gauge in sorted(self.gauges.items()):
             lines.append(f"# TYPE {key} gauge")
-            lines.append(f"{key} {value}")
+            lines.append(f"{key} {gauge}")
         return "\n".join(lines) + "\n"
 
 
@@ -69,13 +76,15 @@ def get_registry() -> MetricsRegistry:
 class Timer:
     """Context manager that observes elapsed seconds into a histogram."""
 
-    def __init__(self, registry: MetricsRegistry, name: str, labels: dict[str, str] | None = None) -> None:
+    def __init__(
+        self, registry: MetricsRegistry, name: str, labels: dict[str, str] | None = None
+    ) -> None:
         self._registry = registry
         self._name = name
         self._labels = labels
         self._start = 0.0
 
-    def __enter__(self) -> "Timer":
+    def __enter__(self) -> Timer:
         self._start = time.monotonic()
         return self
 

@@ -14,7 +14,6 @@ from typing import Any
 
 from ...domain.schemas import LicenseStatus
 
-
 # ---------------------------------------------------------------------------
 # PII
 # ---------------------------------------------------------------------------
@@ -82,11 +81,17 @@ def scan_pii(text: str) -> PIIScanResult:
                 continue
             low = len(snippet) <= 6
             confidence = "high"
-            if low:
+            if (
+                low
+                or kind not in _HIGH_CONFIDENCE
+                and not _CONTEXT.search(text[max(0, match.start() - 40) : match.end() + 40])
+            ):
                 confidence = "medium"
-            elif kind not in _HIGH_CONFIDENCE and not _CONTEXT.search(text[max(0, match.start() - 40): match.end() + 40]):
-                confidence = "medium"
-            result.findings.append(PIIFinding(kind=kind, snippet=snippet, confidence=confidence, position=match.start()))
+            result.findings.append(
+                PIIFinding(
+                    kind=kind, snippet=snippet, confidence=confidence, position=match.start()
+                )
+            )
     return result
 
 
@@ -121,13 +126,34 @@ def _passes_luhn_digits(snippet: str) -> bool:
 # ---------------------------------------------------------------------------
 
 _ALLOWED = {
-    "cc0", "cc-by", "cc-by-sa", "cc-by-4.0", "cc-by-sa-4.0", "cc0-1.0", "cc-by-4.0",
-    "mit", "apache-2.0", "bsd-3-clause", "bsd-2-clause", "unlicense", "public domain",
-    "open government", "odc-by", "odc-odbl",
+    "cc0",
+    "cc-by",
+    "cc-by-sa",
+    "cc-by-4.0",
+    "cc-by-sa-4.0",
+    "cc0-1.0",
+    "mit",
+    "apache-2.0",
+    "bsd-3-clause",
+    "bsd-2-clause",
+    "unlicense",
+    "public domain",
+    "open government",
+    "odc-by",
+    "odc-odbl",
 }
 _REVIEW = {
-    "cc-by-nc", "cc-by-nc-sa", "cc-by-nc-nd", "gfdl", "lgpl", "gpl-3.0", "gpl-2.0",
-    "ms-pl", "proprietary", "custom", "unknown",
+    "cc-by-nc",
+    "cc-by-nc-sa",
+    "cc-by-nc-nd",
+    "gfdl",
+    "lgpl",
+    "gpl-3.0",
+    "gpl-2.0",
+    "ms-pl",
+    "proprietary",
+    "custom",
+    "unknown",
 }
 _BLOCKED = {"cc-by-nd", "cc-by-nc-nd", "all rights reserved", "copyright"}
 

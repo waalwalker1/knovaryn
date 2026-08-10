@@ -9,15 +9,16 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import datetime, timezone
-from typing import Any, AsyncIterator
+from collections.abc import AsyncIterator
+from datetime import UTC, datetime
+from typing import Any, cast
 
 from ...domain.errors import CorruptedArtifactError, NotFoundError, UnsupportedOperationError
 from ...domain.hashing import ContentHasher
 
 
 def utcnow_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 class S3ArtifactStore:
@@ -53,7 +54,7 @@ class S3ArtifactStore:
         self.legal_hold = legal_hold
         self._session_factory = aioboto3.Session()
 
-    def _client(self):
+    def _client(self) -> Any:
         return self._session_factory.client(
             "s3",
             endpoint_url=self.endpoint_url,
@@ -88,16 +89,22 @@ class S3ArtifactStore:
         }
         async with self._client() as s3:
             if not await self._obj_exists(s3, blobj):
-                await s3.put_object(Bucket=self.bucket, Key=blobj, Body=data, ContentType=media_type)
+                await s3.put_object(
+                    Bucket=self.bucket, Key=blobj, Body=data, ContentType=media_type
+                )
             # manifest last = commit marker
             if not await self._obj_exists(s3, manobj):
-                await s3.put_object(Bucket=self.bucket, Key=manobj, Body=json.dumps(manifest, sort_keys=True))
+                await s3.put_object(
+                    Bucket=self.bucket, Key=manobj, Body=json.dumps(manifest, sort_keys=True)
+                )
             else:
                 existing = json.loads((await self._get_obj(s3, manobj)).decode("utf-8"))
                 manifest = existing
         return manifest
 
-    async def put_stream(self, producer: dict[str, Any], *, media_type: str, parent: str | None = None):
+    async def put_stream(
+        self, producer: dict[str, Any], *, media_type: str, parent: str | None = None
+    ) -> Any:
         raise UnsupportedOperationError("streaming write not yet wired for S3; use put()")
 
     async def get(self, artifact_id_or_sha: str) -> bytes:
@@ -111,7 +118,7 @@ class S3ArtifactStore:
                 raise NotFoundError(f"artifact {artifact_id_or_sha} not found") from exc
         if hashlib.sha256(data).hexdigest() != sha:
             raise CorruptedArtifactError(f"artifact {artifact_id_or_sha} failed checksum")
-        return data
+        return cast(bytes, data)
 
     async def get_meta(self, artifact_id_or_sha: str) -> dict[str, Any]:
         sha = self._resolve(artifact_id_or_sha)
@@ -122,7 +129,7 @@ class S3ArtifactStore:
                 raw = (await body["Body"].read()).decode("utf-8")
             except Exception as exc:
                 raise NotFoundError(f"artifact {artifact_id_or_sha} not found") from exc
-        return json.loads(raw)
+        return cast(dict[str, Any], json.loads(raw))
 
     async def exists(self, artifact_id_or_sha: str) -> bool:
         try:
@@ -145,16 +152,16 @@ class S3ArtifactStore:
                 for obj in page.get("Contents", []):
                     yield obj["Key"].rsplit("/", 1)[-1]
 
-    async def _obj_exists(self, s3, key: str) -> bool:
+    async def _obj_exists(self, s3: Any, key: str) -> bool:
         try:
             await s3.head_object(Bucket=self.bucket, Key=key)
             return True
         except Exception:
             return False
 
-    async def _get_obj(self, s3, key: str) -> bytes:
+    async def _get_obj(self, s3: Any, key: str) -> bytes:
         body = await s3.get_object(Bucket=self.bucket, Key=key)
-        return await body["Body"].read()
+        return cast(bytes, await body["Body"].read())
 
     def _resolve(self, artifact_id_or_sha: str) -> str:
         if not artifact_id_or_sha.startswith("art_"):

@@ -54,7 +54,9 @@ def principal_from_header(authorization: str | None) -> str:
 def server_bind() -> tuple[str, int]:
     """Return (host, port) from config for the REST server command."""
     cfg = load_config()
-    return str(cfg.get("server", {}).get("host") or "127.0.0.1"), int(cfg.get("server", {}).get("port") or 8000)
+    return str(cfg.get("server", {}).get("host") or "127.0.0.1"), int(
+        cfg.get("server", {}).get("port") or 8000
+    )
 
 
 def redact_token_dict(data: dict[str, Any]) -> dict[str, Any]:
@@ -67,4 +69,10 @@ def redact_token_dict(data: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
-__all__ = ["authorize", "expected_token", "principal_from_header", "server_bind", "redact_token_dict"]
+__all__ = [
+    "authorize",
+    "expected_token",
+    "principal_from_header",
+    "server_bind",
+    "redact_token_dict",
+]

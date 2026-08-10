@@ -7,15 +7,14 @@ pipeline (generation → validation → quality → version → export) runs end
 
 from __future__ import annotations
 
+import random
 import re
-from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal, cast
 
+from ...domain import schemas
 from ...domain.errors import ProviderError
 from ...domain.policies import approximate_tokens
-from ...domain import schemas
 from .capabilities import (
-    Capability,
     capability_set,
 )
 
@@ -69,14 +68,20 @@ class FakeProvider:
         sentences = _sentences(source_text)
         if not sentences:
             raise ProviderError("no evidence sentences available", retryable=False)
-        span_ids = source_span_ids or [_make_span_id(chunk_id, i) for i in range(min(len(sentences), 6))]
+        span_ids = source_span_ids or [
+            _make_span_id(chunk_id, i) for i in range(min(len(sentences), 6))
+        ]
 
         # deterministic pseudo-random selection from the seed so output is stable
         rng_seed = seed if seed is not None else (_hash(chunk_id) % 100000)
-        import random
-
         rng = random.Random(rng_seed)
 
+        cand: (
+            schemas.GeneratedSFTCandidate
+            | schemas.GeneratedPreferenceCandidate
+            | schemas.GeneratedKTOCandidate
+            | schemas.GeneratedEvaluationCandidate
+        )
         if mode == "preference":
             cand = self._preference(sentences, span_ids, task_family, difficulty, rng)
         elif mode == "kto":
@@ -89,16 +94,23 @@ class FakeProvider:
         body = cand.model_dump(mode="json")
         total_input = sum(approximate_tokens(m["content"]) for m in messages) + 64
         output_tokens = approximate_tokens(body.get("concise_generation_note", "")) + len(str(body))
-        usage = {
+        usage_info = {
             "input_tokens": total_input,
             "output_tokens": output_tokens,
             "total_tokens": total_input + output_tokens,
             "provider_request_id": f"fake_{chunk_id[:8]}_{seed}",
         }
-        return {"content": body, "usage": usage, "model": "fake"}
+        return {"content": body, "usage": usage_info, "model": "fake"}
 
     # -- generators ---------------------------------------------------------
-    def _sft(self, sentences, span_ids, task_family, difficulty, rng) -> schemas.GeneratedSFTCandidate:
+    def _sft(
+        self,
+        sentences: list[str],
+        span_ids: list[str],
+        task_family: str,
+        difficulty: str,
+        rng: random.Random,
+    ) -> schemas.GeneratedSFTCandidate:
         chosen_sentences = [sentences[i % len(sentences)] for i in range(2)]
         main = " ".join(chosen_sentences)
         answer = self._answer_from(main, task_family)
@@ -108,58 +120,93 @@ class FakeProvider:
             schemas.CanonicalMessage(role="user", content=user_q),
             schemas.CanonicalMessage(role="assistant", content=answer),
         ]
-        evidence = [schemas.EvidenceRef(span_id=span_ids[0], support_type="direct")]
+        evidence = [
+            schemas.EvidenceRef(span_id=span_ids[0], support_type=schemas.SupportType.direct)
+        ]
         return schemas.GeneratedSFTCandidate(
             task_family=task_family,
-            difficulty=difficulty,
+            difficulty=cast(Literal["basic", "intermediate", "advanced"], difficulty),
             messages=messages,
             evidence=evidence,
             answerability="answerable",
             concise_generation_note="fake-provider ground truth SFT",
         )
 
-    def _preference(self, sentences, span_ids, task_family, difficulty, rng) -> schemas.GeneratedPreferenceCandidate:
+    def _preference(
+        self,
+        sentences: list[str],
+        span_ids: list[str],
+        task_family: str,
+        difficulty: str,
+        rng: random.Random,
+    ) -> schemas.GeneratedPreferenceCandidate:
         chosen_sentences = [sentences[i % len(sentences)] for i in range(2)]
         main = " ".join(chosen_sentences)
         prompt = _question_from(main, sentences[0], task_family, difficulty)
-        chosen = schemas.CanonicalMessage(role="assistant", content=self._answer_from(main, task_family))
+        chosen = schemas.CanonicalMessage(
+            role="assistant", content=self._answer_from(main, task_family)
+        )
         # controlled near-miss: drop a fact clause
         rejected_text = _make_near_miss(main)
-        rejected = schemas.CanonicalMessage(role="assistant", content=self._answer_from(rejected_text, task_family))
-        defect = "subtle_factual_error"
+        rejected = schemas.CanonicalMessage(
+            role="assistant", content=self._answer_from(rejected_text, task_family)
+        )
+        defect: Literal["subtle_factual_error"] = "subtle_factual_error"
         return schemas.GeneratedPreferenceCandidate(
             task_family=task_family,
             prompt_messages=[schemas.CanonicalMessage(role="user", content=prompt)],
             chosen_messages=[chosen],
             rejected_messages=[rejected],
-            evidence=[schemas.EvidenceRef(span_id=span_ids[0], support_type="direct")],
+            evidence=[
+                schemas.EvidenceRef(span_id=span_ids[0], support_type=schemas.SupportType.direct)
+            ],
             rejected_defect=defect,
             expected_preference_margin="medium",
             concise_generation_note="fake-provider near-miss preference",
         )
 
-    def _kto(self, sentences, span_ids, task_family, difficulty, rng) -> schemas.GeneratedKTOCandidate:
+    def _kto(
+        self,
+        sentences: list[str],
+        span_ids: list[str],
+        task_family: str,
+        difficulty: str,
+        rng: random.Random,
+    ) -> schemas.GeneratedKTOCandidate:
         main = " ".join(sentences[:2])
         q = _question_from(main, sentences[0], task_family, difficulty)
         return schemas.GeneratedKTOCandidate(
             task_family=task_family,
             messages=[
                 schemas.CanonicalMessage(role="user", content=q),
-                schemas.CanonicalMessage(role="assistant", content=self._answer_from(main, task_family)),
+                schemas.CanonicalMessage(
+                    role="assistant", content=self._answer_from(main, task_family)
+                ),
             ],
             desirability="good",
-            evidence=[schemas.EvidenceRef(span_id=span_ids[0], support_type="direct")],
+            evidence=[
+                schemas.EvidenceRef(span_id=span_ids[0], support_type=schemas.SupportType.direct)
+            ],
             concise_generation_note="fake-provider KTO good example",
         )
 
-    def _evaluation(self, sentences, span_ids, task_family, difficulty, rng) -> schemas.GeneratedEvaluationCandidate:
+    def _evaluation(
+        self,
+        sentences: list[str],
+        span_ids: list[str],
+        task_family: str,
+        difficulty: str,
+        rng: random.Random,
+    ) -> schemas.GeneratedEvaluationCandidate:
         main = " ".join(sentences[:1])
         q = _question_from(main, sentences[0], task_family, difficulty)
         return schemas.GeneratedEvaluationCandidate(
             task_family=task_family,
             question=q,
             reference_answer=self._answer_from(main, task_family),
-            evidence=[schemas.EvidenceRef(span_id=span_ids[0], support_type="direct")],
+            evidence=[
+                schemas.EvidenceRef(span_id=span_ids[0], support_type=schemas.SupportType.direct)
+            ],
             concise_generation_note="fake-provider evaluation item",
         )
 
@@ -181,7 +228,10 @@ def _question_from(main: str, first: str, task_family: str, difficulty: str) -> 
     if task_family == "comparison":
         return "How do the described options compare according to the material?"
     if difficulty == "advanced":
-        return "Explain the underlying reasons and implications of the following, based only on the material: " + first[:180]
+        return (
+            "Explain the underlying reasons and implications of the following, "
+            "based only on the material: " + first[:180]
+        )
     return "Based only on the provided material, summarize the key point about: " + first[:180]
 
 

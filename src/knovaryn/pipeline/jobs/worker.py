@@ -9,16 +9,18 @@ from __future__ import annotations
 import asyncio
 import logging
 import signal
-from datetime import datetime, timedelta, timezone
-from typing import Awaitable, Callable
+from collections.abc import Callable
+from contextlib import suppress
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from ...domain.ids import IdGenerator
-from ...domain.schemas import Job, JobState
+from ...domain.schemas import JobState
 from .engine import CheckpointTracker, JobEngine
 
 log = logging.getLogger("knovaryn.worker")
 
-StageProvider = Callable[[str], list[tuple[str, Callable]]]
+StageProvider = Callable[[str], list[tuple[str, Callable[..., Any]]]]
 
 
 class Worker:
@@ -28,7 +30,7 @@ class Worker:
         ids: IdGenerator,
         engine: JobEngine,
         stage_provider: StageProvider,
-        repo,
+        repo: Any,
         worker_id: str = "w1",
         lease_seconds: int = 300,
         poll_interval_s: float = 1.0,
@@ -46,10 +48,8 @@ class Worker:
 
     def install_signal_handlers(self, loop: asyncio.AbstractEventLoop) -> None:
         for sig in (signal.SIGTERM, signal.SIGINT):
-            try:
+            with suppress(NotImplementedError):  # pragma: no cover - windows
                 loop.add_signal_handler(sig, self.request_shutdown)
-            except NotImplementedError:  # pragma: no cover - windows
-                pass
 
     def request_shutdown(self) -> None:
         log.info("worker %s shutting down", self.worker_id)
@@ -72,17 +72,23 @@ class Worker:
         for jid in list(self._running):
             await self._heartbeat(jid)
         # reclaim expired leases / claim new
-        job = await self._repo.claim_eligible(worker=self.worker_id, lease_seconds=self._lease_seconds)
+        job = await self._repo.claim_eligible(
+            worker=self.worker_id, lease_seconds=self._lease_seconds
+        )
         if job is None:
             return
         self._running.add(job.id)
         try:
             stages = self._stage_provider(job.job_type)
             tracker = CheckpointTracker(job)
-            extras = tracker.to_extras()
             job.input["completed_stages"] = tracker.persisted()
             result = await self._engine.run(job, stages, services={"job.input": job.input})
-            if result.state in (JobState.succeeded, JobState.failed, JobState.cancelled, JobState.paused):
+            if result.state in (
+                JobState.succeeded,
+                JobState.failed,
+                JobState.cancelled,
+                JobState.paused,
+            ):
                 self._running.discard(job.id)
         except asyncio.CancelledError:
             self._running.discard(job.id)
@@ -96,7 +102,7 @@ class Worker:
         if job is None or job.state not in (JobState.leased, JobState.running):
             self._running.discard(job_id)
             return
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         if job.lease_owner != self.worker_id:
             self._running.discard(job_id)
             return

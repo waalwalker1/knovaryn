@@ -58,12 +58,16 @@ class PrivacyReport:
         }
 
     @classmethod
-    def from_classifications(cls, classifications: list[tuple[str, PrivacyClassification]]) -> "PrivacyReport":
+    def from_classifications(
+        cls, classifications: list[tuple[str, PrivacyClassification]]
+    ) -> PrivacyReport:
         report = cls()
         for doc_id, c in classifications:
             report.classified_documents += 1
             report.high_confidence_total += c.high_confidence_count
-            report.sample_kinds_seen.extend(k for k in c.sample_kinds if k not in report.sample_kinds_seen)
+            report.sample_kinds_seen.extend(
+                k for k in c.sample_kinds if k not in report.sample_kinds_seen
+            )
             if c.classification == "high":
                 report.blocked.append(doc_id)
         return report

@@ -39,7 +39,9 @@ class QualityReport:
         return ContentHasher.cfg_hash(self.to_dict())
 
 
-def build_quality_report(assessments: list[QualityAssessment], *, topologies: dict[str, str] | None = None) -> QualityReport:
+def build_quality_report(
+    assessments: list[QualityAssessment], *, topologies: dict[str, str] | None = None
+) -> QualityReport:
     report = QualityReport()
     if not assessments:
         return report
@@ -49,7 +51,6 @@ def build_quality_report(assessments: list[QualityAssessment], *, topologies: di
 
     for a in assessments:
         report.status_counts[a.status.value] = report.status_counts.get(a.status.value, 0) + 1
-        dims = a.evidence.get("per_validator", {}) if isinstance(a.evidence, dict) else {}
         if a.validator_name == "overall":
             overall_scores.append(a.score)
         else:
@@ -65,7 +66,7 @@ def build_quality_report(assessments: list[QualityAssessment], *, topologies: di
         t["total"] = t.get("total", 0) + 1
         _bump(t, a.status.value)
 
-    for name, bucket in report.per_validator.items():
+    for bucket in report.per_validator.values():
         if bucket.get("count"):
             bucket["mean"] = round(bucket["sum"] / bucket["count"], 4)
 
@@ -76,5 +77,5 @@ def build_quality_report(assessments: list[QualityAssessment], *, topologies: di
     return report
 
 
-def _bump(bucket: dict[str, int], key: str) -> None:
+def _bump(bucket: dict[str, Any], key: str) -> None:
     bucket[key] = bucket.get(key, 0) + 1

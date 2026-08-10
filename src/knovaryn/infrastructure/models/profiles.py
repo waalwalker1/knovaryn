@@ -16,7 +16,10 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from .gateway import ModelGateway
 
 from ...identity import ENV_PREFIX
 from .cost import PriceProfile
@@ -80,7 +83,7 @@ def runtime_profile_for(name: str) -> Any:
     raise ValueError(f"unknown runtime profile: {name}")
 
 
-def build_gateway(profile: str | None = None, **overrides: Any):
+def build_gateway(profile: str | None = None, **overrides: Any) -> ModelGateway:
     """Build a :class:`ModelGateway` for a runtime profile.
 
     Offline/CI (fake, balanced, or default) yields a fake-only gateway with no

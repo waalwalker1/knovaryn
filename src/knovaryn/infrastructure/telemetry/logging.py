@@ -12,7 +12,7 @@ from __future__ import annotations
 import logging
 import os
 import sys
-from typing import Any
+from typing import cast
 
 import structlog
 
@@ -44,11 +44,13 @@ def get_logger(name: str) -> structlog.stdlib.BoundLogger:
     passed as already-redacted values; see :mod:`knovaryn.infrastructure.models.secrets`.
     """
     cfg = load_config()
-    level_name = (os.environ.get("KNOVARYN_LOG_LEVEL") or cfg.get("telemetry", {}).get("log_level") or "INFO").upper()
+    level_name = (
+        os.environ.get("KNOVARYN_LOG_LEVEL") or cfg.get("telemetry", {}).get("log_level") or "INFO"
+    ).upper()
     level = getattr(logging, level_name, logging.INFO)
     _configure_structlog(level)
     logger = structlog.get_logger(name)
-    return logger
+    return cast(structlog.stdlib.BoundLogger, logger)
 
 
 class ContentGuard:

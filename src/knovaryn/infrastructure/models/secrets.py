@@ -10,8 +10,12 @@ from __future__ import annotations
 import re
 from typing import Any
 
-_SECRET_KEYS = re.compile(r"(token|secret|key|password|credential|bearer|authorization)", re.IGNORECASE)
-_TOKEN_PATTERN = re.compile(r"(sk-[A-Za-z0-9]{8,}|Bearer\s+[A-Za-z0-9._~+/=-]{8,}|AIza[A-Za-z0-9_\\-]{10,})")
+_SECRET_KEYS = re.compile(
+    r"(token|secret|key|password|credential|bearer|authorization)", re.IGNORECASE
+)
+_TOKEN_PATTERN = re.compile(
+    r"(sk-[A-Za-z0-9]{8,}|Bearer\s+[A-Za-z0-9._~+/=-]{8,}|AIza[A-Za-z0-9_\\-]{10,})"
+)
 
 
 def is_secret_key(key: str) -> bool:
@@ -41,7 +45,14 @@ def redact_config(data: dict[str, Any], *, depth: int = 0) -> dict[str, Any]:
         elif isinstance(v, dict):
             out[k] = redact_config(v, depth=depth + 1)
         elif isinstance(v, list):
-            out[k] = [redact_config(i, depth=depth + 1) if isinstance(i, dict) else redact(i) if is_secret_key(k) else i for i in v]
+            out[k] = [
+                redact_config(i, depth=depth + 1)
+                if isinstance(i, dict)
+                else redact(i)
+                if is_secret_key(k)
+                else i
+                for i in v
+            ]
         elif isinstance(v, str) and _TOKEN_PATTERN.search(v):
             out[k] = _TOKEN_PATTERN.sub(_mask_token, v)
         else:

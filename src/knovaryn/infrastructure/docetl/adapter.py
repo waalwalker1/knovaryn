@@ -8,7 +8,6 @@ estimates. The deterministic structure_aware profile remains the default.
 
 from __future__ import annotations
 
-import asyncio
 from typing import Any
 
 from ...domain.errors import ConfigurationError
@@ -52,7 +51,9 @@ class DocETLAdapter:
             "dry_run": True,
         }
 
-    async def chunk(self, canonical: dict[str, Any], *, config: dict[str, Any]) -> list[dict[str, Any]]:
+    async def chunk(
+        self, canonical: dict[str, Any], *, config: dict[str, Any]
+    ) -> list[dict[str, Any]]:
         """Run a DocETL split/gather that preserves header paths and returns
         canonical chunk records. Given the fragile runtime API, this wraps the
         gather pattern and maps its records to canonical form; if the underlying
@@ -61,7 +62,7 @@ class DocETLAdapter:
         # Documented, deterministic gather-style split using the docetl runtime
         # split/gather operators where present; falls back to a documented
         # local split/gather so the profile is functional and traceable.
-        from ..chunking.structure_aware import ChunkCfg, chunk_document, group_text
+        from ..chunking.structure_aware import ChunkCfg, chunk_document
 
         cfg = ChunkCfg.from_dict(config.get("chunking", {}))
         results = chunk_document(canonical, cfg)

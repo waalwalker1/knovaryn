@@ -20,8 +20,9 @@ provider and requires no credentials; a live gateway swaps in seamlessly.
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from ..domain.config import load_config
@@ -35,6 +36,7 @@ from ..domain.schemas import (
     JobState,
     Project,
     SourceDocument,
+    SourceKind,
     TrainingExample,
 )
 from ..infrastructure.database.repositories import (
@@ -174,7 +176,7 @@ class Workspace:
         media_type: str,
         content: str,
         declared_license: str | None = None,
-        source_kind: str = "upload",
+        source_kind: SourceKind = SourceKind.upload,
     ) -> SourceDocument:
         async with self._db.session() as session, session.begin():
             proj_repo = ProjectRepository(session, self._ids)
@@ -305,7 +307,7 @@ class Workspace:
                     await self._persist_pipeline_result(session, job, stash)
             return job.model_dump(mode="json")
 
-    async def _persist_pipeline_result(self, session, job: Job, stash: dict[str, Any]) -> None:
+    async def _persist_pipeline_result(self, session: Any, job: Job, stash: dict[str, Any]) -> None:
         from ..domain.schemas import TrainingExample
 
         ex_repo = ExampleRepository(session)
@@ -365,7 +367,7 @@ class Workspace:
             job = await job_repo.get(job_id)
             if job is None:
                 raise NotFoundError(f"job not found: {job_id}")
-            job.cancellation_requested_at = datetime.now(timezone.utc)
+            job.cancellation_requested_at = datetime.now(UTC)
             job.state = JobState.cancelling
             await job_repo.save(job)
             return job
@@ -544,7 +546,7 @@ def _job_event(
     return JobEvent(
         id=str(job.id) + ":e",
         job_id=job.id,
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime.now(UTC),
         level=level,
         event_type=event_type,
         stage=stage,
@@ -558,7 +560,7 @@ def _source_content(src: SourceDocument) -> str:
 
 def _make_pipeline_stage(
     project: Project, sources: list[SourceDocument], contents: list[str], svc: ProjectService
-):
+) -> Callable[[Any], Awaitable[dict[str, Any]]]:
     async def stage(ctx: Any) -> dict[str, Any]:
         cfg = ctx.config or {}
         plan = DatasetPlan(

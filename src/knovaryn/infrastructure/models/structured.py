@@ -8,9 +8,8 @@ structured output. Never fabricates provider capabilities.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
 
-from .capabilities import Capability, capability_set
+from .capabilities import ProviderCapabilities, capability_set
 
 
 @dataclass
@@ -28,9 +27,17 @@ def plan_structured_output(
 ) -> StructuredOutputPlan:
     """Choose a structured-output strategy based on advertised capability."""
     if supported and prefer_native:
-        return StructuredOutputPlan(mode="native_jsonschema", schema_hash=schema_hash, note="provider advertises native json_schema")
+        return StructuredOutputPlan(
+            mode="native_jsonschema",
+            schema_hash=schema_hash,
+            note="provider advertises native json_schema",
+        )
     if supported:
-        return StructuredOutputPlan(mode="constrained_decoding", schema_hash=schema_hash, note="provider advertises constrained decoding")
+        return StructuredOutputPlan(
+            mode="constrained_decoding",
+            schema_hash=schema_hash,
+            note="provider advertises constrained decoding",
+        )
     return StructuredOutputPlan(
         mode="json_in_prompt",
         schema_hash=schema_hash,
@@ -38,5 +45,5 @@ def plan_structured_output(
     )
 
 
-def structured_output_required_capabilities() -> set[Capability]:
+def structured_output_required_capabilities() -> ProviderCapabilities:
     return capability_set(structured_output=True)

@@ -15,9 +15,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Community and governance files: contributing guide, governance model, support
   boundaries, maintainer roster, roadmap, security and issue templates.
 - Public documentation site (MkDocs).
+- Alembic migration baseline (`migrations/`, `alembic.ini`) matching the ORM
+  metadata "head", verified no-drift and reversible (§21.1).
+- Migration-contract tests (`tests/test_migrations.py`) and local CAS artifact
+  round-trip tests (`tests/test_artifact_store.py`), §21.2.
+- MkDocs site configuration (`mkdocs.yml`) so `make docs-build` / §31 docs site
+  builds end to end.
 
 ### Changed
-- (none yet in the unreleased window)
+- Lint (`ruff check`), format (`ruff format --check`), and type (`mypy src`)
+  gates are now **green** on the full source tree (previously red baseline); mypy
+  `ignore_missing_imports` is scoped to optional third-party extras only.
+- Build report (`docs/reference/build-report-39.md`) status moved from PARTIAL to
+  COMPLETE (offline/fake-provider scope); measured benchmark recorded (§24.3).
 
 ### Deprecated
 - Nothing deprecated yet.

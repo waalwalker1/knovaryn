@@ -49,7 +49,7 @@ class PromptManifest:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "PromptManifest":
+    def from_dict(cls, data: dict[str, Any]) -> PromptManifest:
         out = cls()
         for r in data.get("records", []):
             out.add(PromptUsageRecord(**r))

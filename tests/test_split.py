@@ -33,8 +33,14 @@ def test_grouped_random_never_splits_a_source_group() -> None:
 def test_distinct_groups_can_land_in_any_split() -> None:
     sources = [
         SourceDocument(
-            id=f"s{n}", project_id="p", original_name=f"s{n}", media_type="text/plain",
-            byte_size=1, sha256=f"s{n}", source_kind=SourceKind.upload, group_key=g,
+            id=f"s{n}",
+            project_id="p",
+            original_name=f"s{n}",
+            media_type="text/plain",
+            byte_size=1,
+            sha256=f"s{n}",
+            source_kind=SourceKind.upload,
+            group_key=g,
         )
         for n, g in enumerate(f"g{i}" for i in range(6))
     ]

@@ -12,13 +12,13 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
-from ...domain.errors import ConfigurationError, UnsupportedOperationError
+from ...domain import schemas
+from ...domain.errors import ConfigurationError
 from ...domain.hashing import ContentHasher
 from ...domain.ids import IdGenerator
-from ...domain import schemas
 from .guard import DoclingResourceGuard
 from .ocr import OCRProfile, detect_available_ocr_engines
 
@@ -47,7 +47,13 @@ class ParseOutcome:
 class DoclingAdapter:
     """Version-aware parser. Validates configured options at startup."""
 
-    def __init__(self, *, ids: IdGenerator, ocr_profile: OCRProfile | None = None, recycle_documents: int = 25) -> None:
+    def __init__(
+        self,
+        *,
+        ids: IdGenerator,
+        ocr_profile: OCRProfile | None = None,
+        recycle_documents: int = 25,
+    ) -> None:
         self._ids = ids
         self.ocr = ocr_profile or OCRProfile()
         self.recycle_documents = recycle_documents
@@ -58,7 +64,9 @@ class DoclingAdapter:
         if self.ocr.mode not in ("off", "auto", "on", "force_engine"):
             raise ConfigurationError(f"invalid ocr_mode: {self.ocr.mode!r}")
 
-    async def parse(self, source: schemas.SourceDocument, raw: bytes, *, config: dict[str, Any]) -> ParseOutcome:
+    async def parse(
+        self, source: schemas.SourceDocument, raw: bytes, *, config: dict[str, Any]
+    ) -> ParseOutcome:
         import importlib.util
 
         self._parses_this_worker += 1
@@ -67,7 +75,9 @@ class DoclingAdapter:
 
         if importlib.util.find_spec("docling") is not None:
             try:
-                return await asyncio.to_thread(self._parse_docling, source, raw, config, config_hash, engine_engines)
+                return await asyncio.to_thread(
+                    self._parse_docling, source, raw, config, config_hash, engine_engines
+                )
             except Exception as exc:  # noqa: BLE001 - fall back safely
                 log.warning("docling parse failed (%s); falling back to safe parser", exc)
         # Safe fallback parser
@@ -75,20 +85,27 @@ class DoclingAdapter:
         return outcome
 
     # ---- real docling (opt-in) ----
-    def _parse_docling(self, source, raw, config, config_hash, engine_engines) -> ParseOutcome:  # noqa: ANN001
+    def _parse_docling(
+        self,
+        source: schemas.SourceDocument,
+        raw: bytes,
+        config: dict[str, Any],
+        config_hash: str,
+        engine_engines: list[str],
+    ) -> ParseOutcome:
         from docling.document_converter import DocumentConverter
 
-        converter_config = {}
+        converter_config: dict[str, Any] = {}
         converter = DocumentConverter(**converter_config)
         conv_result = converter.convert(self._bytes_to_path(source, raw))
         guard = DoclingResourceGuard(conv_result)
 
         # persist canonical docling JSON then release
-        docling_json = conv_result.document.export_to_dict()  # type: ignore[attr-defined]
+        docling_json = conv_result.document.export_to_dict()
 
         markdown = ""
         try:
-            markdown = conv_result.document.export_to_markdown()  # type: ignore[attr-defined]
+            markdown = conv_result.document.export_to_markdown()
         except Exception:  # noqa: BLE001
             markdown = ""
         plain = _strip_markdown(markdown)
@@ -114,10 +131,9 @@ class DoclingAdapter:
             cleanup=cleanup or "guard",
         )
 
-    def _bytes_to_path(self, source, raw) -> str:  # noqa: ANN001
+    def _bytes_to_path(self, source: schemas.SourceDocument, raw: bytes) -> str:
         # write to a temp file so docling can ingest; content remains local
         import tempfile
-        from pathlib import Path
 
         suffix = _suffix_for(source.media_type)
         fd, path = tempfile.mkstemp(suffix=suffix)
@@ -126,7 +142,13 @@ class DoclingAdapter:
         return path
 
     # ---- safe fallback parser (always available) ----
-    def _parse_fallback(self, source, raw, config_hash, engine_engines) -> ParseOutcome:  # noqa: ANN001
+    def _parse_fallback(
+        self,
+        source: schemas.SourceDocument,
+        raw: bytes,
+        config_hash: str,
+        engine_engines: list[str],
+    ) -> ParseOutcome:
         text = _decode_text(raw, source.media_type)
         blocks = _split_blocks(text)
         doc = {
@@ -205,7 +227,9 @@ def _split_blocks(text: str) -> list[dict[str, Any]]:
         if para:
             content = " ".join(x.strip() for x in para if x.strip())
             if content:
-                blocks.append({"type": "paragraph", "text": content, "heading_path": list(heading_path)})
+                blocks.append(
+                    {"type": "paragraph", "text": content, "heading_path": list(heading_path)}
+                )
             para = []
 
     for line in lines:
@@ -216,17 +240,36 @@ def _split_blocks(text: str) -> list[dict[str, Any]]:
             heading_text = h.group(2).strip()
             # maintain a heading path by level
             heading_path = heading_path[: level - 1] + [heading_text]
-            blocks.append({"type": "heading", "level": level, "text": heading_text, "heading_path": list(heading_path)})
+            blocks.append(
+                {
+                    "type": "heading",
+                    "level": level,
+                    "text": heading_text,
+                    "heading_path": list(heading_path),
+                }
+            )
             continue
         b = _BULLET.match(line)
         if b:
             flush()
-            blocks.append({"type": "list_item", "text": b.group(1).strip(), "heading_path": list(heading_path)})
+            blocks.append(
+                {
+                    "type": "list_item",
+                    "text": b.group(1).strip(),
+                    "heading_path": list(heading_path),
+                }
+            )
             continue
         n = _NUM.match(line)
         if n:
             flush()
-            blocks.append({"type": "list_item", "text": n.group(1).strip(), "heading_path": list(heading_path)})
+            blocks.append(
+                {
+                    "type": "list_item",
+                    "text": n.group(1).strip(),
+                    "heading_path": list(heading_path),
+                }
+            )
             continue
         if line.strip() == "":
             flush()
