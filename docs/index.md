@@ -2,6 +2,9 @@
 
 > **Every training example, traced to its source.**
 
+> **New here?** Start with the [OmniTrain MCP ecosystem overview](omnitrain-mcp.md) —
+> *"how the whole thing works as a product and service."*
+
 Knovaryn is an **open-source, MCP-native training-data foundry**. It converts
 *permitted* source documents into **traceable, quality-gated SFT and preference
 datasets** that any MCP-capable agent can build, review, and export.
