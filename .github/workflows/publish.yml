@@ -1,0 +1,89 @@
+name: Publish to PyPI
+
+# Builds the wheel/sdist and publishes it once a maintainer tags a release or
+# drafts a GitHub Release. Nothing publishes automatically on plain `main`
+# commits — publishing is an explicit, tag/release-gated action.
+#
+# Setup (one-time, by a maintainer):
+#   1. Create a PyPI account (https://pypi.org/account/register/) and, in
+#      account settings, add a token scoped to a "knovaryn" project.
+#   2. Add that token as a repository secret named `PYPI_API_TOKEN`
+#      (Settings > Secrets and variables > Actions). For extra safety, add a
+#      TestPyPI token as `TEST_PYPI_API_TOKEN`.
+#   3. Tag a commit, e.g. `git tag v0.1.0 && git push origin v0.1.0`.
+
+on:
+  push:
+    tags:
+      - "v*"
+  release:
+    types: [published]
+
+jobs:
+  build:
+    name: Build wheel & sdist
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.11"
+      - name: Build distributions
+        run: uv build
+      - name: Verify metadata
+        run: |
+          uv run python - <<'PY'
+          import glob
+          wheel = glob.glob("dist/*.whl")[0]
+          import zipfile
+          z = zipfile.ZipFile(wheel)
+          meta = [n for n in z.namelist() if n.endswith(".dist-info/METADATA")][0]
+          text = z.read(meta).decode()
+          assert "knovaryn" in text and "0.1.0" in text, "metadata missing name/version"
+          print("OK:", wheel)
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish-test:
+    name: Publish to TestPyPI
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')   # tags only
+    runs-on: ubuntu-latest
+    environment: testpypi
+    permissions:
+      id-token: write   # trusted publishing (no password) when available
+      contents: read
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - name: Publish to TestPyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          skip-existing: true
+          # Password via OIDC trusted publishing OR the TEST_PYPI_API_TOKEN secret.
+          password: ${{ secrets.TEST_PYPI_API_TOKEN }}
+
+  publish-release:
+    name: Publish to PyPI (release)
+    needs: build
+    if: github.event_name == 'release' && github.event.action == 'published'
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          password: ${{ secrets.PYPI_API_TOKEN }}
