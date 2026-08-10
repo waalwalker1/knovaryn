@@ -557,9 +557,6 @@ uv run mkdocs serve    # local docs site
 - **Publication is dry-run by default** and gated on license approval — nothing is
   pushed anywhere without explicit action.
 
-> A repository-wide secret scan (gitleaks + manual) found **no exposed API keys**
-> in the working tree or git history.
-
 ---
 
 ## Project status
