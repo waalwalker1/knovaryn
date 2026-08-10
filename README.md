@@ -21,6 +21,10 @@
   <img alt="Offline-first, no API keys" src="https://img.shields.io/badge/offline--first-no%20API%20keys%20required-brightgreen"/>
 </p>
 
+<p align="center">
+  <img src="docs/assets/knovaryn-banner.svg" alt="Knovaryn — from documents to defensible training data" width="100%"/>
+</p>
+
 ---
 
 ## Why Knovaryn

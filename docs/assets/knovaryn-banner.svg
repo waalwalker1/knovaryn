@@ -1,0 +1,116 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="480" viewBox="0 0 1600 480" role="img" aria-label="Knovaryn — from documents to defensible training data">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0e1729"/>
+      <stop offset="0.55" stop-color="#0d2f3a"/>
+      <stop offset="1" stop-color="#0a3a44"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.22" cy="0.5" r="0.7">
+      <stop offset="0" stop-color="#0ea5e9" stop-opacity="0.22"/>
+      <stop offset="1" stop-color="#0ea5e9" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="docGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3b82f6"/>
+      <stop offset="1" stop-color="#2563eb"/>
+    </linearGradient>
+    <linearGradient id="markGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#22d3ee"/>
+      <stop offset="1" stop-color="#0ea5e9"/>
+    </linearGradient>
+    <linearGradient id="checkGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#34d399"/>
+      <stop offset="1" stop-color="#10b981"/>
+    </linearGradient>
+    <linearGradient id="gateGrad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#0ea5e9" stop-opacity="0"/>
+      <stop offset="0.5" stop-color="#67e8f9" stop-opacity="0.5"/>
+      <stop offset="1" stop-color="#0ea5e9" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+
+  <!-- background -->
+  <rect width="1600" height="480" fill="url(#bg)"/>
+  <rect width="1600" height="480" fill="url(#glow)"/>
+
+  <!-- subtle grid dots -->
+  <g fill="#1e3a4a" opacity="0.5">
+    <circle cx="60" cy="60" r="2"/><circle cx="140" cy="180" r="2"/><circle cx="220" cy="420" r="2"/>
+    <circle cx="420" cy="80" r="2"/><circle cx="360" cy="400" r="2"/><circle cx="520" cy="300" r="2"/>
+    <circle cx="1280" cy="90" r="2"/><circle cx="1420" cy="220" r="2"/><circle cx="1360" cy="420" r="2"/>
+    <circle cx="1520" cy="120" r="2"/><circle cx="1120" cy="430" r="2"/><circle cx="1000" cy="60" r="2"/>
+  </g>
+
+  <!-- ===== the "many documents -> one traceable example" mark ===== -->
+  <!-- source nodes (raw documents) on the left -->
+  <g>
+    <!-- connecting span lines -->
+    <path d="M 300 200 C 360 260 470 300 560 315" fill="none" stroke="#38bdf8" stroke-width="2.5" stroke-dasharray="1 7" stroke-linecap="round" opacity="0.7"/>
+    <path d="M 300 310 C 360 330 470 330 560 325" fill="none" stroke="#38bdf8" stroke-width="2.5" stroke-dasharray="1 7" stroke-linecap="round" opacity="0.7"/>
+    <path d="M 300 420 C 360 390 470 355 560 340" fill="none" stroke="#38bdf8" stroke-width="2.5" stroke-dasharray="1 7" stroke-linecap="round" opacity="0.7"/>
+
+    <!-- document glyphs -->
+    <g>
+      <rect x="200" y="170" width="100" height="130" rx="12" fill="url(#docGrad)"/>
+      <line x1="222" y1="196" x2="278" y2="196" stroke="#bfdbfe" stroke-width="6" stroke-linecap="round"/>
+      <line x1="222" y1="216" x2="278" y2="216" stroke="#bfdbfe" stroke-width="6" stroke-linecap="round"/>
+      <line x1="222" y1="236" x2="258" y2="236" stroke="#93c5fd" stroke-width="6" stroke-linecap="round"/>
+      <line x1="222" y1="256" x2="248" y2="256" stroke="#93c5fd" stroke-width="6" stroke-linecap="round"/>
+    </g>
+    <g>
+      <rect x="200" y="290" width="100" height="60" rx="12" fill="url(#docGrad)"/>
+      <line x1="222" y1="308" x2="278" y2="308" stroke="#bfdbfe" stroke-width="6" stroke-linecap="round"/>
+      <line x1="222" y1="326" x2="250" y2="326" stroke="#93c5fd" stroke-width="6" stroke-linecap="round"/>
+    </g>
+    <g>
+      <rect x="200" y="400" width="100" height="70" rx="12" fill="url(#docGrad)"/>
+      <line x1="222" y1="418" x2="278" y2="418" stroke="#bfdbfe" stroke-width="6" stroke-linecap="round"/>
+      <line x1="222" y1="438" x2="262" y2="438" stroke="#93c5fd" stroke-width="6" stroke-linecap="round"/>
+    </g>
+    <text x="250" y="180" font-family="Helvetica Neue, Arial, sans-serif" font-size="17" font-weight="600" fill="#e0f2fe" text-anchor="middle">PDF · HTML · MD</text>
+  </g>
+
+  <!-- the gate (quality threshold) -->
+  <g>
+    <line x1="640" y1="150" x2="640" y2="430" stroke="url(#gateGrad)" stroke-width="5" stroke-linecap="round"/>
+    <path d="M 640 150 L 640 430" stroke="#67e8f9" stroke-width="2" stroke-dasharray="3 8" stroke-linecap="round" opacity="0.6"/>
+    <circle cx="640" cy="150" r="6" fill="#22d3ee"/>
+    <circle cx="640" cy="430" r="6" fill="#22d3ee"/>
+  </g>
+
+  <!-- refined output node (the traceable example) on the right -->
+  <g>
+    <!-- provenance bracket: dotted line from gate to the refined node -->
+    <path d="M 648 290 C 730 310 800 300 860 290" fill="none" stroke="#34d399" stroke-width="2" stroke-dasharray="2 6" stroke-linecap="round" opacity="0.55"/>
+    <text x="860" y="268" font-family="Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="500" fill="#6ee7b7" text-anchor="end">traceable to source · span · page</text>
+
+    <!-- refined node with check -->
+    <rect x="820" y="180" width="180" height="180" rx="28" fill="url(#markGrad)"/>
+    <path d="M 870 272 L 902 304 L 954 240" fill="none" stroke="#06283d" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="910" cy="386" r="7" fill="#34d399"/>
+    <circle cx="945" cy="404" r="5" fill="#34d399"/>
+    <circle cx="880" cy="404" r="5" fill="#34d399"/>
+  </g>
+
+  <!-- ===== wordmark + tagline (right column) ===== -->
+  <g>
+    <text x="1080" y="216" font-family="Helvetica Neue, Arial, sans-serif" font-size="96" font-weight="700" fill="#f8fafc" letter-spacing="-1">Knovaryn</text>
+    <text x="1082" y="266" font-family="Helvetica Neue, Arial, sans-serif" font-size="30" font-weight="400" fill="#7dd3fc">From documents to <tspan fill="#34d399" font-weight="600">defensible training data</tspan></text>
+
+    <!-- capability chips -->
+    <g font-family="Helvetica Neue, Arial, sans-serif" font-size="21" font-weight="500">
+      <rect x="1082" y="300" width="150" height="44" rx="22" fill="#123a4a" stroke="#38bdf8" stroke-opacity="0.5"/>
+      <text x="1157" y="328" fill="#e0f2fe" text-anchor="middle">MCP-native</text>
+
+      <rect x="1250" y="300" width="176" height="44" rx="22" fill="#123a4a" stroke="#34d399" stroke-opacity="0.5"/>
+      <text x="1338" y="328" fill="#d1fae5" text-anchor="middle">Offline-first</text>
+
+      <rect x="1444" y="300" width="146" height="44" rx="22" fill="#123a4a" stroke="#94a3b8" stroke-opacity="0.5"/>
+      <text x="1517" y="328" fill="#cbd5e1" text-anchor="middle">Apache-2.0</text>
+    </g>
+
+    <g font-family="Helvetica Neue, Arial, sans-serif" font-size="19" fill="#94a3b8">
+      <text x="1082" y="376">Built by agents · reviewed by humans · traced to the source.</text>
+      <text x="1082" y="406">No API keys · no lock-in · bring your own model &amp; trainer.</text>
+    </g>
+  </g>
+</svg>
