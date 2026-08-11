@@ -317,6 +317,36 @@ class JobEventDB(Base):
     structured_payload: Mapped[dict] = mapped_column(JSON, default=dict)
 
 
+class JobCheckpointDB(Base):
+    """Durable per-stage checkpoint (spec §12/E2).
+
+    The engine writes one row per completed/explicitly-skipped stage. Payload
+    values are never discarded — they are the crash-recovery source of truth so
+    a resumed job skips recompute instead of repeating paid provider calls.
+    """
+
+    __tablename__ = "job_checkpoints"
+    __table_args__ = (
+        Index("ix_checkpoint_job_stage", "job_id", "stage_name"),
+        Index("ix_checkpoint_worker", "worker_id"),
+    )
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    job_id: Mapped[str] = mapped_column(ForeignKey("jobs.id"), index=True)
+    stage_name: Mapped[str] = mapped_column(String(64))
+    stage_version: Mapped[str] = mapped_column(String(64), default="1")
+    checkpoint_key: Mapped[str] = mapped_column(String(255), default="")
+    checkpoint_sequence: Mapped[int] = mapped_column(Integer, default=1)
+    status: Mapped[str] = mapped_column(String(32), default="completed")  # completed | skipped
+    input_hash: Mapped[str] = mapped_column(String(64), default="")
+    output_artifact_ids: Mapped[list] = mapped_column(JSON, default=list)
+    output_summary: Mapped[dict] = mapped_column(JSON, default=dict)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    worker_id: Mapped[str] = mapped_column(String(255), default="")
+    error: Mapped[str] = mapped_column(Text, default="")
+
+
 class AuditEventDB(Base):
     __tablename__ = "audit_events"
 

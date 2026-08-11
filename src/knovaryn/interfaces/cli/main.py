@@ -189,6 +189,36 @@ def server(
     raise typer.Exit(_server(host=host, port=port, reload=reload))
 
 
+@app.command("worker")
+def worker(
+    worker_id: str = typer.Option("w1", "--id", help="This worker's identifier."),
+    poll: float = typer.Option(1.0, "--poll", help="Poll interval in seconds."),
+    lease: int = typer.Option(300, "--lease", help="Lease duration in seconds."),
+    max_attempts: int = typer.Option(3, "--max-attempts", help="Per-stage retry attempts."),
+    once: bool = typer.Option(
+        False, "--once", help="Poll once (drain one job) and exit — for scripts/tests."
+    ),
+    database_url: str | None = typer.Option(
+        None, "--database-url", help="Override the database URL."
+    ),
+    json_plain: bool = typer.Option(False, "--json", help="Machine-readable output."),
+) -> None:
+    """Run a durable background worker (claim → lease → checkpoint → resume)."""
+    from .commands import worker as _worker
+
+    raise typer.Exit(
+        _worker(
+            worker_id=worker_id,
+            poll_interval_s=poll,
+            lease_seconds=lease,
+            max_attempts=max_attempts,
+            once=once,
+            database_url=database_url,
+            json_plain=json_plain,
+        )
+    )
+
+
 @app.command("version")
 def version_cmd() -> None:
     """Print the installed version."""

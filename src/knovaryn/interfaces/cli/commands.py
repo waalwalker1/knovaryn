@@ -258,4 +258,157 @@ def server(*, host: str | None = None, port: int | None = None, reload: bool = F
     return 0
 
 
-__all__ = ["doctor", "backup", "repair", "server", "_state_dir"]
+def _run_async(coro: Any) -> Any:
+    """Run a coroutine whether or not a loop is already active.
+
+    The CLI invokes commands synchronously (no running loop -> ``asyncio.run``),
+    but tests may call the sync entry point from inside an already-running loop,
+    where ``asyncio.run`` would raise. This branches on the current loop state.
+    """
+    import asyncio
+
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(coro)
+    # a loop is already running in this thread: we cannot block it with
+    # asyncio.run(); create + pump a dedicated loop to completion.
+    inner = asyncio.new_event_loop()
+    try:
+        return inner.run_until_complete(coro)
+    finally:
+        inner.close()
+
+
+async def worker_async(
+    *,
+    worker_id: str = "w1",
+    poll_interval_s: float = 1.0,
+    lease_seconds: int = 300,
+    max_attempts: int = 3,
+    once: bool = False,
+    database_url: str | None = None,
+) -> None:
+    """Run a durable background worker: claim → lease → checkpoint → resume.
+
+    Lifts queued pipeline jobs off the DB exactly as the offline in-process
+    runner does, but as an independent process with heartbeats, lease expiry,
+    and crash-safe stage checkpoints (spec §7.3). Completed stages are never
+    repeated on resume.
+    """
+    import asyncio
+
+    from ...application.service import ProjectService
+    from ...domain.ids import IdGenerator
+    from ...infrastructure.database.repositories import ProjectRepository, SourceRepository
+    from ...infrastructure.database.session import Database
+    from ...pipeline.jobs.engine import JobEngine
+    from ...pipeline.jobs.retry import RetryPolicy
+    from ...pipeline.jobs.worker import Worker, WorkerRepository
+
+    cfg = load_config()
+    url = (
+        database_url
+        or cfg.get("storage.database_url")
+        or "sqlite+aiosqlite:///./.knovaryn/knovaryn.db"
+    )
+
+    async def _pipeline_stage(ctx: Any) -> dict[str, Any]:
+        """Resolve the job's project + sources and run the full pipeline."""
+        from ...domain.schemas import DatasetPlan
+
+        job = ctx.job
+        async with db.session() as session, session.begin():
+            proj_repo = ProjectRepository(session, ids)
+            project = await proj_repo.get(job.project_id)
+            source_repo = SourceRepository(session)
+            source_ids = (job.input or {}).get("source_ids") or []
+            sources: list[Any] = []
+            contents: list[str] = []
+            for sid in source_ids:
+                src = await source_repo.get(sid)
+                if src is None:
+                    continue
+                sources.append(src)
+                contents.append((src.metadata or {}).get("content", "") or "")
+            if project is None:
+                raise RuntimeError(f"project not found: {job.project_id}")
+            pipeline_cfg = (job.input or {}).get("pipeline", {}) or {}
+            plan = DatasetPlan(
+                task_family_proportions=pipeline_cfg.get("task_family_proportions")
+                or {"factual_explanation": 0.5, "procedure": 0.3, "comparison": 0.2}
+            )
+            svc = ProjectService(ids=ids)
+            result = await svc.run_pipeline(
+                project=project, sources=sources, contents=contents, plan=plan
+            )
+        stash = {
+            "examples": [e.model_dump(mode="json") for e in result.examples],
+            "version": result.version.model_dump(mode="json") if result.version else None,
+            "release_sha256": result.release_sha256,
+        }
+        ctx.job.input["_pipeline_result"] = stash
+        await ctx.checkpoint("pipeline", step=1, key="result", value=result.to_dict())
+        return result.to_dict()
+
+    def stage_provider(job_type: str) -> list[tuple[str, Any]]:
+        if job_type != "pipeline":
+            raise RuntimeError(f"unsupported job_type for worker: {job_type}")
+        return [("pipeline", _pipeline_stage)]
+
+    ids = IdGenerator()
+    db = Database(url)
+    await db.create_all()
+    repo = WorkerRepository(db, ids)
+    engine = JobEngine(ids=ids, repo=repo, retry_policy=RetryPolicy(max_attempts=max_attempts))
+    w = Worker(
+        ids=ids,
+        engine=engine,
+        stage_provider=stage_provider,
+        repo=repo,
+        worker_id=worker_id,
+        lease_seconds=lease_seconds,
+        poll_interval_s=poll_interval_s,
+    )
+    loop = asyncio.get_running_loop()
+    w.install_signal_handlers(loop)
+    console.print(f"[green]Knovaryn worker[/green] {worker_id} online (lease={lease_seconds}s)")
+    try:
+        if once:
+            await w._tick()  # noqa: SLF001 - single poll for tests/one-shot runs
+        else:
+            await w.run_forever()
+    finally:
+        await db.dispose()
+
+
+def worker(
+    *,
+    worker_id: str = "w1",
+    poll_interval_s: float = 1.0,
+    lease_seconds: int = 300,
+    max_attempts: int = 3,
+    once: bool = False,
+    database_url: str | None = None,
+    json_plain: bool = False,
+) -> int:
+    """Run a durable background worker (sync CLI entry point)."""
+    try:
+        _run_async(
+            worker_async(
+                worker_id=worker_id,
+                poll_interval_s=poll_interval_s,
+                lease_seconds=lease_seconds,
+                max_attempts=max_attempts,
+                once=once,
+                database_url=database_url,
+            )
+        )
+    except KeyboardInterrupt:
+        console.print(f"[yellow]worker {worker_id} interrupted[/yellow]")
+    if json_plain:
+        console.print_json(f'{{"worker": "{worker_id}", "ok": true}}')
+    return 0
+
+
+__all__ = ["doctor", "backup", "repair", "server", "worker", "worker_async", "_state_dir"]

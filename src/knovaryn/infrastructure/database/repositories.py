@@ -308,6 +308,171 @@ class JobRepository:
         next_cursor = rows[-1].sequence if has_more and rows else None
         return [_event_from_row(r) for r in rows], next_cursor
 
+    # -- durable stage checkpoints (WP E2; the engine's checkpoint store) -------
+    async def record_checkpoint(self, payload: dict[str, Any]) -> None:
+        # The durable sequence must be globally monotonic per job. The in-memory
+        # per-run counter a replacement worker carries restarts at 0 on resume,
+        # so we derive the next sequence from what is already committed rather
+        # than trusting the caller — otherwise a resumed job's later stage could
+        # sort before an earlier durable stage (spec §12/E2/E6).
+        next_seq = int(
+            (
+                await self._s.execute(
+                    select(func.coalesce(func.max(m.JobCheckpointDB.checkpoint_sequence), 0) + 1)
+                    .where(m.JobCheckpointDB.job_id == payload["job_id"])
+                )
+            ).scalar_one()
+        )
+        self._s.add(
+            m.JobCheckpointDB(
+                id=payload.get("id") or self._ids.new(),
+                job_id=payload["job_id"],
+                stage_name=payload.get("stage_name", ""),
+                stage_version=payload.get("stage_version", "1"),
+                checkpoint_key=payload.get("checkpoint_key", ""),
+                checkpoint_sequence=next_seq,
+                status=payload.get("status", "completed"),
+                input_hash=payload.get("input_hash", ""),
+                output_artifact_ids=payload.get("output_artifact_ids", []),
+                output_summary=payload.get("output_summary", {}),
+                started_at=payload.get("started_at"),
+                completed_at=payload.get("completed_at"),
+                worker_id=payload.get("worker_id", ""),
+                error=payload.get("error", ""),
+            )
+        )
+
+    async def completed_checkpoints(self, job_id: str) -> list[str]:
+        """Durably-committed stage names, in checkpoint order (crash source of truth)."""
+        stmt = (
+            select(m.JobCheckpointDB.stage_name)
+            .where(
+                m.JobCheckpointDB.job_id == job_id,
+                m.JobCheckpointDB.status.in_(("completed", "skipped")),
+            )
+            .order_by(m.JobCheckpointDB.checkpoint_sequence)
+        )
+        rows = (await self._s.execute(stmt)).scalars().all()
+        seen: set[str] = set()
+        ordered: list[str] = []
+        for name in rows:
+            if name not in seen:
+                seen.add(name)
+                ordered.append(name)
+        return ordered
+
+
+class JobCheckpointRepository:
+    """Persists and queries durable per-stage checkpoints (spec §12/E2)."""
+
+    def __init__(self, session: AsyncSession, ids: IdGenerator) -> None:
+        self._s = session
+        self._ids = ids
+
+    async def record(self, checkpoint: dict[str, Any]) -> None:
+        self._s.add(
+            m.JobCheckpointDB(
+                id=checkpoint.get("id") or self._ids.new(),
+                job_id=checkpoint["job_id"],
+                stage_name=checkpoint.get("stage_name", ""),
+                stage_version=checkpoint.get("stage_version", "1"),
+                checkpoint_key=checkpoint.get("checkpoint_key", ""),
+                checkpoint_sequence=checkpoint.get("checkpoint_sequence", 1),
+                status=checkpoint.get("status", "completed"),
+                input_hash=checkpoint.get("input_hash", ""),
+                output_artifact_ids=checkpoint.get("output_artifact_ids", []),
+                output_summary=checkpoint.get("output_summary", {}),
+                started_at=checkpoint.get("started_at"),
+                completed_at=checkpoint.get("completed_at"),
+                worker_id=checkpoint.get("worker_id", ""),
+                error=checkpoint.get("error", ""),
+            )
+        )
+
+    async def completed_stages(self, job_id: str) -> list[str]:
+        """Stage names with a committed (completed or explicitly-skipped) checkpoint,
+        ordered by their checkpoint sequence (crash-recovery source of truth)."""
+        stmt = (
+            select(m.JobCheckpointDB.stage_name)
+            .where(
+                m.JobCheckpointDB.job_id == job_id,
+                m.JobCheckpointDB.status.in_(("completed", "skipped")),
+            )
+            .order_by(m.JobCheckpointDB.checkpoint_sequence)
+        )
+        rows = (await self._s.execute(stmt)).scalars().all()
+        seen: set[str] = set()
+        ordered: list[str] = []
+        for name in rows:
+            if name not in seen:
+                seen.add(name)
+                ordered.append(name)
+        return ordered
+
+    async def get_latest(self, job_id: str) -> dict[str, Any] | None:
+        stmt = (
+            select(m.JobCheckpointDB)
+            .where(m.JobCheckpointDB.job_id == job_id)
+            .order_by(m.JobCheckpointDB.checkpoint_sequence.desc())
+            .limit(1)
+        )
+        row = (await self._s.execute(stmt)).scalars().first()
+        return _checkpoint_from_row(row) if row else None
+
+    @staticmethod
+    def checkpoint_payload(
+        *,
+        job_id: str,
+        stage_name: str,
+        stage_version: str,
+        checkpoint_key: str,
+        checkpoint_sequence: int,
+        status: str,
+        input_hash: str,
+        output_artifact_ids: list[str],
+        output_summary: dict[str, Any],
+        started_at: Any,
+        completed_at: Any,
+        worker_id: str,
+        error: str = "",
+    ) -> dict[str, Any]:
+        return {
+            "job_id": job_id,
+            "stage_name": stage_name,
+            "stage_version": stage_version,
+            "checkpoint_key": checkpoint_key,
+            "checkpoint_sequence": checkpoint_sequence,
+            "status": status,
+            "input_hash": input_hash,
+            "output_artifact_ids": output_artifact_ids,
+            "output_summary": output_summary,
+            "started_at": started_at,
+            "completed_at": completed_at,
+            "worker_id": worker_id,
+            "error": error,
+        }
+
+
+def _checkpoint_from_row(row: m.JobCheckpointDB | None) -> dict[str, Any] | None:
+    if row is None:
+        return None
+    return {
+        "id": row.id,
+        "job_id": row.job_id,
+        "stage_name": row.stage_name,
+        "stage_version": row.stage_version,
+        "checkpoint_key": row.checkpoint_key,
+        "checkpoint_sequence": row.checkpoint_sequence,
+        "status": row.status,
+        "input_hash": row.input_hash,
+        "output_artifact_ids": list(row.output_artifact_ids or []),
+        "output_summary": dict(row.output_summary or {}),
+        "started_at": row.started_at,
+        "completed_at": row.completed_at,
+        "worker_id": row.worker_id,
+        "error": row.error,
+    }
+
 
 def _job_to_row(job: schemas.Job) -> m.JobDB:
     return m.JobDB(
