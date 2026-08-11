@@ -32,6 +32,7 @@ def example_to_sft_row(ex: TrainingExample) -> dict[str, Any]:
         "split": ex.split,
         "source_document_ids": ex.source_document_ids,
         "source_span_ids": ex.source_span_ids,
+        "generation_candidate_ids": ex.generation_candidate_ids,
         "content_hash": ex.content_hash,
         "quality_score": round(ex.quality_score, 4),
     }
@@ -45,6 +46,8 @@ def example_to_preference_row(ex: TrainingExample) -> dict[str, Any]:
         "topology": ex.topology.value,
         "split": ex.split,
         "source_document_ids": ex.source_document_ids,
+        "source_span_ids": ex.source_span_ids,
+        "generation_candidate_ids": ex.generation_candidate_ids,
         "content_hash": ex.content_hash,
         "quality_score": round(ex.quality_score, 4),
     }
@@ -59,6 +62,8 @@ def example_to_kto_row(ex: TrainingExample) -> dict[str, Any]:
         "topology": ex.topology.value,
         "split": ex.split,
         "source_document_ids": ex.source_document_ids,
+        "source_span_ids": ex.source_span_ids,
+        "generation_candidate_ids": ex.generation_candidate_ids,
         "content_hash": ex.content_hash,
         "quality_score": round(ex.quality_score, 4),
     }

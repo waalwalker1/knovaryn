@@ -66,3 +66,31 @@ def test_release_bundle_produces_zip_and_hash() -> None:
     assert bundle.byte_size() > 0
     assert len(bundle.sha256()) == 64
     assert "data/train.jsonl" in bundle.files
+
+
+def test_export_carries_resolvable_provenance() -> None:
+    """Every exported row must resolve to its real SourceDocument + candidate (P0-1/WP A).
+
+    source_document_ids, source_span_ids and generation_candidate_ids are
+    explicit lineage that consumers (and the provenance-check) rely on.
+    """
+    ex = TrainingExample(
+        id="ex-lineaged",
+        project_id="p",
+        topology=Topology.sft,
+        quality_status=QualityStatus.accepted,
+        system_messages=["be careful"],
+        prompt_messages=[CanonicalMessage(role="user", content="q")],
+        chosen_messages=[CanonicalMessage(role="assistant", content="a")],
+        source_document_ids=["src_1"],
+        source_span_ids=["sp_1"],
+        generation_candidate_ids=["cand_1"],
+        content_hash="abc",
+        split="train",
+    )
+    for topo in (Topology.sft, Topology.preference, Topology.kto):
+        e = ex.model_copy(update={"id": f"ex-{topo.value}", "topology": topo})
+        row = example_row(e)
+        assert row["source_document_ids"] == ["src_1"], topo
+        assert row["source_span_ids"] == ["sp_1"], topo
+        assert row["generation_candidate_ids"] == ["cand_1"], topo
