@@ -26,7 +26,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from ..domain.config import load_config
-from ..domain.errors import AlreadyExistsError, NotFoundError
+from ..domain.errors import AlreadyExistsError, JobStateError, NotFoundError
 from ..domain.hashing import ContentHasher
 from ..domain.ids import IdGenerator
 from ..domain.schemas import (
@@ -407,6 +407,30 @@ class Workspace:
                 raise NotFoundError(f"job not found: {job_id}")
             job.cancellation_requested_at = datetime.now(UTC)
             job.state = JobState.cancelling
+            await job_repo.save(job)
+            return job
+
+    async def resume_job(self, job_id: str) -> Job:
+        """Resume a paused (e.g. budget-exhausted) job after an authorized increase.
+
+        Only a ``paused`` job may be resumed; the caller is responsible for having
+        raised the budget limit that caused the pause. Re-queues the job so a worker
+        picks it up again, checkpointed (no repeated provider calls).
+        """
+        async with self._db.session() as session, session.begin():
+            job_repo = JobRepository(session, self._ids)
+            job = await job_repo.get(job_id)
+            if job is None:
+                raise NotFoundError(f"job not found: {job_id}")
+            if job.state == JobState.succeeded:
+                raise JobStateError(f"job already succeeded: {job_id}")
+            if job.state not in (JobState.paused, JobState.queued, JobState.failed):
+                raise JobStateError(
+                    f"cannot resume job in state {job.state.value}; only paused jobs "
+                    "may be resumed after a budget increase"
+                )
+            job.state = JobState.queued
+            job.attempt_count = max(0, (job.attempt_count or 0) - 1) if job.attempt_count else 0
             await job_repo.save(job)
             return job
 

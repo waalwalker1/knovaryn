@@ -32,6 +32,14 @@ _OFFICIAL_PROFILES = {
     "air-gapped",
     "enterprise",
     "deepseek_flash_budget",
+    # WP D4 runtime profile names (vendor-neutral; DeepSeek not the product)
+    "fake",
+    "deepseek-budget",
+    "local-openai-compatible",
+    "anthropic-quality",
+    "openai-quality",
+    "gemini-quality",
+    "custom-litellm",
 }
 _ADMIN_PROTECTED_KEYS = {
     "sources.url_ingestion",

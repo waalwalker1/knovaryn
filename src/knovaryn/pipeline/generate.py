@@ -22,8 +22,13 @@ from ..domain.schemas import (
     GeneratedSFTCandidate,
     SupportType,
 )
-from ..prompts.library import get_template
+from ..prompts.library import TemplateRef, get_template, render
 from ..prompts.manifest import PromptManifest, build_prompt_usage_record
+from .output_schemas import (
+    encode_schema_for_wire,
+    schema_hash_for,
+    validate_generation_output,
+)
 from .planner import AssignmentSpec, PlanResult
 
 _TOPOLOGY_MODE = {
@@ -31,6 +36,42 @@ _TOPOLOGY_MODE = {
     "preference": "preference",
     "kto": "kto",
     "evaluation": "evaluation",
+}
+
+# per-topology requirements appended to the rendered generation prompt (WP D1):
+# the model must know exactly what shape to return and how to behave refusal-wise.
+_TOPOLOGY_REQ = {
+    "sft": (
+        "Return a conversation (messages) with a final assistant turn that answers "
+        "the question strictly from the source material."
+    ),
+    "preference": (
+        "Return prompt_messages plus chosen_messages and rejected_messages; the "
+        "rejected answer must differ only in the way named by rejected_defect."
+    ),
+    "kto": (
+        "Return messages plus desirability=good when the response is faithful to "
+        "the source, bad otherwise."
+    ),
+    "evaluation": (
+        "Return a self-contained question plus a reference_answer that exists in the "
+        "source material."
+    ),
+}
+
+# temperature scales a little with difficulty so harder samples vary more
+_DIFFICULTY_TEMPERATURE = {"basic": 0.1, "intermediate": 0.3, "advanced": 0.5}
+
+# static generation-scaffold slots; "question"/candidates are filled with
+# directives because this is synthetic generation, not an interactive QA turn.
+_SLOTS = {
+    "question": (
+        "(generate a single, self-contained question fully answerable "
+        "from the source material)"
+    ),
+    "candidate_a": "(the more accurate, faithful candidate answer you generate)",
+    "candidate_b": "(a subtly inferior candidate answer you generate)",
+    "response": "(the answer you generate)",
 }
 
 
@@ -73,9 +114,16 @@ def _topology_of(candidate: Any) -> str:
 class Generator:
     """Standalone generator over an already-built gateway."""
 
-    def __init__(self, *, gateway: Any, max_chunks_per_spec: int = 200) -> None:
+    def __init__(
+        self,
+        *,
+        gateway: Any,
+        max_chunks_per_spec: int = 200,
+        max_repair_attempts: int = 1,
+    ) -> None:
         self._gateway = gateway
         self._max_chunks_per_spec = max_chunks_per_spec
+        self._max_repair_attempts = max_repair_attempts
 
     async def generate_for_plan(
         self,
@@ -133,42 +181,103 @@ class Generator:
         source_span_ids: list[str],
         seed: int,
     ) -> tuple[GeneratedBatch, Any]:
-        outcome = await self._gateway.generate(
-            prompt_template_version=self._template_version(spec),
-            sampling={"temperature": 0.3, "max_output_tokens": 1200},
-            schema_hash="knovaryn-candidate/v1",
-            source_hashes=[getattr(chunk, "sha256", "") or ""],
-            messages=[{"role": "user", "content": source_text}],
-            mode=_TOPOLOGY_MODE[spec.topology],
-            source_text=source_text,
-            chunk_id=getattr(chunk, "id", ""),
-            source_span_ids=source_span_ids,
-            task_family=spec.task_family,
-            difficulty=spec.difficulty,
-            seed=seed,
-            model=None,
+        tpl = get_template(spec.task_family, spec.topology)
+        schema_hash = schema_hash_for(spec.topology)
+        sampling = {
+            "temperature": _DIFFICULTY_TEMPERATURE.get(spec.difficulty, 0.3),
+            "max_output_tokens": 1200,
+        }
+        messages = self._render_messages(spec, tpl, source_text)
+        call_kwargs = {
+            "prompt_template_version": tpl.version,
+            "sampling": sampling,
+            "schema_hash": schema_hash,
+            "source_hashes": [getattr(chunk, "sha256", "") or ""],
+            "messages": messages,
+            "mode": _TOPOLOGY_MODE[spec.topology],
+            "source_text": source_text,
+            "chunk_id": getattr(chunk, "id", ""),
+            "source_span_ids": source_span_ids,
+            "task_family": spec.task_family,
+            "difficulty": spec.difficulty,
+            "model": None,
+        }
+
+        # D3 bounded repair: validate every provider response against the local
+        # schema; on failure re-request up to max_repair_attempts with an explicit
+        # correction, then quarantine (raise) rather than silently default-fill.
+        for attempt in range(self._max_repair_attempts + 1):
+            call_kwargs["seed"] = seed + attempt
+            outcome = await self._gateway.generate(**call_kwargs)
+            body = outcome.get("content") or {}
+            codes = validate_generation_output(spec.topology, body)
+            if not codes:
+                batch = self._candidate_from_body(
+                    body,
+                    spec,
+                    chunk_id=getattr(chunk, "id", ""),
+                    source_document_id=getattr(chunk, "source_document_id", ""),
+                    source_group_id=getattr(chunk, "source_group_id", None),
+                    split=getattr(chunk, "split", ""),
+                )
+                rec = build_prompt_usage_record(
+                    candidate_id=chunk.id + f"::{spec.topology}::{seed}",
+                    chunk_id=chunk.id,
+                    task_family=spec.task_family,
+                    topology=spec.topology,
+                    template_name=tpl.name,
+                    template_version=tpl.version,
+                    slots={"source_text": source_text},
+                    messages=messages,
+                    model=self._gateway.generator_model,
+                )
+                return batch, rec
+            if attempt < self._max_repair_attempts:
+                messages = messages + [
+                    {
+                        "role": "assistant",
+                        "content": "(repairing) output did not match the required schema.",
+                    },
+                    {
+                        "role": "user",
+                        "content": (
+                            f"Your previous output failed local validation: {codes}. "
+                            "Return a single JSON object conforming exactly to the schema; "
+                            "do not omit required fields and never invent evidence span ids."
+                        ),
+                    },
+                ]
+        raise ProviderError(
+            f"output failed schema validation for {spec.topology} after "
+            f"{self._max_repair_attempts} repairs: {codes}",
+            retryable=False,
         )
-        body = outcome.get("content") or {}
-        batch = self._candidate_from_body(
-            body,
-            spec,
-            chunk_id=getattr(chunk, "id", ""),
-            source_document_id=getattr(chunk, "source_document_id", ""),
-            source_group_id=getattr(chunk, "source_group_id", None),
-            split=getattr(chunk, "split", ""),
+
+    def _render_messages(
+        self, spec: AssignmentSpec, tpl: TemplateRef, source_text: str
+    ) -> list[dict[str, str]]:
+        """Render the versioned template into (system, user) messages (WP D1).
+
+        The system message carries the source-as-data boundary; the user message
+        embeds the source material plus explicit topology/difficulty/evidence/
+        answerability requirements and the exact structured-output schema. Never
+        sends raw source text alone.
+        """
+        slots = dict(_SLOTS)
+        slots["source_text"] = source_text
+        system, user = render(tpl, slots=slots)
+        user += (
+            f"\n\nTASK_FAMILY: {spec.task_family}\n"
+            f"DIFFICULTY: {spec.difficulty}\n"
+            f"TOPOLOGY: {spec.topology}\n"
+            f"Requirement: {_TOPOLOGY_REQ.get(spec.topology, '')}\n"
+            "Cite supporting evidence spans when relevant. If the source material is "
+            "insufficient, set answerability=unanswerable rather than guessing. "
+            "Never fabricate evidence or span ids.\n"
+            f"Return a single JSON object conforming exactly to this schema:\n"
+            f"{encode_schema_for_wire(spec.topology)}"
         )
-        rec = build_prompt_usage_record(
-            candidate_id=chunk.id + f"::{spec.topology}::{seed}",
-            chunk_id=chunk.id,
-            task_family=spec.task_family,
-            topology=spec.topology,
-            template_name=spec.topology,
-            template_version=self._template_version(spec),
-            slots={"source_text": source_text},
-            messages=[{"role": "user", "content": source_text}],
-            model=self._gateway.generator_model,
-        )
-        return batch, rec
+        return [{"role": "system", "content": system}, {"role": "user", "content": user}]
 
     def _template_version(self, spec: AssignmentSpec) -> str:
         try:
