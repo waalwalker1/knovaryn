@@ -120,3 +120,42 @@ def test_pipeline_propagates_split_to_examples(workspace: Workspace):
     for ex in examples:
         # split must be an explicit value, never an implicitly-defaulted "train"
         assert ex["split"] in ("train", "validation", "test"), ex["split"]
+
+
+def test_pipeline_reports_split_integrity_ok():
+    """The pipeline must emit machine-checkable contamination evidence (WP B)."""
+    from knovaryn.domain.schemas import DatasetPlan, Project, SourceDocument
+    from knovaryn.application.service import ProjectService
+
+    proj = Project(id="int_p", slug="intp", display_name="Integrity", owner_principal="test")
+    sources = [
+        SourceDocument(
+            id="s1", project_id="int_p", original_name="a.md", media_type="text/markdown",
+            byte_size=1, sha256="h1", group_key="alpha",
+        ),
+        SourceDocument(
+            id="s2", project_id="int_p", original_name="b.md", media_type="text/markdown",
+            byte_size=1, sha256="h2", group_key="beta",
+        ),
+    ]
+    contents = [
+        "Alpha protocol uses cobalt keys. Repeated enough material.",
+        "Beta protocol uses amber keys. Different repeated material.",
+    ]
+    svc = ProjectService()
+    result = run(
+        svc.run_pipeline(
+            project=proj,
+            sources=sources,
+            contents=contents,
+            plan=DatasetPlan(task_family_proportions={"factual_explanation": 1.0}),
+        )
+    )
+    integ = result.quality.get("split_integrity")
+    assert integ is not None, "pipeline must emit split_integrity evidence"
+    assert integ["ok"] is True, integ
+    assert integ["groups_per_split"], "at least one group must be assigned"
+    # every candidate carries explicit group + split lineage (no id parsing)
+    for c in result.candidates:
+        assert c.source_group_id in ("alpha", "beta"), c.source_group_id
+        assert c.split in ("train", "validation", "test"), c.split

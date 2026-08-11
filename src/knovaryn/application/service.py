@@ -45,7 +45,7 @@ from ..pipeline.quality.validators import (
     ValidatorContext,
     assemble_decision,
 )
-from ..pipeline.split import assign_splits
+from ..pipeline.split import assign_splits, check_split_integrity
 
 
 @dataclass
@@ -269,6 +269,18 @@ class ProjectService:
 
         result.examples = examples
         result.quality = build_quality_report(assessments, topologies=topology_of).to_dict()
+
+        # honest split-integrity / contamination evidence over persisted lineage
+        # (each candidate carries explicit source_group_id + split; WP B). A group
+        # must never cross train/validation/test — this is machine-checkable.
+        integrity = check_split_integrity(
+            (c.source_group_id or c.source_document_id, c.split) for c in gen_candidates
+        )
+        result.quality["split_integrity"] = integrity.to_dict()
+        result.notes.append(
+            f"split integrity: ok={integrity.ok} groups={integrity.group_count} "
+            f"splits={integrity.groups_per_split}"
+        )
 
         # version + export accepted examples
         if examples:
