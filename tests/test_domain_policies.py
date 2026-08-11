@@ -160,9 +160,30 @@ def test_acceptance_overall_defaults_to_mean() -> None:
 
 def test_acceptance_custom_floors() -> None:
     p = AcceptancePolicy(minimum_overall=0.5, minimum_grounding=0.2)
-    accepted, _, status = p.assess({"grounding": 0.3, "overall": 0.6}, is_preference=False)
+    accepted, _, status = p.assess(
+        {
+            "grounding": 0.3,
+            "overall": 0.6,
+            "instruction_fulfillment": 0.9,
+            "artifact_resistance": 0.9,
+        },
+        is_preference=False,
+    )
     assert accepted is True
     assert status == QualityStatus.accepted
+
+
+def test_acceptance_fails_closed_on_missing_dimension() -> None:
+    """A dimension that was never assessed must not default to perfect (§C).
+
+    Before, missing ``artifact_resistance`` / ``instruction_fulfillment``
+    defaulted to 1.0 and passed; now missing means unvalidated and fails.
+    """
+    p = AcceptancePolicy(minimum_overall=0.5, minimum_grounding=0.2)
+    # grounding present and passes, but artifact_resistance was never assessed
+    accepted, reasons, _ = p.assess({"grounding": 0.3, "overall": 0.6}, is_preference=False)
+    assert accepted is False
+    assert any("artifact_resistance<" in r for r in reasons)
 
 
 # ---------------------------------------------------------------------------

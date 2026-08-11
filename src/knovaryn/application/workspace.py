@@ -41,10 +41,14 @@ from ..domain.schemas import (
 )
 from ..infrastructure.database.repositories import (
     AuditRepository,
+    CandidateRepository,
+    ChunkRepository,
     ExampleRepository,
     JobRepository,
+    ParsedRepository,
     ProjectRepository,
     SourceRepository,
+    SpanRepository,
     VersionRepository,
 )
 from ..infrastructure.database.session import Database
@@ -58,7 +62,7 @@ from ..pipeline.quality.validators import (
     ValidatorContext,
     assemble_decision,
 )
-from .service import ProjectService, _split_bytes
+from .service import ProjectService, _artifact_assessment, _split_bytes
 
 
 @dataclass
@@ -308,16 +312,48 @@ class Workspace:
             return job.model_dump(mode="json")
 
     async def _persist_pipeline_result(self, session: Any, job: Job, stash: dict[str, Any]) -> None:
-        from ..domain.schemas import TrainingExample
+        from ..domain.schemas import (
+            Chunk,
+            GenerationCandidate,
+            ParsedDocument,
+            SourceSpan,
+            TrainingExample,
+        )
+
+        # Persist the full provenance graph (WP A) so every exported example
+        # resolves to its real ParsedDocument -> SourceSpan -> SourceDocument and
+        # GenerationCandidate. Order matters for FK references: parsed docs ->
+        # spans -> chunks -> candidates -> examples. Explicit flush boundaries
+        # guarantee FK-dependency ordering (no ORM relationship() here, so an
+        # autoflush cannot be relied on to topologically sort inserts).
+        parsed_repo = ParsedRepository(session)
+        for d in stash.get("parsed", []):
+            await parsed_repo.add(ParsedDocument(**d))
+        span_repo = SpanRepository(session)
+        for d in stash.get("spans", []):
+            await span_repo.add(SourceSpan(**d))
+        await session.flush()
+        chunk_repo = ChunkRepository(session)
+        for d in stash.get("chunks", []):
+            await chunk_repo.add(Chunk(**d))
+        await session.flush()
+        cand_repo = CandidateRepository(session)
+        for d in stash.get("candidates", []):
+            await cand_repo.add(GenerationCandidate(**d))
+        await session.flush()
 
         ex_repo = ExampleRepository(session)
         examples: list[TrainingExample] = []
         for d in stash["examples"]:
             ex = TrainingExample(**d)
             ex.project_id = job.project_id
-            ex.source_document_ids = [job.project_id]
+            # provenance is explicit data from run_pipeline; never overwrite with
+            # the project id (P0-1). source_document_ids / generation_candidate_ids
+            # are carried through the stash so every example stays resolvable to
+            # its real SourceDocument and GenerationCandidate.
             examples.append(ex)
             await ex_repo.add(ex)
+        await session.flush()
         version = stash.get("version")
         if version is None and examples:
             version = {
@@ -407,23 +443,28 @@ class Workspace:
     async def validate_dataset(self, *, project_id: str, limit: int = 500) -> dict[str, Any]:
         async with self._db.session() as session:
             ex_repo = ExampleRepository(session)
+            span_repo = SpanRepository(session)
             examples, _ = await ex_repo.list_by_project(project_id, limit=limit)
+            # resolve cited spans to their quoted text so grounding is
+            # evidence-scoped and fail-closed (WP A2/C2)
+            cited_ids = {s for ex in examples for s in ex.source_span_ids}
+            spans = await span_repo.get_many(list(cited_ids))
+            span_texts: dict[str, str] = {sp.id: sp.quoted_text for sp in spans}
+            ctx = ValidatorContext(source_texts=span_texts, policy_version="1")
             assessments = []
             topology_of: dict[str, str] = {}
-            span_texts: dict[str, str] = {}
             for ex in examples:
-                for c in ex.chosen_messages + ex.rejected_messages + ex.prompt_messages:
-                    span_texts.setdefault("auto", c.content)
-            ctx = ValidatorContext(source_texts=span_texts, policy_version="1")
-            for ex in examples:
-                decisions = []
-                for v in (
-                    GroundingValidator(),
-                    CompletenessValidator(),
-                    FormatValidator(),
-                    RefusalValidator(),
-                ):
-                    decisions.append(await v.assess(ex, ctx))
+                from ..pipeline.quality.artifact import diagnose_example
+
+                diag = diagnose_example(ex)
+                artifact = _artifact_assessment(ex, diag)
+                decisions = [
+                    await GroundingValidator().assess(ex, ctx),
+                    await CompletenessValidator().assess(ex, ctx),
+                    await FormatValidator().assess(ex, ctx),
+                    await RefusalValidator().assess(ex, ctx),
+                    artifact,
+                ]
                 overall = assemble_decision(
                     decisions, example_id=ex.id, is_preference=(ex.topology.value == "preference")
                 )
@@ -572,6 +613,10 @@ def _make_pipeline_stage(
         )
         stash = {
             "examples": [e.model_dump(mode="json") for e in result.examples],
+            "parsed": [p.model_dump(mode="json") for p in result.parsed],
+            "spans": [s.model_dump(mode="json") for s in result.spans],
+            "chunks": [c.model_dump(mode="json") for c in result.chunks],
+            "candidates": [c.model_dump(mode="json") for c in result.candidates],
             "version": result.version.model_dump(mode="json") if result.version else None,
             "release_sha256": result.release_sha256,
             "quality": result.quality,

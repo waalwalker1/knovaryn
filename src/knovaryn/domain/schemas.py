@@ -134,6 +134,11 @@ class GeneratedSFTCandidate(BaseModel):
     evidence: list[EvidenceRef]
     answerability: Literal["answerable", "unanswerable"]
     concise_generation_note: str = ""
+    chunk_id: str = ""
+    source_document_id: str = ""
+    source_group_id: str | None = None
+    split: str = ""
+    topology: str = "sft"
 
     @field_validator("messages")
     @classmethod
@@ -168,6 +173,11 @@ class GeneratedPreferenceCandidate(BaseModel):
     ]
     expected_preference_margin: Literal["small", "medium", "large"]
     concise_generation_note: str = ""
+    chunk_id: str = ""
+    source_document_id: str = ""
+    source_group_id: str | None = None
+    split: str = ""
+    topology: str = "preference"
 
     @field_validator("chosen_messages", "rejected_messages")
     @classmethod
@@ -183,6 +193,11 @@ class GeneratedKTOCandidate(BaseModel):
     desirability: Literal["good", "bad"]
     evidence: list[EvidenceRef]
     concise_generation_note: str = ""
+    chunk_id: str = ""
+    source_document_id: str = ""
+    source_group_id: str | None = None
+    split: str = ""
+    topology: str = "kto"
 
 
 class GeneratedEvaluationCandidate(BaseModel):
@@ -191,6 +206,11 @@ class GeneratedEvaluationCandidate(BaseModel):
     reference_answer: str | None = None
     evidence: list[EvidenceRef]
     concise_generation_note: str = ""
+    chunk_id: str = ""
+    source_document_id: str = ""
+    source_group_id: str | None = None
+    split: str = ""
+    topology: str = "evaluation"
 
 
 class GeneratedBatch(BaseModel):
@@ -300,6 +320,8 @@ class Chunk(BaseModel):
     model_config = ConfigDict(extra="allow")
     id: str
     parsed_document_id: str
+    source_document_id: str = ""
+    source_group_id: str | None = None
     split_group_id: str | None = None
     ordinal: int = 0
     heading_path: list[str] = Field(default_factory=list)
@@ -314,6 +336,38 @@ class Chunk(BaseModel):
     chunker_version: str
     chunker_config_hash: str
     sha256: str = ""
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class GenerationCandidate(BaseModel):
+    """A raw, persisted generation candidate before it becomes an example.
+
+    Carries explicit lineage fields (never derived from identifier strings) so
+    provenance and split can be resolved as data (§4 P0-2, §5.3, §A4).
+    """
+
+    model_config = ConfigDict(extra="allow")
+    id: str
+    project_id: str
+    chunk_id: str
+    source_document_id: str
+    source_group_id: str | None = None
+    split: str
+    source_span_ids: list[str] = Field(default_factory=list)
+    topology: str
+    task_family: str
+    prompt_template_name: str = ""
+    prompt_template_version: str = ""
+    prompt_template_hash: str = ""
+    schema_hash: str = ""
+    provider: str = ""
+    model: str = ""
+    profile: str = ""
+    call_fingerprint: str = ""
+    raw_output_artifact_id: str | None = None
+    candidate_hash: str
+    status: str = "accepted"
+    created_at: datetime = Field(default_factory=utcnow)
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 

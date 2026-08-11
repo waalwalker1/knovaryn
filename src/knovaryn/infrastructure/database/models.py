@@ -102,6 +102,8 @@ class ChunkDB(Base):
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     parsed_document_id: Mapped[str] = mapped_column(ForeignKey("parsed_documents.id"), index=True)
+    source_document_id: Mapped[str] = mapped_column(String(64), default="", index=True)
+    source_group_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
     split_group_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     ordinal: Mapped[int] = mapped_column(Integer, default=0)
     heading_path: Mapped[list] = mapped_column(JSON, default=list)
@@ -183,6 +185,61 @@ class QualityAssessmentDB(Base):
     concise_rationale: Mapped[str] = mapped_column(Text, default="")
     evidence: Mapped[dict] = mapped_column(JSON, default=dict)
     usage: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class GenerationCandidateDB(Base):
+    __tablename__ = "generation_candidates"
+    __table_args__ = (Index("ix_cand_fingerprint", "call_fingerprint"),)
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), index=True)
+    chunk_id: Mapped[str] = mapped_column(ForeignKey("chunks.id"), index=True)
+    source_document_id: Mapped[str] = mapped_column(String(64), index=True)
+    source_group_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    split: Mapped[str] = mapped_column(String(32))
+    source_span_ids: Mapped[list] = mapped_column(JSON, default=list)
+    topology: Mapped[str] = mapped_column(String(32))
+    task_family: Mapped[str] = mapped_column(String(64))
+    prompt_template_name: Mapped[str] = mapped_column(String(128), default="")
+    prompt_template_version: Mapped[str] = mapped_column(String(64), default="")
+    prompt_template_hash: Mapped[str] = mapped_column(String(64), default="")
+    schema_hash: Mapped[str] = mapped_column(String(64), default="")
+    provider: Mapped[str] = mapped_column(String(128), default="")
+    model: Mapped[str] = mapped_column(String(128), default="")
+    profile: Mapped[str] = mapped_column(String(64), default="")
+    call_fingerprint: Mapped[str] = mapped_column(String(64), default="")
+    raw_output_artifact_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    candidate_hash: Mapped[str] = mapped_column(String(64), index=True)
+    status: Mapped[str] = mapped_column(String(32), default="accepted")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    metadata_: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
+
+
+class ModelCallDB(Base):
+    __tablename__ = "model_calls"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    job_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    project_id: Mapped[str] = mapped_column(String(64), index=True)
+    stage: Mapped[str] = mapped_column(String(64), default="")
+    provider: Mapped[str] = mapped_column(String(128), default="")
+    requested_model: Mapped[str] = mapped_column(String(128), default="")
+    resolved_model: Mapped[str] = mapped_column(String(128), default="")
+    profile: Mapped[str] = mapped_column(String(64), default="")
+    prompt_template_hash: Mapped[str] = mapped_column(String(64), default="")
+    request_fingerprint: Mapped[str] = mapped_column(String(64), index=True)
+    schema_hash: Mapped[str] = mapped_column(String(64), default="")
+    sampling_params: Mapped[dict] = mapped_column(JSON, default=dict)
+    input_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    cached_input_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    output_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    estimated_cost: Mapped[float] = mapped_column(Float, default=0.0)
+    provider_request_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    latency_ms: Mapped[int] = mapped_column(Integer, default=0)
+    retry_count: Mapped[int] = mapped_column(Integer, default=0)
+    result_artifact_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    status: Mapped[str] = mapped_column(String(32), default="ok")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 

@@ -149,7 +149,14 @@ class Generator:
             model=None,
         )
         body = outcome.get("content") or {}
-        batch = self._candidate_from_body(body, spec, chunk.id)
+        batch = self._candidate_from_body(
+            body,
+            spec,
+            chunk_id=getattr(chunk, "id", ""),
+            source_document_id=getattr(chunk, "source_document_id", ""),
+            source_group_id=getattr(chunk, "source_group_id", None),
+            split=getattr(chunk, "split", ""),
+        )
         rec = build_prompt_usage_record(
             candidate_id=chunk.id + f"::{spec.topology}::{seed}",
             chunk_id=chunk.id,
@@ -170,10 +177,21 @@ class Generator:
             return "1"
 
     def _candidate_from_body(
-        self, body: dict[str, Any], spec: AssignmentSpec, chunk_id: str
+        self,
+        body: dict[str, Any],
+        spec: AssignmentSpec,
+        chunk_id: str,
+        source_document_id: str,
+        source_group_id: str | None,
+        split: str,
     ) -> GeneratedBatch:
-
         topo = spec.topology
+        lineage = dict(
+            chunk_id=chunk_id,
+            source_document_id=source_document_id,
+            source_group_id=source_group_id,
+            split=split,
+        )
         cand: (
             GeneratedSFTCandidate
             | GeneratedPreferenceCandidate
@@ -189,11 +207,12 @@ class Generator:
                 evidence=_coerce_evidence(body.get("evidence")),
                 answerability=body.get("answerability", "answerable"),
                 concise_generation_note=body.get("concise_generation_note", ""),
+                **lineage,
             )
         else:
             # preference / kto / evaluation: cast from canonical body
             try:
-                cand = _generic_candidate(body, spec)
+                cand = _generic_candidate(body, spec, **lineage)
             except Exception as exc:  # noqa: BLE001
                 raise ProviderError(
                     f"candidate parse failed for {topo}: {exc}", retryable=False
@@ -235,10 +254,21 @@ def _coerce_evidence(raw: Any) -> list[EvidenceRef]:
 
 
 def _generic_candidate(
-    body: dict[str, Any], spec: AssignmentSpec
+    body: dict[str, Any],
+    spec: AssignmentSpec,
+    chunk_id: str = "",
+    source_document_id: str = "",
+    source_group_id: str | None = None,
+    split: str = "",
 ) -> GeneratedPreferenceCandidate | GeneratedKTOCandidate | GeneratedEvaluationCandidate:
     """Build the topology-specific candidate from the canonical fake-provider body."""
     topo = spec.topology
+    lineage = dict(
+        chunk_id=chunk_id,
+        source_document_id=source_document_id,
+        source_group_id=source_group_id,
+        split=split,
+    )
     if topo == "preference":
         return GeneratedPreferenceCandidate(
             task_family=spec.task_family,
@@ -249,6 +279,7 @@ def _generic_candidate(
             rejected_defect=body.get("rejected_defect", "subtle_factual_error"),
             expected_preference_margin=body.get("expected_preference_margin", "medium"),
             concise_generation_note=body.get("concise_generation_note", ""),
+            **lineage,
         )
     if topo == "kto":
         return GeneratedKTOCandidate(
@@ -257,6 +288,7 @@ def _generic_candidate(
             desirability=body.get("desirability", "good"),
             evidence=_coerce_evidence(body.get("evidence")),
             concise_generation_note=body.get("concise_generation_note", ""),
+            **lineage,
         )
     if topo == "evaluation":
         return GeneratedEvaluationCandidate(
@@ -265,5 +297,6 @@ def _generic_candidate(
             reference_answer=body.get("reference_answer"),
             evidence=_coerce_evidence(body.get("evidence")),
             concise_generation_note=body.get("concise_generation_note", ""),
+            **lineage,
         )
     raise ProviderError(f"unknown topology {topo}", retryable=False)

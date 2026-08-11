@@ -46,8 +46,16 @@ class GroundingValidator(BaseValidator):
 
     async def assess(self, example: TrainingExample, ctx: ValidatorContext) -> QualityAssessment:
         answer_text = _assistant_text(example)
-        evidence_text = " ".join(ctx.source_texts.values())
+        # Evidence-scoped grounding (P0-3/C2): evaluate ONLY the spans this
+        # example cites, never the whole project. Uncited-but-present text must
+        # not be allowed to "ground" an answer, otherwise cross-document
+        # contamination passes.
+        cited = [ctx.source_texts[s] for s in example.source_span_ids if s in ctx.source_texts]
+        evidence_text = " ".join(cited)
         score, reasons = _fractional_overlap(answer_text, evidence_text)
+        if not evidence_text.strip():
+            score = 0.0
+            reasons = ["no_cited_evidence"]
         return QualityAssessment(
             id="",
             example_id=example.id,
@@ -56,7 +64,7 @@ class GroundingValidator(BaseValidator):
             policy_version=ctx.policy_version,
             status=_status(score),
             score=score,
-            reason_codes=reasons + (["no_evidence"] if not evidence_text.strip() else []),
+            reason_codes=reasons,
             concise_rationale=f"grounding score {score:.2f}",
         )
 
@@ -137,7 +145,10 @@ class RefusalValidator(BaseValidator):
             w in answer_text
             for w in ("cannot answer", "not available", "cannot determine", "unable to")
         )
-        evidence_text = " ".join(ctx.source_texts.values())
+        # Evidence-scoped (C2): only cited spans determine whether a refusal is
+        # false (answerable from evidence) vs legitimate (truly unanswerable).
+        cited = [ctx.source_texts[s] for s in example.source_span_ids if s in ctx.source_texts]
+        evidence_text = " ".join(cited)
         has_evidence = bool(evidence_text.strip())
         if is_refusal and has_evidence:
             score = 0.3
@@ -171,6 +182,11 @@ def assemble_decision(
     """Fold per-validator assessments into one overall assessment."""
     policy = policy or AcceptancePolicy()
     dims = {a.validator_name: a.score for a in assessments}
+    # instruction fulfilment is the contract's policy dimension; the completeness
+    # validator is its provider unless a dedicated one is present (fail-closed:
+    # if neither dimension was assessed, policy sees 0.0 and rejects).
+    if "instruction_fulfillment" not in dims and "completeness" in dims:
+        dims["instruction_fulfillment"] = dims["completeness"]
     dims["overall"] = sum(dims.values()) / max(len(dims), 1)
     if is_preference and "preference_signal" not in dims:
         dims["preference_signal"] = 1.0
@@ -278,6 +294,11 @@ def _fractional_overlap(answer: str, evidence: str) -> tuple[float, list[str]]:
     Tokens are stripped of non-alphanumeric characters before comparison so
     punctuation on the same word (``material:``, ``source.``) does not defeat
     stopword filtering or evidence matching.
+
+    Fail-closed (§C): grounding must be near-complete. Any substantive answer
+    token that is not backed by the cited evidence reflects a potential
+    fabrication or substitution (e.g. a wrong number / swapped key term).
+    Underscore the shortfall so partial coverage does not read as "grounded".
     """
     from ...domain.hashing import normalize_text
 
@@ -291,8 +312,11 @@ def _fractional_overlap(answer: str, evidence: str) -> tuple[float, list[str]]:
     if not ev_tokens:
         return (0.0, ["no_evidence"])
     overlap = len(ans_tokens & ev_tokens) / len(ans_tokens)
-    reasons = ["low_grounding"] if overlap < 0.6 else []
-    return (overlap, reasons)
+    # amplify ungrounded content: score falls quickly as coverage drops
+    ungrounded = 1.0 - overlap
+    score = max(0.0, 1.0 - 2.0 * ungrounded)
+    reasons = ["low_grounding"] if score < 0.6 else []
+    return (score, reasons)
 
 
 def _strip_non_alpha(token: str) -> str:

@@ -637,3 +637,277 @@ class AuditRepository:
                 payload=payload,
             )
         )
+
+
+class ParsedRepository:
+    """Persist/query parsed documents (WP A1/A3)."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self._s = session
+
+    async def add(self, p: schemas.ParsedDocument) -> None:
+        self._s.add(
+            m.ParsedDocumentDB(
+                id=p.id,
+                source_document_id=p.source_document_id,
+                parser_name=p.parser_name,
+                parser_version=p.parser_version,
+                parser_config_hash=p.parser_config_hash,
+                canonical_docling_json_artifact_id=p.canonical_docling_json_artifact_id,
+                markdown_artifact_id=p.markdown_artifact_id,
+                text_artifact_id=p.text_artifact_id,
+                diagnostics_artifact_id=p.diagnostics_artifact_id,
+                extraction_status=p.extraction_status.value
+                if isinstance(p.extraction_status, schemas.ExtractionStatus)
+                else p.extraction_status,
+                extraction_quality_summary=p.extraction_quality_summary,
+                created_at=p.created_at,
+            )
+        )
+
+    async def get(self, parsed_id: str) -> schemas.ParsedDocument | None:
+        row = await self._s.get(m.ParsedDocumentDB, parsed_id)
+        if row is None:
+            return None
+        return schemas.ParsedDocument(
+            id=row.id,
+            source_document_id=row.source_document_id,
+            parser_name=row.parser_name,
+            parser_version=row.parser_version,
+            parser_config_hash=row.parser_config_hash,
+            canonical_docling_json_artifact_id=row.canonical_docling_json_artifact_id,
+            markdown_artifact_id=row.markdown_artifact_id,
+            text_artifact_id=row.text_artifact_id,
+            diagnostics_artifact_id=row.diagnostics_artifact_id,
+            extraction_status=row.extraction_status,
+            extraction_quality_summary=row.extraction_quality_summary or {},
+            created_at=row.created_at,
+        )
+
+    async def list_by_source(self, source_document_id: str) -> list[schemas.ParsedDocument]:
+        res = await self._s.execute(
+            select(m.ParsedDocumentDB).where(
+                m.ParsedDocumentDB.source_document_id == source_document_id
+            )
+        )
+        return [await self.get(r.id) for r in res.scalars().all() if r]
+
+
+class SpanRepository:
+    """Persist/query source spans (WP A2)."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self._s = session
+
+    async def add(self, span: schemas.SourceSpan) -> None:
+        self._s.add(
+            m.SourceSpanDB(
+                id=span.id,
+                parsed_document_id=span.parsed_document_id,
+                page_number=span.page_number,
+                section_path=span.section_path,
+                element_reference=span.element_reference,
+                character_start=span.character_start,
+                character_end=span.character_end,
+                quoted_text=span.quoted_text,
+                sha256=span.sha256,
+            )
+        )
+
+    async def get(self, span_id: str) -> schemas.SourceSpan | None:
+        row = await self._s.get(m.SourceSpanDB, span_id)
+        if row is None:
+            return None
+        return schemas.SourceSpan(
+            id=row.id,
+            parsed_document_id=row.parsed_document_id,
+            page_number=row.page_number,
+            section_path=row.section_path,
+            element_reference=row.element_reference,
+            character_start=row.character_start,
+            character_end=row.character_end,
+            quoted_text=row.quoted_text,
+            sha256=row.sha256,
+        )
+
+    async def list_by_parsed(self, parsed_document_id: str) -> list[schemas.SourceSpan]:
+        res = await self._s.execute(
+            select(m.SourceSpanDB).where(m.SourceSpanDB.parsed_document_id == parsed_document_id)
+        )
+        return [await self.get(r.id) for r in res.scalars().all() if r]
+
+    async def get_many(self, span_ids: list[str]) -> list[schemas.SourceSpan]:
+        if not span_ids:
+            return []
+        res = await self._s.execute(
+            select(m.SourceSpanDB).where(m.SourceSpanDB.id.in_(span_ids))
+        )
+        return [await self.get(r.id) for r in res.scalars().all() if r]
+
+
+class ChunkRepository:
+    def __init__(self, session: AsyncSession) -> None:
+        self._s = session
+
+    async def add(self, chunk: schemas.Chunk) -> None:
+        self._s.add(
+            m.ChunkDB(
+                id=chunk.id,
+                parsed_document_id=chunk.parsed_document_id,
+                source_document_id=chunk.source_document_id,
+                source_group_id=chunk.source_group_id,
+                split_group_id=chunk.split_group_id,
+                ordinal=chunk.ordinal,
+                heading_path=chunk.heading_path,
+                page_start=chunk.page_start,
+                page_end=chunk.page_end,
+                structural_type=chunk.structural_type,
+                main_text=chunk.main_text,
+                rendered_context=chunk.rendered_context,
+                token_count=chunk.token_count,
+                source_span_ids=chunk.source_span_ids,
+                chunker_name=chunk.chunker_name,
+                chunker_version=chunk.chunker_version,
+                chunker_config_hash=chunk.chunker_config_hash,
+                sha256=chunk.sha256,
+                metadata_=chunk.metadata,
+            )
+        )
+
+    async def get(self, chunk_id: str) -> schemas.Chunk | None:
+        row = await self._s.get(m.ChunkDB, chunk_id)
+        if row is None:
+            return None
+        return schemas.Chunk(
+            id=row.id,
+            parsed_document_id=row.parsed_document_id,
+            source_document_id=row.source_document_id or "",
+            source_group_id=row.source_group_id,
+            split_group_id=row.split_group_id,
+            ordinal=row.ordinal,
+            heading_path=row.heading_path or [],
+            page_start=row.page_start,
+            page_end=row.page_end,
+            structural_type=row.structural_type,
+            main_text=row.main_text,
+            rendered_context=row.rendered_context,
+            token_count=row.token_count,
+            source_span_ids=row.source_span_ids or [],
+            chunker_name=row.chunker_name,
+            chunker_version=row.chunker_version,
+            chunker_config_hash=row.chunker_config_hash,
+            sha256=row.sha256,
+            metadata=row.metadata_ or {},
+        )
+
+
+class CandidateRepository:
+    def __init__(self, session: AsyncSession) -> None:
+        self._s = session
+
+    async def add(self, cand: schemas.GenerationCandidate) -> None:
+        self._s.add(
+            m.GenerationCandidateDB(
+                id=cand.id,
+                project_id=cand.project_id,
+                chunk_id=cand.chunk_id,
+                source_document_id=cand.source_document_id,
+                source_group_id=cand.source_group_id,
+                split=cand.split,
+                source_span_ids=cand.source_span_ids,
+                topology=cand.topology,
+                task_family=cand.task_family,
+                prompt_template_name=cand.prompt_template_name,
+                prompt_template_version=cand.prompt_template_version,
+                prompt_template_hash=cand.prompt_template_hash,
+                schema_hash=cand.schema_hash,
+                provider=cand.provider,
+                model=cand.model,
+                profile=cand.profile,
+                call_fingerprint=cand.call_fingerprint,
+                raw_output_artifact_id=cand.raw_output_artifact_id,
+                candidate_hash=cand.candidate_hash,
+                status=cand.status,
+                created_at=cand.created_at,
+                metadata_=cand.metadata,
+            )
+        )
+
+    async def get(self, candidate_id: str) -> schemas.GenerationCandidate | None:
+        row = await self._s.get(m.GenerationCandidateDB, candidate_id)
+        if row is None:
+            return None
+        return schemas.GenerationCandidate(
+            id=row.id,
+            project_id=row.project_id,
+            chunk_id=row.chunk_id,
+            source_document_id=row.source_document_id,
+            source_group_id=row.source_group_id,
+            split=row.split,
+            source_span_ids=row.source_span_ids or [],
+            topology=row.topology,
+            task_family=row.task_family,
+            prompt_template_name=row.prompt_template_name,
+            prompt_template_version=row.prompt_template_version,
+            prompt_template_hash=row.prompt_template_hash,
+            schema_hash=row.schema_hash,
+            provider=row.provider,
+            model=row.model,
+            profile=row.profile,
+            call_fingerprint=row.call_fingerprint,
+            raw_output_artifact_id=row.raw_output_artifact_id,
+            candidate_hash=row.candidate_hash,
+            status=row.status,
+            created_at=row.created_at,
+            metadata=row.metadata_ or {},
+        )
+
+    async def get_many(self, candidate_ids: list[str]) -> list[schemas.GenerationCandidate]:
+        if not candidate_ids:
+            return []
+        res = await self._s.execute(
+            select(m.GenerationCandidateDB).where(m.GenerationCandidateDB.id.in_(candidate_ids))
+        )
+        return [await self.get(r.id) for r in res.scalars().all() if r]
+
+
+class ModelCallRepository:
+    def __init__(self, session: AsyncSession, ids: IdGenerator) -> None:
+        self._s = session
+        self._ids = ids
+
+    async def record(self, call: dict[str, Any]) -> None:
+        self._s.add(
+            m.ModelCallDB(
+                id=self._ids.new(),
+                job_id=call.get("job_id"),
+                project_id=call.get("project_id", ""),
+                stage=call.get("stage", ""),
+                provider=call.get("provider", ""),
+                requested_model=call.get("requested_model", ""),
+                resolved_model=call.get("resolved_model", ""),
+                profile=call.get("profile", ""),
+                prompt_template_hash=call.get("prompt_template_hash", ""),
+                request_fingerprint=call.get("request_fingerprint", ""),
+                schema_hash=call.get("schema_hash", ""),
+                sampling_params=call.get("sampling_params", {}),
+                input_tokens=call.get("input_tokens", 0),
+                cached_input_tokens=call.get("cached_input_tokens", 0),
+                output_tokens=call.get("output_tokens", 0),
+                estimated_cost=call.get("estimated_cost", 0.0),
+                provider_request_id=call.get("provider_request_id"),
+                latency_ms=call.get("latency_ms", 0),
+                retry_count=call.get("retry_count", 0),
+                result_artifact_id=call.get("result_artifact_id"),
+                status=call.get("status", "ok"),
+            )
+        )
+
+    async def get_by_fingerprint(self, job_id: str, fingerprint: str) -> Any:
+        res = await self._s.execute(
+            select(m.ModelCallDB).where(
+                m.ModelCallDB.job_id == job_id,
+                m.ModelCallDB.request_fingerprint == fingerprint,
+            )
+        )
+        return res.scalars().first()
