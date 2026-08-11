@@ -17,8 +17,8 @@ from pathlib import Path
 import pytest
 
 from knovaryn.application.workspace import Workspace
-from knovaryn.pipeline.split import SplitAssignment, assign_splits
 from knovaryn.domain.schemas import SourceDocument
+from knovaryn.pipeline.split import assign_splits
 
 pytestmark = pytest.mark.unit
 
@@ -110,7 +110,10 @@ def test_pipeline_propagates_split_to_examples(workspace: Workspace):
         )
     )
     job = run(
-        workspace.start_pipeline(project_id=proj.id, task_family_proportions={"factual_explanation": 1.0})
+        workspace.start_pipeline(
+            project_id=proj.id,
+            task_family_proportions={"factual_explanation": 1.0},
+        )
     )
     result = run(workspace.run_job(job.id))
     assert result["state"] == "succeeded", result
@@ -124,8 +127,8 @@ def test_pipeline_propagates_split_to_examples(workspace: Workspace):
 
 def test_pipeline_reports_split_integrity_ok():
     """The pipeline must emit machine-checkable contamination evidence (WP B)."""
-    from knovaryn.domain.schemas import DatasetPlan, Project, SourceDocument
     from knovaryn.application.service import ProjectService
+    from knovaryn.domain.schemas import DatasetPlan, Project, SourceDocument
 
     proj = Project(id="int_p", slug="intp", display_name="Integrity", owner_principal="test")
     sources = [

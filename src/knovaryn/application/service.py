@@ -11,7 +11,7 @@ gateway; a live gateway swaps in seamlessly.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, cast
+from typing import Any
 
 from ..domain.hashing import ContentHasher, normalize_hash
 from ..domain.ids import IdGenerator
@@ -38,10 +38,12 @@ from ..pipeline.planner import plan as plan_dataset
 from ..pipeline.quality.artifact import diagnose_example
 from ..pipeline.quality.reports import build_quality_report
 from ..pipeline.quality.validators import (
+    AnswerabilityValidator,
     CompletenessValidator,
     FormatValidator,
     GroundingValidator,
     RefusalValidator,
+    SchemaValidator,
     ValidatorContext,
     assemble_decision,
 )
@@ -263,6 +265,7 @@ class ProjectService:
             ex.quality_status = sub.status
             ex.quality_score = sub.score
             ex.quality_dimensions = _dims_from(sub)
+            ex.private_audit_metadata["quality_verify"] = _verify_metadata(sub)
             topology_of[ex.id] = topo
             if sub.status == QualityStatus.accepted:
                 examples.append(ex)
@@ -317,10 +320,12 @@ class ProjectService:
         complete = await CompletenessValidator().assess(ex, ctx)
         fmt = await FormatValidator().assess(ex, ctx)
         refusal = await RefusalValidator().assess(ex, ctx)
+        schema = await SchemaValidator().assess(ex, ctx)
+        answerability = await AnswerabilityValidator().assess(ex, ctx)
         diag = diagnose_example(ex)
         artifact = _artifact_assessment(ex, diag)
         overall = assemble_decision(
-            [grounding, complete, fmt, refusal, artifact],
+            [grounding, complete, fmt, refusal, schema, answerability, artifact],
             example_id=ex.id,
             is_preference=is_preference,
         )
@@ -436,6 +441,32 @@ def _dims_from(assessment: Any) -> dict[str, float]:
         else {}
     )
     return dict(ev) if isinstance(ev, dict) else {}
+
+
+def _verify_metadata(assessment: Any) -> dict[str, Any]:
+    """Extract the durable three-state verification record (WP C1).
+
+    Stored on the example's private audit metadata so review/approval tooling
+    can retrace, per dimension, whether it was executed and above its floor
+    (verified), executed and below (failed), or never assessed (absent =>
+    unverified). Fail-closed: an absent dimension is unverified, not a pass.
+    """
+    if not isinstance(assessment.evidence, dict):
+        return {"verify_state": assessment.verify_state.value}
+    verify = assessment.evidence.get("verify", {})
+    if not isinstance(verify, dict):
+        verify = {}
+    # the overall assessment's own verdict is the definitive three-state signal
+    return {
+        "verify_state": assessment.verify_state.value,
+        "per_dimension": {k: v for k, v in verify.items() if k != "overall"},
+        "critical_unverified": [
+            c for c in assessment.reason_codes if c.startswith("critical_unverified")
+        ],
+        "critical_failed": [
+            c for c in assessment.reason_codes if c.startswith("critical_failed")
+        ],
+    }
 
 
 def _artifact_assessment(ex: TrainingExample, diag: Any) -> Any:

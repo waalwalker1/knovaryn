@@ -12,7 +12,13 @@ import abc
 from dataclasses import dataclass, field
 
 from ...domain.policies import AcceptancePolicy
-from ...domain.schemas import QualityAssessment, QualityStatus, TrainingExample
+from ...domain.schemas import (
+    QualityAssessment,
+    QualityStatus,
+    Topology,
+    TrainingExample,
+    Verification,
+)
 
 
 @dataclass
@@ -36,6 +42,11 @@ def _status(score: float) -> QualityStatus:
     if score >= 0.5:
         return QualityStatus.review
     return QualityStatus.rejected
+
+
+def _verify_state(score: float, floor: float) -> Verification:
+    """WP C1: a dimension is ``verified`` only when executed AND above its floor."""
+    return Verification.verified if score >= floor else Verification.failed
 
 
 class GroundingValidator(BaseValidator):
@@ -63,6 +74,7 @@ class GroundingValidator(BaseValidator):
             validator_version=self.version,
             policy_version=ctx.policy_version,
             status=_status(score),
+            verify_state=_verify_state(score, 0.9),  # WP C1: grounding is a hard floor
             score=score,
             reason_codes=reasons,
             concise_rationale=f"grounding score {score:.2f}",
@@ -97,6 +109,7 @@ class CompletenessValidator(BaseValidator):
             validator_version=self.version,
             policy_version=ctx.policy_version,
             status=_status(score),
+            verify_state=_verify_state(score, 0.8),
             score=score,
             reason_codes=reasons,
             concise_rationale=f"completeness score {score:.2f} (ratio {ratio:.2f})",
@@ -127,6 +140,7 @@ class FormatValidator(BaseValidator):
             validator_version=self.version,
             policy_version=ctx.policy_version,
             status=_status(score),
+            verify_state=_verify_state(score, 0.8),
             score=score,
             reason_codes=reasons,
             concise_rationale=f"format score {score:.2f}",
@@ -166,9 +180,133 @@ class RefusalValidator(BaseValidator):
             validator_version=self.version,
             policy_version=ctx.policy_version,
             status=_status(score),
+            verify_state=_verify_state(score, 0.8),
             score=score,
             reason_codes=reasons,
             concise_rationale=f"refusal score {score:.2f}",
+        )
+
+
+class SchemaValidator(BaseValidator):
+    """C3.1/C4: topology-specific structural validation (fail-closed).
+
+    Enforces the canonical message/role/evidence contract per topology:
+    - SFT/KTO message chains start with ``system|user`` and contain an
+      assistant turn (mirrors ``GeneratedSFTCandidate`` Pydantic rules);
+    - preference pairs each carry an assistant turn;
+    - every example cites at least one source span, and every cited span must
+      resolve to real evidence (C3.2) — an unresolvable reference is a schema
+      failure, never silently ignored;
+    - empty required content (user/assistant) reads as a schema failure.
+    """
+
+    name = "schema"
+    version = "1"
+
+    async def assess(self, example: TrainingExample, ctx: ValidatorContext) -> QualityAssessment:
+        reasons: list[str] = []
+        score = 1.0
+
+        def _fail(code: str) -> None:
+            nonlocal score
+            score = min(score, 0.0)
+            reasons.append(code)
+
+        if example.topology == Topology.preference:
+            all_msgs = (
+                list(example.prompt_messages)
+                + list(example.chosen_messages)
+                + list(example.rejected_messages)
+            )
+            for m in all_msgs:
+                if not m.content.strip():
+                    _fail("empty_content")
+            if not any(m.role == "assistant" for m in example.chosen_messages):
+                _fail("chosen_missing_assistant")
+            if not any(m.role == "assistant" for m in example.rejected_messages):
+                _fail("rejected_missing_assistant")
+        else:
+            msgs = list(example.prompt_messages)
+            aux = list(example.chosen_messages)
+            if not msgs and not aux:
+                _fail("no_messages")
+            if msgs and msgs[0].role not in ("system", "user"):
+                _fail("bad_first_role")
+            if not any(m.role == "assistant" for m in aux):
+                _fail("missing_assistant")
+            for m in msgs + aux:
+                if not m.content.strip():
+                    _fail("empty_content")
+
+        # evidence resolution (C3.2): each cited span must resolve to real text
+        if not example.source_span_ids:
+            _fail("no_evidence")
+        for sid in example.source_span_ids:
+            if sid not in ctx.source_texts:
+                _fail("unresolved_evidence")
+
+        return QualityAssessment(
+            id="",
+            example_id=example.id,
+            validator_name=self.name,
+            validator_version=self.version,
+            policy_version=ctx.policy_version,
+            status=_status(score),
+            verify_state=_verify_state(score, 0.9),  # C4: schema is a hard floor
+            score=score,
+            reason_codes=reasons or ["schema_ok"],
+            concise_rationale=f"schema score {score:.2f}",
+        )
+
+
+class AnswerabilityValidator(BaseValidator):
+    """C3.5/C4: the prompt must be answerable from the cited evidence."""
+
+    name = "answerability"
+    version = "1"
+
+    async def assess(self, example: TrainingExample, ctx: ValidatorContext) -> QualityAssessment:
+        answer_text = _assistant_text(example).lower()
+        cited = [ctx.source_texts[s] for s in example.source_span_ids if s in ctx.source_texts]
+        evidence_text = " ".join(cited)
+        has_evidence = bool(evidence_text.strip())
+
+        is_refusal = any(
+            w in answer_text
+            for w in ("cannot answer", "not available", "cannot determine", "unable to")
+        )
+        reasons: list[str] = []
+
+        if not has_evidence:
+            score = 0.0
+            reasons.append("no_evidence_for_answer")
+        elif is_refusal:
+            # a refusal is only legitimate if the cited evidence cannot answer
+            # the QUESTION (prompt). Judge answerability from prompt->evidence,
+            # not assistant->evidence: a refusal text inherently shares no tokens
+            # with the evidence, so grounding the refusal itself is meaningless.
+            prompt_answerable = _raw_overlap(_prompt_text(example), evidence_text)
+            if prompt_answerable >= 0.2:
+                score = 0.3
+                reasons.append("false_refusal")
+            else:
+                score = 1.0
+                reasons.append("legitimate_refusal")
+        else:
+            score = 1.0
+            reasons.append("answerable")
+
+        return QualityAssessment(
+            id="",
+            example_id=example.id,
+            validator_name=self.name,
+            validator_version=self.version,
+            policy_version=ctx.policy_version,
+            status=_status(score),
+            verify_state=_verify_state(score, 0.8),
+            score=score,
+            reason_codes=reasons,
+            concise_rationale=f"answerability score {score:.2f}",
         )
 
 
@@ -179,33 +317,85 @@ def assemble_decision(
     is_preference: bool = False,
     policy: AcceptancePolicy | None = None,
 ) -> QualityAssessment:
-    """Fold per-validator assessments into one overall assessment."""
+    """Fold per-validator assessments into one overall assessment (C4).
+
+    Applies hard floors plus three-state verification, fail-closed:
+    - critical dimensions (grounding, schema, answerability, instruction
+      fulfilment) must be ``verified`` for acceptance;
+    - any critical dimension left ``unverified`` (never assessed) forces
+      ``review`` — absence of evidence is never certification;
+    - any critical dimension ``failed`` (assessed below its floor) forces
+      ``rejected``;
+    - non-critical dimensions fold into the overall score used by the
+      acceptance ceiling.
+    """
     policy = policy or AcceptancePolicy()
+    verify: dict[str, Verification] = {a.validator_name: a.verify_state for a in assessments}
     dims = {a.validator_name: a.score for a in assessments}
+
     # instruction fulfilment is the contract's policy dimension; the completeness
     # validator is its provider unless a dedicated one is present (fail-closed:
     # if neither dimension was assessed, policy sees 0.0 and rejects).
     if "instruction_fulfillment" not in dims and "completeness" in dims:
         dims["instruction_fulfillment"] = dims["completeness"]
-    dims["overall"] = sum(dims.values()) / max(len(dims), 1)
+        verify["instruction_fulfillment"] = verify.get("completeness", Verification.unverified)
     if is_preference and "preference_signal" not in dims:
         dims["preference_signal"] = 1.0
-    accepted, reasons, status = policy.assess(dims, is_preference=is_preference)
+        verify.setdefault("preference_signal", Verification.verified)
+
+    # C4 critical dimensions that must be verified to accept. ``present`` is the
+    # set of dimension keys actually certified (after the completeness ->
+    # instruction_fulfillment alias above); a dimension that was never produced
+    # OR returned unverified is not certifiable (fail-closed).
+    critical = ["grounding", "schema", "answerability", "instruction_fulfillment"]
+    present = set(verify.keys())
+    failed_critical = [
+        d for d in critical if d in present and verify.get(d) == Verification.failed
+    ]
+    unverified_critical = [
+        d
+        for d in critical
+        if d not in present or verify.get(d) == Verification.unverified
+    ]
+    certifiable = not failed_critical and not unverified_critical
+
+    overall = sum(dims.values()) / max(len(dims), 1)
+    dims["overall"] = round(overall, 4)
+    over_ceiling, reasons, status = policy.assess(dims, is_preference=is_preference)
+
+    if failed_critical:
+        status = QualityStatus.rejected
+        reasons = reasons + [f"critical_failed:{d}" for d in failed_critical]
+    elif not certifiable:
+        # a critical dimension was never certified (unverified or missing)
+        status = QualityStatus.review
+        reasons = reasons + [f"critical_unverified:{d}" for d in unverified_critical]
+    elif over_ceiling:
+        status = QualityStatus.accepted
+    else:
+        status = QualityStatus.review
+
     reason = _aggregate_reasons(assessments, status) + reasons
+    per_validator = {a.validator_name: a.score for a in assessments}
     return QualityAssessment(
         id="",
         example_id=example_id,
         validator_name="overall",
         validator_version="1",
         policy_version="1",
-        status=status if not accepted else QualityStatus.accepted,
-        score=round(dims["overall"], 4),
+        status=status,
+        verify_state=(
+            Verification.verified if status == QualityStatus.accepted else Verification.failed
+        ),
+        score=round(overall, 4),
         reason_codes=reason,
         concise_rationale="overall acceptance assessment",
         evidence={
-            "per_validator": {a.validator_name: a.score for a in assessments},
-            "accepted": accepted,
+            "per_validator": per_validator,
+            "accepted": status == QualityStatus.accepted,
             "reasons": reasons,
+            "verify": verify,
+            "certifiable": certifiable,
         },
     )
 
@@ -321,3 +511,23 @@ def _fractional_overlap(answer: str, evidence: str) -> tuple[float, list[str]]:
 
 def _strip_non_alpha(token: str) -> str:
     return "".join(ch for ch in token if ch.isalnum())
+
+
+def _raw_overlap(answer: str, evidence: str) -> float:
+    """Raw fraction of CONTENT answer tokens found in evidence (0..1).
+
+    Unlike :func:`_fractional_overlap` (which returns an amplified, fail-closed
+    score), this returns the plain coverage fraction — used where the signal is
+    merely 'does the evidence touch the topic' (e.g. answerability), not a
+    point-blank grounding verdict.
+    """
+    from ...domain.hashing import normalize_text
+
+    def _lex(t: str) -> set[str]:
+        return {_strip_non_alpha(x) for x in normalize_text(t).split() if _strip_non_alpha(x)}
+
+    a = {t for t in _lex(answer) if t not in _STOPWORDS}
+    e = _lex(evidence)
+    if not a or not e:
+        return 0.0
+    return len(a & e) / len(a)

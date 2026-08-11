@@ -17,7 +17,6 @@ from pathlib import Path
 import pytest
 
 from knovaryn.application.workspace import Workspace
-from knovaryn.domain.schemas import JobState
 
 pytestmark = pytest.mark.unit
 
@@ -59,7 +58,9 @@ def _run_pipeline(ws: Workspace):
             content=CONTENT,
         )
     )
-    job = run(ws.start_pipeline(project_id=proj.id, task_family_proportions={"factual_explanation": 1.0}))
+    job = run(
+        ws.start_pipeline(project_id=proj.id, task_family_proportions={"factual_explanation": 1.0})
+    )
     result = run(ws.run_job(job.id))
     assert result["state"] == "succeeded", result
     listing = run(ws.list_examples(project_id=proj.id))
@@ -95,8 +96,6 @@ def test_no_project_id_injected_into_source_document_ids(workspace: Workspace):
 
 def test_source_spans_resolve_to_persisted_spans(workspace: Workspace):
     proj, src, examples = _run_pipeline(workspace)
-    listing = run(workspace.list_sources(project_id=proj.id))
-    src_ids = {s["id"] for s in listing["sources"]}
     for ex in examples:
         # every span id must resolve to a persisted SourceSpan
         for span_id in ex["source_span_ids"]:

@@ -55,10 +55,12 @@ from ..infrastructure.database.session import Database
 from ..pipeline.jobs.engine import JobEngine
 from ..pipeline.quality.reports import build_quality_report
 from ..pipeline.quality.validators import (
+    AnswerabilityValidator,
     CompletenessValidator,
     FormatValidator,
     GroundingValidator,
     RefusalValidator,
+    SchemaValidator,
     ValidatorContext,
     assemble_decision,
 )
@@ -463,6 +465,8 @@ class Workspace:
                     await CompletenessValidator().assess(ex, ctx),
                     await FormatValidator().assess(ex, ctx),
                     await RefusalValidator().assess(ex, ctx),
+                    await SchemaValidator().assess(ex, ctx),
+                    await AnswerabilityValidator().assess(ex, ctx),
                     artifact,
                 ]
                 overall = assemble_decision(

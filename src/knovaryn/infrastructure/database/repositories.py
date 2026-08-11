@@ -679,7 +679,7 @@ class ParsedRepository:
             markdown_artifact_id=row.markdown_artifact_id,
             text_artifact_id=row.text_artifact_id,
             diagnostics_artifact_id=row.diagnostics_artifact_id,
-            extraction_status=row.extraction_status,
+            extraction_status=schemas.ExtractionStatus(row.extraction_status),
             extraction_quality_summary=row.extraction_quality_summary or {},
             created_at=row.created_at,
         )
@@ -690,7 +690,8 @@ class ParsedRepository:
                 m.ParsedDocumentDB.source_document_id == source_document_id
             )
         )
-        return [await self.get(r.id) for r in res.scalars().all() if r]
+        rows = [await self.get(r.id) for r in res.scalars().all() if r]
+        return [x for x in rows if x is not None]
 
 
 class SpanRepository:
@@ -734,7 +735,8 @@ class SpanRepository:
         res = await self._s.execute(
             select(m.SourceSpanDB).where(m.SourceSpanDB.parsed_document_id == parsed_document_id)
         )
-        return [await self.get(r.id) for r in res.scalars().all() if r]
+        rows = [await self.get(r.id) for r in res.scalars().all() if r]
+        return [x for x in rows if x is not None]
 
     async def get_many(self, span_ids: list[str]) -> list[schemas.SourceSpan]:
         if not span_ids:
@@ -742,7 +744,8 @@ class SpanRepository:
         res = await self._s.execute(
             select(m.SourceSpanDB).where(m.SourceSpanDB.id.in_(span_ids))
         )
-        return [await self.get(r.id) for r in res.scalars().all() if r]
+        rows = [await self.get(r.id) for r in res.scalars().all() if r]
+        return [x for x in rows if x is not None]
 
 
 class ChunkRepository:
@@ -868,7 +871,8 @@ class CandidateRepository:
         res = await self._s.execute(
             select(m.GenerationCandidateDB).where(m.GenerationCandidateDB.id.in_(candidate_ids))
         )
-        return [await self.get(r.id) for r in res.scalars().all() if r]
+        rows = [await self.get(r.id) for r in res.scalars().all() if r]
+        return [x for x in rows if x is not None]
 
 
 class ModelCallRepository:

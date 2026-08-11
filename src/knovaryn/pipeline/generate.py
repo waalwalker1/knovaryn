@@ -186,12 +186,14 @@ class Generator:
         split: str,
     ) -> GeneratedBatch:
         topo = spec.topology
-        lineage = dict(
-            chunk_id=chunk_id,
-            source_document_id=source_document_id,
-            source_group_id=source_group_id,
-            split=split,
-        )
+        # typed Any: source_group_id is legitimately None, but split/source_document_id
+        # are str; a literal keeps the spread mypy-valid without runtime change.
+        lineage: dict[str, Any] = {
+            "chunk_id": chunk_id,
+            "source_document_id": source_document_id,
+            "source_group_id": source_group_id,
+            "split": split,
+        }
         cand: (
             GeneratedSFTCandidate
             | GeneratedPreferenceCandidate
@@ -263,12 +265,12 @@ def _generic_candidate(
 ) -> GeneratedPreferenceCandidate | GeneratedKTOCandidate | GeneratedEvaluationCandidate:
     """Build the topology-specific candidate from the canonical fake-provider body."""
     topo = spec.topology
-    lineage = dict(
-        chunk_id=chunk_id,
-        source_document_id=source_document_id,
-        source_group_id=source_group_id,
-        split=split,
-    )
+    lineage: dict[str, Any] = {
+        "chunk_id": chunk_id,
+        "source_document_id": source_document_id,
+        "source_group_id": source_group_id,
+        "split": split,
+    }
     if topo == "preference":
         return GeneratedPreferenceCandidate(
             task_family=spec.task_family,

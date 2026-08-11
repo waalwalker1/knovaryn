@@ -67,6 +67,19 @@ class QualityStatus(StrEnum):
     blocked = "blocked"
 
 
+class Verification(StrEnum):
+    """WP C1 — three-state verification for a quality dimension.
+
+    ``verified`` means the dimension was actually assessed and met its floor;
+    ``failed`` means it was assessed and missed the floor; ``unverified`` means
+    it was never assessed (missing execution must never become a perfect score).
+    """
+
+    verified = "verified"
+    unverified = "unverified"
+    failed = "failed"
+
+
 class JobState(StrEnum):
     queued = "queued"
     leased = "leased"
@@ -323,6 +336,10 @@ class Chunk(BaseModel):
     source_document_id: str = ""
     source_group_id: str | None = None
     split_group_id: str | None = None
+    # explicit source-level split assigned to this chunk (WP B/P0-2). Persisted
+    # on the chunk in-memory; the authoritative split for examples comes from the
+    # generation candidate, which carries it as a first-class field.
+    split: str | None = None
     ordinal: int = 0
     heading_path: list[str] = Field(default_factory=list)
     page_start: int | None = None
@@ -403,6 +420,7 @@ class QualityAssessment(BaseModel):
     validator_version: str
     policy_version: str = ""
     status: QualityStatus = QualityStatus.accepted
+    verify_state: Verification = Verification.unverified  # WP C1 (fail-closed default)
     score: float = 0.0
     reason_codes: list[str] = Field(default_factory=list)
     concise_rationale: str = ""
