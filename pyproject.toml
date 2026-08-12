@@ -40,6 +40,7 @@ dependencies = [
 
 [project.scripts]
 knovaryn = "knovaryn.interfaces.cli.main:app"
+knovaryn-mcp = "knovaryn.interfaces.mcp.__main__:main"
 
 [project.optional-dependencies]
 # Heavy/opt-in extras are NOT required for the offline demo or CI (fake provider).
@@ -61,6 +62,9 @@ parquet = [
 hub = [
     "huggingface-hub>=0.23",
 ]
+mcp = [
+    "mcp>=1.0,<2",
+]
 ml = [
     "scikit-learn>=1.4",
     "numpy>=1.26",
@@ -72,7 +76,7 @@ dev = [
     "hypothesis>=6.100",
     "ruff>=0.4",
     "mypy>=1.10",
-    "mcp>=1.0",
+    "mcp>=1.0,<2",
     "pre-commit>=3.7",
     "mkdocs-material>=9.5",
     "mkdocs>=1.6",

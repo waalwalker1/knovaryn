@@ -13,7 +13,16 @@ the durable state.
 | Server ID | `knovaryn_mcp` |
 | Resource URI scheme | `knovaryn://` |
 | Env prefix | `KNOVARYN_` |
-| Typical start command | `uv run knovaryn mcp --profile offline-demo` |
+| Canonical command (stdio) | `knovaryn-mcp` (or `knovaryn mcp`) |
+| Remote (Streamable-HTTP) | `knovaryn-mcp --transport streamable-http --host 127.0.0.1 --port 8000` |
+| Typical dev start command | `uv run knovaryn mcp --profile offline-demo` |
+
+The **canonical command is `knovaryn-mcp`** — stdio, the default MCP host
+transport. The same server is also exposed as the `knovaryn mcp` CLI subcommand.
+For a remote/HTTP deployment, pass `--transport streamable-http` with
+`--host`/`--port` (it is hosted on a network service over FastMCP's Starlette
+app). The server instance is identical across transports; only the wire
+transport changes.
 
 No credentials are embedded in the client config. The offline-demo profile needs
 no keys or network; real providers are configured on the server side via

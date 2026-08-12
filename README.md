@@ -62,7 +62,7 @@ lifecycle for building *trustworthy* datasets:
   ingestion *off by default*, SSRF defenses, loopback HTTP binding.
 - **Canonical parsing + structure-aware chunking** — Docling canonical JSON as the
   parsed artifact, split-at-source-group, queryable provenance.
-- **17-tool MCP suite + CLI + REST + Python SDK** — one application-services core,
+- **23-tool MCP suite + CLI + REST + Python SDK** — one application-services core,
   four interfaces.
 - **Quality gates that quarantine** — grounding, completeness, format, refusal,
   artifact, dedupe, contamination, privacy, and license validators.
@@ -150,18 +150,32 @@ Knovaryn exposes the **same application services** through four interfaces:
 | `knovaryn server` | Serve the offline REST API + web console (bearer-token aware). |
 | `knovaryn version` | Print the installed version. |
 
-### MCP server (17 tools)
+### MCP server (23 tools)
 
 The `knovaryn_mcp` server exposes the full `knovaryn_*` tool set for any
 MCP-capable agent. Requires the `mcp` package (see `docs/guides/mcp-clients.md`):
 
 ```
-knovaryn_create_project       knovaryn_add_source            knovaryn_inspect_source
-knovaryn_estimate_run         knovaryn_start_pipeline        knovaryn_get_job
-knovaryn_run_job              knovaryn_cancel_job            knovaryn_resume_job
-knovaryn_preview_examples     knovaryn_review_example        knovaryn_validate_dataset
-knovaryn_create_dataset_version knovaryn_export_dataset      knovaryn_publish_dataset
-knovaryn_compare_runs         knovaryn_license_report        knovaryn_doctor
+health                         knovaryn_create_project      knovaryn_list_projects
+knovaryn_add_source            knovaryn_inspect_source      knovaryn_license_report
+knovaryn_estimate_run          knovaryn_start_pipeline      knovaryn_get_job
+knovaryn_list_jobs             knovaryn_run_job             knovaryn_cancel_job
+knovaryn_resume_job            knovaryn_lineage             knovaryn_preview_examples
+knovaryn_review_example        knovaryn_validate_dataset    knovaryn_create_dataset_version
+knovaryn_export_dataset        knovaryn_publish_dataset     knovaryn_compare_runs
+knovaryn_doctor                run_pipeline
+```
+
+**One canonical command** (stdio — the default MCP host transport):
+
+```
+knovaryn-mcp                          # or: knovaryn mcp
+```
+
+For a remote/HTTP deployment, run it as a network service over Streamable-HTTP:
+
+```
+knovaryn-mcp --transport streamable-http --host 127.0.0.1 --port 8000
 ```
 
 ### REST + web console (`knovaryn server`)
@@ -233,7 +247,7 @@ MkDocs, Notion).
 ### 1. System architecture — one core, four interfaces
 
 Everything sits on a single **application-services core** (domain + application)
-behind a durable pipeline engine. Four interfaces — CLI, the 17-tool MCP server,
+behind a durable pipeline engine. Four interfaces — CLI, the 23-tool MCP server,
 REST + web console, and the Python SDK — all drive the *same* services, so a job
 started from the CLI is visible everywhere.
 
@@ -249,7 +263,7 @@ flowchart LR
 
     subgraph INTERFACES["Four interfaces — same services"]
         C["CLI<br/>(knovaryn)"]
-        M["MCP server<br/>(knovaryn_mcp — 17 tools)"]
+        M["MCP server<br/>(knovaryn_mcp — 23 tools)"]
         R["REST + web console<br/>(knovaryn server)"]
         S["Python SDK"]
     end
@@ -389,7 +403,7 @@ flowchart LR
 
 ### 4. A typical MCP agent session
 
-From an empty workspace to a published dataset version using the 17-tool MCP
+From an empty workspace to a published dataset version using the 23-tool MCP
 suite — exactly what a Claude/Cursor-style agent sees.
 
 <p align="center">

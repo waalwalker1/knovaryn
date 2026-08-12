@@ -219,6 +219,35 @@ def worker(
     )
 
 
+@app.command("mcp")
+def mcp_cmd(
+    transport: str = typer.Option(
+        "stdio", "--transport", help="MCP transport: stdio (default) or streamable-http."
+    ),
+    host: str | None = typer.Option(None, "--host", help="Bind host for streamable-http."),
+    port: int | None = typer.Option(None, "--port", "-p", help="Bind port for streamable-http."),
+    database_url: str | None = typer.Option(
+        None, "--database-url", help="Override the database URL."
+    ),
+) -> None:
+    """Run the Knovaryn MCP server (stdio by default).
+
+    ``knovaryn-mcp`` is the packaged console entry point (WP F1); this command
+    is the equivalent subcommand so a single ``knovaryn`` binary serves both
+    the CLI and the MCP surface.
+    """
+    from ...interfaces.mcp.__main__ import main as _mcp_main
+
+    argv = [f"--transport={transport}"]
+    if host is not None:
+        argv.append(f"--host={host}")
+    if port is not None:
+        argv.append(f"--port={port}")
+    if database_url is not None:
+        argv.append(f"--database-url={database_url}")
+    raise typer.Exit(_mcp_main(argv))
+
+
 @app.command("version")
 def version_cmd() -> None:
     """Print the installed version."""

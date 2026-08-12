@@ -41,7 +41,7 @@ flowchart LR
     subgraph AGENTS["Host agents"]
         MCPAG["Claude · Cursor · Claude Code"]
     end
-    MCPAG --> M["knovaryn_mcp — 17 tools"]
+    MCPAG --> M["knovaryn_mcp — 23 tools"]
     subgraph CORE["Knovaryn core"]
         IN["Intake & preflight"] --> PA["Parse (Docling)"]
         PA --> SP["Split & chunk"]
