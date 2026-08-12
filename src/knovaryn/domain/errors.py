@@ -76,6 +76,12 @@ class SSRFError(IntakeError):
     code = "ssrf_block"
 
 
+class MalwareScanError(IntakeError):
+    """A configured malware scanner reported a positive on a source."""
+
+    code = "malware_scan"
+
+
 class ProviderError(KnovarynError):
     """Model provider failure, possibly retryable."""
 

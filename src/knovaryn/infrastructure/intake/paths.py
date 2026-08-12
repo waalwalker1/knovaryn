@@ -64,7 +64,23 @@ def validate_local_path(
         raise PathTraversalError(f"path does not exist: {path_str!r}")
     if real.is_char_device() or real.is_block_device() or real.is_socket() or real.is_fifo():
         raise PathTraversalError(f"special file not allowed: {path_str!r}")
+    _reject_hardlinks(real)
     return real
+
+
+def _reject_hardlinks(real: Path) -> None:
+    """Reject hard-linked locals (spec §8.3 / WP G4).
+
+    A hard link to an inode with multiple names is an indirection the policy
+    cannot bound (the same content addressable from an unexpected name). We opt
+    to reject rather than follow it.
+    """
+    try:
+        st = real.stat()
+    except OSError:
+        raise PathTraversalError(f"cannot stat path: {str(real)!r}") from None
+    if st.st_nlink > 1:
+        raise PathTraversalError(f"hard-linked file not allowed: {str(real)!r}")
 
 
 def _reject_symlink_components(candidate: Path) -> None:

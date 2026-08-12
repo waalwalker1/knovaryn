@@ -137,3 +137,49 @@ def _ingest(svc, *, name: str, data: bytes, max_file_bytes: int = 1024 * 1024):
         max_file_bytes=max_file_bytes,
         verify_archive=True,
     )
+
+
+def test_malware_hook_invoked_on_ingest(tmp_path) -> None:
+    """The configured malware scanner is called on every ingested source."""
+    from knovaryn.domain.errors import MalwareScanError
+
+    class _Ids:
+        def new_handle(self, prefix: str) -> str:
+            return f"{prefix}mal"
+
+    calls: list[bytes] = []
+
+    class _Scanner:
+        def scan(self, data: bytes) -> None:
+            calls.append(data)
+
+    class _ScannerPos:
+        def scan(self, data: bytes) -> None:
+            raise MalwareScanError("simulated positive")
+
+    svc = IntakeService(ids=_Ids(), store=FakeStore(), quarantine_dir=tmp_path / "q")
+
+    async def good():
+        return await svc.ingest_bytes(
+            project_id="p1",
+            name="ok.txt",
+            data=b"# markdown safe text",
+            malware_scan=_Scanner(),
+        )
+
+    import asyncio
+
+    res = asyncio.run(good())
+    assert calls and calls[0] == b"# markdown safe text"
+    assert res.preflight_ok
+
+    async def bad():
+        return await svc.ingest_bytes(
+            project_id="p1",
+            name="bad.txt",
+            data=b"flagged content",
+            malware_scan=_ScannerPos(),
+        )
+
+    with pytest.raises(MalwareScanError):
+        asyncio.run(bad())

@@ -23,6 +23,7 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 from ..domain.config import load_config
@@ -174,32 +175,108 @@ class Workspace:
             }
 
     # -- sources ---------------------------------------------------------------
+    def _artifact_store(self) -> Any:
+        """Build (and cache) the content-addressed artifact store (spec §6.3)."""
+        store = getattr(self, "_artifact_store_cache", None)
+        if store is None:
+            from ..infrastructure.artifacts.__factory import build_artifact_store
+
+            cfg = load_config()
+            storage = cfg.get("storage", {})
+            store = build_artifact_store(
+                backend=storage.get("artifact_backend", "local"),
+                config=storage,
+            )
+            self._artifact_store_cache = store
+        return store
+
+    def _intake_service(self) -> Any:
+        svc = getattr(self, "_intake_service_cache", None)
+        if svc is None:
+            from ..infrastructure.intake.intake import IntakeService
+
+            cfg = load_config()
+            storage = cfg.get("storage", {})
+            root = storage.get("artifact_root") or ".knovaryn/artifacts"
+            svc = IntakeService(
+                ids=self._ids,
+                store=self._artifact_store(),
+                quarantine_dir=Path(str(root)).parent / "quarantine",
+            )
+            self._intake_service_cache = svc
+        return svc
+
     async def add_source(
         self,
         *,
         project_id: str,
         original_name: str,
-        media_type: str,
-        content: str,
+        media_type: str | None = None,
+        content: str = "",
+        raw: bytes | None = None,
         declared_license: str | None = None,
         source_kind: SourceKind = SourceKind.upload,
+        source_locator: str = "",
+        group_key: str | None = None,
     ) -> SourceDocument:
+        """Register a source through the security-hardened intake funnel (G1/G3).
+
+        Single intake path: text callers pass ``content`` (encoded here), binary /
+        URL / archive callers pass ``raw`` bytes. Everything is magic-sniffed,
+        size-limited, quarantined, hashed with a real SHA-256 of the bytes, and
+        persisted artifact-first through :class:`IntakeService` before the source
+        is committed to the store. ``media_type`` is accepted for caller
+        compatibility but is advisory only — the detected type wins.
+        """
+        if raw is None:
+            # preserve the legacy text signature: encode to bytes and let intake
+            # do the rest (magic sniff, real sha256, artifact-first persistence).
+            raw = content.encode("utf-8")
+
+        intake = self._intake_service()
+        result = await intake.ingest_bytes(
+            project_id=project_id,
+            name=original_name,
+            data=raw,
+            source_kind=source_kind,
+            locator=source_locator,
+            declared_license=declared_license,
+            group_key=group_key or original_name,
+        )
+        ingested = result.source
+
         async with self._db.session() as session, session.begin():
             proj_repo = ProjectRepository(session, self._ids)
             if await proj_repo.get(project_id) is None:
                 raise NotFoundError(f"project not found: {project_id}")
+            # adopt the intake-built source document (artifact-first provenance);
+            # the locator is already redacted by intake.
             src = SourceDocument(
-                id=self._ids.new_handle("src"),
+                id=ingested.id,
                 project_id=project_id,
                 original_name=original_name,
-                media_type=media_type,
-                byte_size=len(content.encode("utf-8")),
-                sha256=ContentHasher.cfg_hash([content]),
+                media_type=ingested.media_type,
+                byte_size=ingested.byte_size,
+                sha256=ingested.sha256,
                 source_kind=source_kind,
+                source_locator_redacted=ingested.source_locator_redacted,
                 declared_license=declared_license,
-                group_key=original_name,
-                metadata={"content": content},
+                license_status=ingested.license_status,
+                intake_status=ingested.intake_status,
+                artifact_id_original=ingested.artifact_id_original,
+                group_key=group_key or original_name,
+                metadata=dict(ingested.metadata or {}),
             )
+            # keep text content accessible to the legacy parse path without
+            # duplicating bytes for binary sources.
+            is_text = src.media_type.startswith("text/") or src.media_type in (
+                "text/markdown",
+                "text/plain",
+                "text/html",
+                "text/xml",
+            )
+            if is_text and raw:
+                src.metadata["content"] = raw.decode("utf-8", errors="ignore")
             repo = SourceRepository(session)
             await repo.add(src)
             audit = AuditRepository(session, self._ids)
@@ -208,7 +285,7 @@ class Workspace:
                 event_type="source.added",
                 project_id=project_id,
                 summary=f"added source {original_name}",
-                payload={"source_id": src.id, "bytes": src.byte_size},
+                payload={"source_id": src.id, "bytes": src.byte_size, "sha256": src.sha256},
             )
             return src
 
@@ -290,13 +367,14 @@ class Workspace:
             source_repo = SourceRepository(session)
             sources, _ = await source_repo.list_by_project(job.project_id, limit=1000)
             contents = [_source_content(s) for s in sources]
+            raw_contents = await _resolve_raw_bytes(self._artifact_store(), sources, contents)
 
             engine = JobEngine(ids=self._ids, repo=job_repo)
             stages = [
                 (
                     job.job_type,
                     _make_pipeline_stage(
-                        project, sources, contents, self.default_project_service()
+                        project, sources, contents, raw_contents, self.default_project_service()
                     ),
                 )
             ]
@@ -304,6 +382,7 @@ class Workspace:
                 "project_id": job.project_id,
                 "sources": sources,
                 "contents": contents,
+                "raw_contents": raw_contents,
                 "project": project,
             }
             job = await engine.run(job, stages, services=services)
@@ -627,8 +706,37 @@ def _source_content(src: SourceDocument) -> str:
     return src.metadata.get("content", "") if src.metadata else ""
 
 
+async def _resolve_raw_bytes(
+    store: Any, sources: list[SourceDocument], contents: list[str]
+) -> list[bytes]:
+    """Resolve parser input bytes for each source (WP G3).
+
+    Text sources keep their in-metadata content (compat with the legacy path);
+    artifact-backed sources (``artifact_id_original`` set, no text content) are
+    fetched by sha256 from the content-addressed artifact store so binary / ZIP /
+    office documents are parsed from their immutable original bytes — never from
+    a lossy text field.
+    """
+    raw: list[bytes] = []
+    for src, text in zip(sources, contents, strict=True):
+        if text or not (src.artifact_id_original or src.sha256):
+            raw.append(text.encode("utf-8"))
+            continue
+        try:
+            raw.append(await store.get(src.sha256))
+        except Exception:  # noqa: BLE001
+            # fall back to whatever text we have so a missing artifact doesn't
+            # take the whole job down; diagnostics surface in extraction quality.
+            raw.append(text.encode("utf-8"))
+    return raw
+
+
 def _make_pipeline_stage(
-    project: Project, sources: list[SourceDocument], contents: list[str], svc: ProjectService
+    project: Project,
+    sources: list[SourceDocument],
+    contents: list[str],
+    raw_contents: list[bytes],
+    svc: ProjectService,
 ) -> Callable[[Any], Awaitable[dict[str, Any]]]:
     async def stage(ctx: Any) -> dict[str, Any]:
         cfg = ctx.config or {}
@@ -637,7 +745,7 @@ def _make_pipeline_stage(
             or {"factual_explanation": 0.5, "procedure": 0.3, "comparison": 0.2}
         )
         result = await svc.run_pipeline(
-            project=project, sources=sources, contents=contents, plan=plan
+            project=project, sources=sources, raw_contents=raw_contents, plan=plan
         )
         stash = {
             "examples": [e.model_dump(mode="json") for e in result.examples],

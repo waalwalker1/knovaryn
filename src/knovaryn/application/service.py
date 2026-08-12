@@ -103,13 +103,17 @@ class ProjectService:
 
     # -- intake + parse (text fallback, docling optional) --------------------
     async def ingest_and_parse(
-        self, *, project: Project, source: SourceDocument, content: str
+        self, *, project: Project, source: SourceDocument, raw: bytes
     ) -> tuple[ParsedDocument, dict[str, Any]]:
         from ..infrastructure.docling.adapter import DoclingAdapter
 
-        raw = content.encode("utf-8")
         adapter = DoclingAdapter(ids=self._ids)
         outcome = await adapter.parse(source, raw, config={})
+        # Quarantined binary (WP G5): never promote garbage text to a parsed
+        # document — surface extraction as failed and let callers decide.
+        extraction = (
+            ExtractionStatus.failed if outcome.quarantined else ExtractionStatus.parsed
+        )
         parsed = ParsedDocument(
             id=self._ids.new_handle("par"),
             source_document_id=source.id,
@@ -119,7 +123,7 @@ class ProjectService:
             canonical_docling_json_artifact_id=self._ids.new_handle("art"),
             markdown_artifact_id=self._ids.new_handle("art"),
             text_artifact_id=self._ids.new_handle("art"),
-            extraction_status=ExtractionStatus.parsed,
+            extraction_status=extraction,
             extraction_quality_summary=outcome.diagnostics,
         )
         return parsed, outcome.canonical_json
@@ -176,7 +180,8 @@ class ProjectService:
         *,
         project: Project,
         sources: list[SourceDocument],
-        contents: list[str],
+        contents: list[str] | None = None,
+        raw_contents: list[bytes] | None = None,
         plan: DatasetPlan | None = None,
     ) -> PipelineResult:
         plan = plan or DatasetPlan(
@@ -188,10 +193,18 @@ class ProjectService:
         )
         result = PipelineResult(project=project)
 
+        # raw bytes win; the legacy ``contents`` (text) path is encoded for
+        # compatibility.
+        if raw_contents is None:
+            raw_contents = [(c or "").encode("utf-8") for c in (contents or [])]
+
         # parse + chunk each source
-        for source, content in zip(sources, contents, strict=True):
+        if len(raw_contents) != len(sources):
+            result.notes.append("source/raw length mismatch; nothing parsed")
+            return result
+        for source, raw in zip(sources, raw_contents, strict=True):
             parsed, canonical = await self.ingest_and_parse(
-                project=project, source=source, content=content
+                project=project, source=source, raw=raw
             )
             result.parsed.append(parsed)
             chunks, spans = self.chunk_document(parsed=parsed, canonical=canonical)

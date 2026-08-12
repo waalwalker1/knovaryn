@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 
 from knovaryn.application.workspace import Workspace
-from knovaryn.domain.schemas import JobState
+from knovaryn.domain.schemas import JobState, SourceKind
 
 _LOOP = asyncio.new_event_loop()
 asyncio.set_event_loop(_LOOP)
@@ -178,3 +178,30 @@ def test_publish_blocked_on_unapproved_source(workspace: Workspace, monkeypatch)
     pub = run(workspace.publish_dataset(project_id=proj.id, repo_id="local/pub", dry_run=False))
     assert pub["status"] == "blocked"
     assert "blocked" in pub["reason"]
+
+
+def test_add_source_binary_routes_artifact_first(workspace: Workspace, tmp_path: Path):
+    """WP G: a binary added via add_source is artifact-first with a real SHA-256
+    and is parsed (or quarantined) from its immutable original bytes."""
+    import hashlib
+
+    proj = run(workspace.create_project(slug="binproj", display_name="Binary"))
+    raw = bytes([0x25, 0x50, 0x44, 0x46, 0x00, 0xFF, 0x00, 0x01])  # pdf-ish binary
+
+    src = run(
+        workspace.add_source(
+            project_id=proj.id,
+            original_name="blob.pdf",
+            raw=raw,
+            source_kind=SourceKind.upload,
+        )
+    )
+    assert src.sha256 == hashlib.sha256(raw).hexdigest()  # real content hash
+    assert src.artifact_id_original  # immutable original artifact persisted
+    assert src.byte_size == len(raw)
+    assert "content" not in (src.metadata or {})  # binary bytes NOT in metadata
+
+    # pipeline parses from the artifact store, quarantining the unparseable binary
+    job = run(workspace.start_pipeline(project_id=proj.id))
+    result = run(workspace.run_job(job.id))
+    assert result["state"] == JobState.succeeded.value

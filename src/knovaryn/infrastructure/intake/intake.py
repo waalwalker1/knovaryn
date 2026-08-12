@@ -15,10 +15,26 @@ from pathlib import Path
 from typing import Any
 
 from ...domain import schemas
-from ...domain.errors import ArchiveBombError, IntakeError
+from ...domain.errors import ArchiveBombError, IntakeError, MalwareScanError
 from ...domain.hashing import ContentHasher
 from ...domain.ids import IdGenerator
 from ...domain.policies import default_license_status, detect_injection_patterns
+from .redact import redact_locator
+
+# allowed-extension policy (spec §8 / WP G2): the formats honestly documented.
+# Magic bytes may override an unknown extension when they resolve to an allowed
+# type, but a name with a *known but disallowed* extension is always rejected.
+_ALLOWED_SUFFIXES = {
+    ".pdf", ".docx", ".pptx", ".xlsx", ".html", ".htm", ".md", ".markdown",
+    ".txt", ".csv", ".tsv", ".png", ".jpg", ".jpeg", ".gif", ".xml", ".json",
+    ".epub", ".zip", ".tar",
+}
+# extensions that are recognized but intentionally unsupported (reject loudly
+# rather than silently mis-parsing).
+_DISALLOWED_SUFFIXES = {
+    ".exe", ".dll", ".so", ".dylib", ".sh", ".bat", ".ps1", ".py", ".js",
+    ".php", ".cgi", ".class", ".jar", ".wasm", ".ttf", ".otf", ".woff",
+}
 
 # magic-bytes detection (spec §8.2 step 5): don't trust the extension
 _MAGIC: list[tuple[bytes, str]] = [
@@ -37,6 +53,29 @@ def sniff_media_type(name: str, head: bytes) -> tuple[str, bool]:
             return mtype, True
     guessed, _enc = mimetypes.guess_type(name)
     return (guessed or "application/octet-stream"), False
+
+
+def check_allowed_extension(name: str) -> None:
+    """Reject unsupported extensions (spec §8.2 / WP G2)."""
+    lower = name.lower()
+    suffix = None
+    for cand in (".markdown",):
+        if lower.endswith(cand):
+            suffix = cand
+            break
+    else:
+        suffix = _suffix(name)
+    if suffix in _DISALLOWED_SUFFIXES:
+        raise IntakeError(f"file type not supported for intake: {suffix}")
+    if suffix and suffix not in _ALLOWED_SUFFIXES and suffix not in _DISALLOWED_SUFFIXES:
+        raise IntakeError(f"file type not supported for intake: {suffix}")
+
+
+def _suffix(name: str) -> str:
+    import os
+
+    return os.path.splitext(name)[1].lower()
+
 
 
 @dataclass
@@ -67,6 +106,8 @@ class IntakeService:
         group_key: str | None = None,
         max_file_bytes: int = 200 * 1024 * 1024,
         verify_archive: bool = True,
+        malware_scan: Any | None = None,
+        allow_nested_archives: bool = False,
         background_tasks: set[asyncio.Task] | None = None,
     ) -> IntakeResult:
         warnings: list[str] = []
@@ -74,6 +115,21 @@ class IntakeService:
             raise IntakeError(f"file exceeds max size ({len(data)} bytes)")
         if len(data) == 0:
             raise IntakeError("empty file")
+
+        # allowed-extension policy (spec §8.2 / WP G2): reject loudly unless
+        # magic bytes override an unknown name to an allowed type.
+        check_allowed_extension(name)
+
+        # malware hook (spec §8.6 / WP G4): binding scanner adapter if configured
+        if malware_scan is not None:
+            try:
+                await asyncio.to_thread(malware_scan.scan, data)
+            except MalwareScanError:
+                raise
+            except Exception as exc:  # noqa: BLE001
+                raise MalwareScanError(
+                    f"malware scan failed for {name!r}"
+                ) from exc
 
         head = data[:_MAGIC_MAX]
         media_type, from_magic = sniff_media_type(name, head)
@@ -126,7 +182,7 @@ class IntakeService:
             byte_size=len(data),
             sha256=sha256,
             source_kind=source_kind,
-            source_locator_redacted=locator,
+            source_locator_redacted=redact_locator(locator),
             declared_license=declared_license,
             license_status=license_status,
             intake_status=schemas.IntakeStatus.preflight_ok,
@@ -149,7 +205,10 @@ class IntakeService:
         if verify_archive and media_type == "application/zip":
             try:
                 await asyncio.to_thread(
-                    _validate_zip_safe, data, max_uncompressed_bytes=max_file_bytes
+                    _validate_zip_safe,
+                    data,
+                    max_uncompressed_bytes=max_file_bytes,
+                    allow_nested=allow_nested_archives,
                 )
                 warnings.append("zip archive structure verified")
             except ArchiveBombError:
@@ -181,7 +240,15 @@ def _zip_subtype(name: str) -> str:
     return "application/zip"
 
 
-def _validate_zip_safe(data: bytes, max_uncompressed_bytes: int) -> None:
+def _validate_zip_safe(
+    data: bytes,
+    max_uncompressed_bytes: int,
+    allow_nested: bool = False,
+) -> None:
     from .archive import validate_zip_archive
 
-    validate_zip_archive(data, max_uncompressed_bytes=max_uncompressed_bytes)
+    validate_zip_archive(
+        data,
+        max_uncompressed_bytes=max_uncompressed_bytes,
+        allow_nested=allow_nested,
+    )
