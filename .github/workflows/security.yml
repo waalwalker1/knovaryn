@@ -62,7 +62,7 @@ jobs:
       - name: Build image
         run: docker build -f deploy/docker/Dockerfile -t knovaryn:scan .
       - name: Trivy — container image (HIGH/CRITICAL fail)
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.29.0
         with:
           image-ref: knovaryn:scan
           format: table
@@ -70,7 +70,7 @@ jobs:
           severity: CRITICAL,HIGH
           ignore-unfixed: true
       - name: Trivy — filesystem scan (source)
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.29.0
         with:
           scan-type: fs
           scan-ref: .
@@ -78,7 +78,7 @@ jobs:
           severity: CRITICAL,HIGH
           exit-code: "1"
       - name: Trivy — IaC / Kubernetes manifests
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.29.0
         with:
           scan-type: config
           scan-ref: deploy/
@@ -92,6 +92,9 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.11"
       - name: Generate SBOM from uv.lock
         run: |
           uv export --format requirements-txt --no-hashes -o requirements.txt

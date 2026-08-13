@@ -109,8 +109,8 @@ jobs:
       - uses: astral-sh/setup-uv@v5
         with:
           python-version: "3.13"
-      - name: Install
-        run: uv sync
+      - name: Install (dev extras for the storage/migration pytest smoke)
+        run: uv sync --extra dev
       - name: Path / CLI import smoke
         run: uv run python -c "import knovaryn,sys; print(knovaryn.__file__); from knovaryn.interfaces.cli.main import app; print('import ok')"
       - name: Local storage smoke (CAS + DB + worker repo)
