@@ -61,20 +61,18 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build image
         run: docker build -f deploy/docker/Dockerfile -t knovaryn:scan .
-      # The upstream `aquasecurity/trivy-action` composite references
-      # `aquasecurity/setup-trivy@v0.2.2`, which no longer exists (deleted tag) ->
-      # the job fails at action resolution. Install Trivy directly with the
-      # maintainer `setup-trivy` action (v0.3.1 exists) and run the CLI instead.
-      - name: Install Trivy
-        uses: aquasecurity/setup-trivy@v0.3.1
-        with:
-          version: v0.57.1
+      # The upstream `aquasecurity/trivy-action` internally references the
+      # deleted `setup-trivy@v0.2.2` tag (fails at action resolution), and the
+      # maintainer `setup-trivy@v0.3.1` action self-clones the trivy repo and
+      # aborts on a non-literal 'path' input in this environment (both confirmed
+      # failing). Rather than fight upstream action fragility, run Trivy straight
+      # from its official container image — Docker build already works here.
       - name: Trivy — container image (HIGH/CRITICAL fail)
-        run: trivy image --format table --exit-code 1 --severity CRITICAL,HIGH --ignore-unfixed knovaryn:scan
+        run: docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$PWD:/data" aquasecurity/trivy:0.57.1 image --format table --exit-code 1 --severity CRITICAL,HIGH --ignore-unfixed knovaryn:scan
       - name: Trivy — filesystem scan (source)
-        run: trivy fs --format table --exit-code 1 --severity CRITICAL,HIGH .
+        run: docker run --rm -v "$PWD:/data" -w /data aquasecurity/trivy:0.57.1 fs --format table --exit-code 1 --severity CRITICAL,HIGH .
       - name: Trivy — IaC / Kubernetes manifests
-        run: trivy config --format table --exit-code 1 --severity CRITICAL,HIGH deploy/
+        run: docker run --rm -v "$PWD:/data" -w /data aquasecurity/trivy:0.57.1 config --format table --exit-code 1 --severity CRITICAL,HIGH deploy/
 
   sbom:
     name: SBOM (cycloneDX)
