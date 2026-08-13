@@ -30,6 +30,8 @@ spec:
           image: ghcr.io/knovaryn/knovaryn:0.1.0   # PINNED tag (K3)
           imagePullPolicy: IfNotPresent
           command: ["knovaryn", "server", "--host", "0.0.0.0", "--port", "8000"]
+          securityContext:
+            readOnlyRootFilesystem: true   # harden (Trivy AVD-KSV-0014); API is stateless, state in Postgres/MinIO
           ports:
             - name: http
               containerPort: 8000

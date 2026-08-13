@@ -24,6 +24,8 @@ spec:
         - name: wait-for-db
           image: postgres:16.3   # pinned
           command: ["sh", "-c", "until pg_isready -h postgres -U knovaryn -d knovaryn; do sleep 2; done"]
+          securityContext:
+            readOnlyRootFilesystem: true   # harden (Trivy AVD-KSV-0014); pg_isready writes nothing
           env:
             - name: PGPASSWORD
               valueFrom:
@@ -39,6 +41,8 @@ spec:
           image: ghcr.io/knovaryn/knovaryn:0.1.0   # PINNED tag (K3)
           imagePullPolicy: IfNotPresent
           command: ["python", "-c"]
+          securityContext:
+            readOnlyRootFilesystem: true   # harden (Trivy AVD-KSV-0014); DDL/create_all writes to Postgres only
           args:
             - |
               import asyncio
