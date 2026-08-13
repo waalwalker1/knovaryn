@@ -66,13 +66,14 @@ jobs:
       # maintainer `setup-trivy@v0.3.1` action self-clones the trivy repo and
       # aborts on a non-literal 'path' input in this environment (both confirmed
       # failing). Rather than fight upstream action fragility, run Trivy straight
-      # from its official container image — Docker build already works here.
+      # from its official container image (aquasec/trivy on Docker Hub) — Docker
+      # build already works here, with no binary install or PATH juggling.
       - name: Trivy — container image (HIGH/CRITICAL fail)
-        run: docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$PWD:/data" aquasecurity/trivy:0.57.1 image --format table --exit-code 1 --severity CRITICAL,HIGH --ignore-unfixed knovaryn:scan
+        run: docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$PWD:/data" aquasec/trivy:0.57.1 image --format table --exit-code 1 --severity CRITICAL,HIGH --ignore-unfixed knovaryn:scan
       - name: Trivy — filesystem scan (source)
-        run: docker run --rm -v "$PWD:/data" -w /data aquasecurity/trivy:0.57.1 fs --format table --exit-code 1 --severity CRITICAL,HIGH .
+        run: docker run --rm -v "$PWD:/data" -w /data aquasec/trivy:0.57.1 fs --format table --exit-code 1 --severity CRITICAL,HIGH .
       - name: Trivy — IaC / Kubernetes manifests
-        run: docker run --rm -v "$PWD:/data" -w /data aquasecurity/trivy:0.57.1 config --format table --exit-code 1 --severity CRITICAL,HIGH deploy/
+        run: docker run --rm -v "$PWD:/data" -w /data aquasec/trivy:0.57.1 config --format table --exit-code 1 --severity CRITICAL,HIGH deploy/
 
   sbom:
     name: SBOM (cycloneDX)
