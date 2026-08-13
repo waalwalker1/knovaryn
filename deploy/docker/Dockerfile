@@ -20,6 +20,11 @@ COPY pyproject.toml uv.lock README.md LICENSE ./
 COPY src ./src
 RUN uv pip install --system --no-cache --lockfile uv.lock . \
     || uv pip install --system --no-cache .
+# Upgrade the pip build-toolchain that ships with the base image; Trivy flags
+# older `wheel` (CVE-2026-24049) and `jaraco.context` (CVE-2026-23949) as HIGH.
+# These are build/install-time only, but patching them in-image keeps the runtime
+# image free of those toolchain vulnerabilities with zero behavioral change.
+RUN python -m pip install --no-cache-dir --upgrade "jaraco.context>=6.1.0" "wheel>=0.46.2"
 
 # ---- run stage ----
 FROM base AS runtime
