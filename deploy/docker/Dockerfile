@@ -29,14 +29,14 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 # Strip the pip build/install toolchain packages that Trivy flags as HIGH in the
 # base image (wheel CVE-2026-24049, jaraco.context CVE-2026-23949). The runtime
 # only executes the pre-built `knovaryn` console script and never installs
-# packages; these are build-time-only. Remove the files directly rather than via
-# `pip uninstall` because setuptools (kept, not flagged) declares jaraco.context
-# as a dependency, which would block a dependency-aware uninstall.
-RUN rm -rf \
-      /usr/local/lib/python3.11/site-packages/wheel \
-      /usr/local/lib/python3.11/site-packages/wheel-*.dist-info \
-      /usr/local/lib/python3.11/site-packages/jaraco \
-      /usr/local/lib/python3.11/site-packages/jaraco_context-*.dist-info
+# packages; these are build-time-only. Scan both possible site-packages roots
+# with find so the removal is independent of the exact package path, and print
+# each removed path so the build log confirms what was stripped. Removed
+# directly rather than via `pip uninstall` because setuptools (kept, not
+# flagged) declares jaraco.context as a dependency, which would block a
+# dependency-aware uninstall.
+RUN find /usr/local/lib/python3.11 /usr/lib/python3.11 \
+        \( -name 'wheel*' -o -name 'jaraco*' \) -print -exec rm -rf {} + 2>/dev/null; true
 
 # Non-root operator by default (defense in depth).
 RUN useradd --create-home --uid 10001 knovaryn
