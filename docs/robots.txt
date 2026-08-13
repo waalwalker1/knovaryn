@@ -5,4 +5,4 @@ Allow: /
 Disallow: /assets/
 Disallow: /search/
 
-Sitemap: https://knovaryn.github.io/sitemap.xml
+Sitemap: https://waalwalker1.github.io/knovaryn/sitemap.xml

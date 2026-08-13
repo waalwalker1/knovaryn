@@ -7,7 +7,7 @@
   {%- if page is defined and page is not none -%}
   {%- set page_title = (page.title | string) if page.title else (config.site_name | default("Knovaryn")) -%}
   {%- set page_desc = (page.meta and page.meta.description) if (page.meta and page.meta.description) else (config.site_description | default("")) -%}
-  {%- set site_url = config.site_url | default("https://knovaryn.dev") -%}
+  {%- set site_url = config.site_url | default("https://waalwalker1.github.io/knovaryn") -%}
   {%- set canonical = page.canonical_url if page.canonical_url else site_url -%}
 
   <!-- OpenGraph / social -->
@@ -32,7 +32,7 @@
     "@type": "SoftwareSourceCode",
     "name": "Knovaryn",
     "description": "{{ config.site_description }}",
-    "codeRepository": "{{ config.repo_url | default('https://github.com/knovaryn/knovaryn') }}",
+    "codeRepository": "{{ config.repo_url | default('https://github.com/waalwalker1/knovaryn') }}",
     "license": "https://www.apache.org/licenses/LICENSE-2.0",
     "programmingLanguage": "Python",
     "url": "{{ site_url }}"

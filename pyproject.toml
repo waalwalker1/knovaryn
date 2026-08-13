@@ -1,6 +1,6 @@
 [project]
 name = "knovaryn"
-version = "0.1.0"
+version = "0.1.1"
 description = "Open, MCP-native training-data foundry: turn permitted documents into traceable, quality-gated SFT and preference datasets."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -113,12 +113,12 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://knovaryn.dev"
-Documentation = "https://knovaryn.dev"
-Repository = "https://github.com/knovaryn/knovaryn"
-Issues = "https://github.com/knovaryn/knovaryn/issues"
-Changelog = "https://github.com/knovaryn/knovaryn/blob/main/CHANGELOG.md"
-Security = "https://github.com/knovaryn/knovaryn/blob/main/SECURITY.md"
+Homepage = "https://waalwalker1.github.io/knovaryn/"
+Documentation = "https://waalwalker1.github.io/knovaryn/"
+Repository = "https://github.com/waalwalker1/knovaryn"
+Issues = "https://github.com/waalwalker1/knovaryn/issues"
+Changelog = "https://github.com/waalwalker1/knovaryn/blob/main/CHANGELOG.md"
+Security = "https://github.com/waalwalker1/knovaryn/blob/main/SECURITY.md"
 
 [build-system]
 requires = ["hatchling"]

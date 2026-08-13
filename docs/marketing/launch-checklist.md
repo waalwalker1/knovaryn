@@ -58,7 +58,7 @@ dataset-curation  llmops  mlops  huggingface  data-quality  ai-agents  open-sour
 - [ ] Confirm the repo has a `description` that matches the M1 positioning
       statement (shows on the repo listing + search).
 - [ ] Publish the docs site at the stable URLs in `[project.urls]`
-      (`https://knovaryn.dev`) and `site_url`/`repo_url` in `mkdocs.yml`.
+      (`https://waalwalker1.github.io/knovaryn`) and `site_url`/`repo_url` in `mkdocs.yml`.
 - [ ] Enable **GitHub Pages** (or the configured host) so `/sitemap.xml`,
       `/robots.txt`, `/llms.txt`, and the OpenGraph/schema.org head tags resolve.
 - [ ] Verify `llms.txt` and `sitemap.xml` are reachable and list the new

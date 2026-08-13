@@ -2,8 +2,8 @@ site_name: Knovaryn
 site_description: >-
   Open, MCP-native training-data foundry: turn permitted documents into
   traceable, quality-gated SFT and preference datasets.
-site_url: https://knovaryn.github.io/
-repo_url: https://github.com/knovaryn/knovaryn
+site_url: https://waalwalker1.github.io/knovaryn/
+repo_url: https://github.com/waalwalker1/knovaryn
 edit_uri: edit/main/docs/
 
 theme:

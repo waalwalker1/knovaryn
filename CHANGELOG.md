@@ -97,4 +97,4 @@ the API/storage surface is not yet compatible-stable (see [ROADMAP.md](ROADMAP.m
 
 ---
 
-[0.1.0]: https://github.com/knovaryn/knovaryn/releases/tag/v0.1.0
+[0.1.0]: https://github.com/waalwalker1/knovaryn/releases/tag/v0.1.0

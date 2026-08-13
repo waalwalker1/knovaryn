@@ -36,26 +36,26 @@ S3-compatible storage) as a configuration change.
 
 ## Documentation
 
-- Quickstart: https://knovaryn.dev/guides/quickstart/
-- PDF to SFT dataset: https://knovaryn.dev/guides/pdf-to-sft-dataset/
-- Build DPO preference data: https://knovaryn.dev/guides/build-dpo-preference-data/
-- Grounded QA datasets: https://knovaryn.dev/guides/grounded-qa-dataset-from-documents/
-- MCP training-data server: https://knovaryn.dev/guides/mcp-training-data-server/
-- MCP clients: https://knovaryn.dev/guides/mcp-clients/
-- First real project: https://knovaryn.dev/guides/first-real-project/
-- Hugging Face export: https://knovaryn.dev/guides/hugging-face-export/
-- Dataset provenance: https://knovaryn.dev/concepts/dataset-provenance/
-- Quality gates: https://knovaryn.dev/concepts/quality-gates/
-- License & privacy: https://knovaryn.dev/concepts/license-and-privacy/
-- Overview: https://knovaryn.dev/concepts/overview/
-- Reference — CLI: https://knovaryn.dev/reference/cli/
-- Reference — configuration: https://knovaryn.dev/reference/config/
-- Reference — exporters: https://knovaryn.dev/reference/exporters/
+- Quickstart: https://waalwalker1.github.io/knovaryn/guides/quickstart/
+- PDF to SFT dataset: https://waalwalker1.github.io/knovaryn/guides/pdf-to-sft-dataset/
+- Build DPO preference data: https://waalwalker1.github.io/knovaryn/guides/build-dpo-preference-data/
+- Grounded QA datasets: https://waalwalker1.github.io/knovaryn/guides/grounded-qa-dataset-from-documents/
+- MCP training-data server: https://waalwalker1.github.io/knovaryn/guides/mcp-training-data-server/
+- MCP clients: https://waalwalker1.github.io/knovaryn/guides/mcp-clients/
+- First real project: https://waalwalker1.github.io/knovaryn/guides/first-real-project/
+- Hugging Face export: https://waalwalker1.github.io/knovaryn/guides/hugging-face-export/
+- Dataset provenance: https://waalwalker1.github.io/knovaryn/concepts/dataset-provenance/
+- Quality gates: https://waalwalker1.github.io/knovaryn/concepts/quality-gates/
+- License & privacy: https://waalwalker1.github.io/knovaryn/concepts/license-and-privacy/
+- Overview: https://waalwalker1.github.io/knovaryn/concepts/overview/
+- Reference — CLI: https://waalwalker1.github.io/knovaryn/reference/cli/
+- Reference — configuration: https://waalwalker1.github.io/knovaryn/reference/config/
+- Reference — exporters: https://waalwalker1.github.io/knovaryn/reference/exporters/
 
 ## Repositories
 
-- GitHub: https://github.com/knovaryn/knovaryn
-- Issues: https://github.com/knovaryn/knovaryn/issues
+- GitHub: https://github.com/waalwalker1/knovaryn
+- Issues: https://github.com/waalwalker1/knovaryn/issues
 - PyPI: https://pypi.org/project/knovaryn/
 
 ## License

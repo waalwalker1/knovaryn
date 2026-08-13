@@ -34,7 +34,7 @@ Source documents ──▶ Parse ──▶ Split & chunk ──▶ Generate ─�
 A high-level view of the end-to-end architecture. Six fully annotated diagrams —
 **system architecture**, **pipeline flow**, **durable jobs**, **MCP session**,
 **security**, and **value proposition** — plus their raw Mermaid source live in the
-[repository README](https://github.com/knovaryn/knovaryn#readme).
+[repository README](https://github.com/waalwalker1/knovaryn#readme).
 
 ```mermaid
 flowchart LR
@@ -96,7 +96,7 @@ your behalf.
 Knovaryn reads credentials **only from the environment** — no API keys are
 committed anywhere, the demo needs none at all, and secrets are redacted at
 display boundaries. See the placeholder-only
-[`.env.example`](https://github.com/knovaryn/knovaryn/blob/main/.env.example)
+[`.env.example`](https://github.com/waalwalker1/knovaryn/blob/main/.env.example)
 for the complete configuration reference. Publication is **dry-run by default**
 and gated on license approval.
 

@@ -44,7 +44,7 @@ pip install knovaryn
 From source (for development):
 
 ```bash
-git clone https://github.com/knovaryn/knovaryn.git
+git clone https://github.com/waalwalker1/knovaryn.git
 cd knovaryn
 uv sync --dev
 ```
