@@ -1,0 +1,66 @@
+# Worker Deployment (spec WP K3). Runs durable background pipeline workers.
+# Each worker runs its own claim → lease → checkpoint → resume loop against the
+# shared Postgres queue; crash-safe stage checkpoints (spec §7.3) mean work is
+# never lost or repeated. Scale horizontally (replicas/`kubectl scale`); workers
+# are interchangeable so N>1 is safe ONLY with Postgres, not local SQLite (K1).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: knovaryn-worker
+  namespace: knovaryn
+  labels:
+    app: knovaryn
+    component: worker
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      component: worker
+  template:
+    metadata:
+      labels:
+        component: worker
+    spec:
+      serviceAccountName: knovaryn
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: worker
+          image: ghcr.io/knovaryn/knovaryn:0.1.0   # PINNED tag (K3)
+          imagePullPolicy: IfNotPresent
+          command: ["knovaryn", "worker", "--id", "worker"]
+          securityContext:
+            readOnlyRootFilesystem: true   # harden (Trivy AVD-KSV-0014); state goes to external storage
+          envFrom:
+            - secretRef:
+                name: knovaryn-secrets
+                optional: true
+            - configMapRef:
+                name: knovaryn-config
+                optional: true
+          env:
+            - name: KNOVARYN_STORAGE_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: knovaryn-secrets
+                  key: db_url
+                  optional: true
+          # No HTTP endpoint on the worker: use an exec liveness that confirms
+          # the runtime is importable/alive. Durable leases + checkpoints handle
+          # process-level recovery, so liveness only guards a wedged runner.
+          livenessProbe:
+            exec:
+              command: ["python", "-c", "import knovaryn"]
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            failureThreshold: 6
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+            limits:
+              cpu: "2"
+              memory: 4Gi

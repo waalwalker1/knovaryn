@@ -36,8 +36,27 @@ _SAFE_SUFFIXES = {
 _MAX_MEMBERS = 2000
 _MAX_COMPRESSED_RATIO = 200.0
 
+# nested-archive policy (spec §8.5 / WP G4): archive members that are themselves
+# archives are rejected unless explicitly allowed (they hide decompression bombs
+# behind nested zip layers and are never parseable in our single-pass model).
+_NESTED_ARCHIVE_SUFFIXES = {
+    ".zip",
+    ".tar",
+    ".tgz",
+    ".gz",
+    ".bz2",
+    ".xz",
+    ".7z",
+    ".rar",
+}
 
-def validate_zip_archive(data: bytes, *, max_uncompressed_bytes: int) -> dict[str, object]:
+
+def validate_zip_archive(
+    data: bytes,
+    *,
+    max_uncompressed_bytes: int,
+    allow_nested: bool = False,
+) -> dict[str, object]:
     """Validate a zip for bombs/traversal. Returns member manifest.
 
     Reads the zip central directory; verifies member names are safe and total
@@ -62,6 +81,11 @@ def validate_zip_archive(data: bytes, *, max_uncompressed_bytes: int) -> dict[st
         parts = PurePosixPath(name.replace("\\", "/")).parts
         if any(p == ".." for p in parts):
             raise IntakeError(f"archive member path traversal: {name!r}")
+        # nested-archive check (WP G4) unless explicitly allowed
+        if not allow_nested and not info.is_dir():
+            member_suffix = PurePosixPath(name).suffix.lower()
+            if member_suffix in _NESTED_ARCHIVE_SUFFIXES:
+                raise IntakeError(f"nested archive member not allowed: {name!r}")
         # compression ratio bomb check
         if info.file_size > 0 and info.compress_size > 0:
             ratio = info.file_size / info.compress_size

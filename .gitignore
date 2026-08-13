@@ -40,3 +40,4 @@ id_ed25519*
 
 # Docs build
 site/
+.knovaryn-build/

@@ -177,6 +177,21 @@ def backup(
     raise typer.Exit(_backup(out=out, json_plain=json_plain))
 
 
+@app.command("restore")
+def restore(
+    archive: Path = typer.Option(..., "--from", "-f", help="Backup archive to restore."),
+    json_plain: bool = typer.Option(False, "--json", help="Machine-readable output."),
+) -> None:
+    """Restore a ``backup`` archive into the configured state directory.
+
+    Verifies the restored database integrity; refuses to overwrite a non-empty
+    state directory (WP K5 backup/restore).
+    """
+    from .commands import restore as _restore
+
+    raise typer.Exit(_restore(archive=archive, json_plain=json_plain))
+
+
 @app.command("server")
 def server(
     host: str | None = typer.Option(None, "--host", help="Bind host (default from config)."),
@@ -187,6 +202,75 @@ def server(
     from .commands import server as _server
 
     raise typer.Exit(_server(host=host, port=port, reload=reload))
+
+
+@app.command("worker")
+def worker(
+    worker_id: str = typer.Option("w1", "--id", help="This worker's identifier."),
+    poll: float = typer.Option(1.0, "--poll", help="Poll interval in seconds."),
+    lease: int = typer.Option(300, "--lease", help="Lease duration in seconds."),
+    max_attempts: int = typer.Option(3, "--max-attempts", help="Per-stage retry attempts."),
+    once: bool = typer.Option(
+        False, "--once", help="Poll once (drain one job) and exit — for scripts/tests."
+    ),
+    database_url: str | None = typer.Option(
+        None, "--database-url", help="Override the database URL."
+    ),
+    json_plain: bool = typer.Option(False, "--json", help="Machine-readable output."),
+) -> None:
+    """Run a durable background worker (claim → lease → checkpoint → resume)."""
+    from .commands import worker as _worker
+
+    raise typer.Exit(
+        _worker(
+            worker_id=worker_id,
+            poll_interval_s=poll,
+            lease_seconds=lease,
+            max_attempts=max_attempts,
+            once=once,
+            database_url=database_url,
+            json_plain=json_plain,
+        )
+    )
+
+
+@app.command("mcp")
+def mcp_cmd(
+    transport: str = typer.Option(
+        "stdio", "--transport", help="MCP transport: stdio (default) or streamable-http."
+    ),
+    host: str | None = typer.Option(None, "--host", help="Bind host for streamable-http."),
+    port: int | None = typer.Option(None, "--port", "-p", help="Bind port for streamable-http."),
+    database_url: str | None = typer.Option(
+        None, "--database-url", help="Override the database URL."
+    ),
+) -> None:
+    """Run the Knovaryn MCP server (stdio by default).
+
+    ``knovaryn-mcp`` is the packaged console entry point (WP F1); this command
+    is the equivalent subcommand so a single ``knovaryn`` binary serves both
+    the CLI and the MCP surface.
+    """
+    from ...interfaces.mcp.__main__ import main as _mcp_main
+
+    argv = [f"--transport={transport}"]
+    if host is not None:
+        argv.append(f"--host={host}")
+    if port is not None:
+        argv.append(f"--port={port}")
+    if database_url is not None:
+        argv.append(f"--database-url={database_url}")
+    raise typer.Exit(_mcp_main(argv))
+
+
+@app.command("verify-release")
+def verify_release(
+    path: Path = typer.Argument(..., help="Path to a release.zip bundle."),
+) -> None:
+    """Verify a release bundle's detached checksum + per-file manifest (I5)."""
+    from .commands import verify_release as _verify_release
+
+    raise typer.Exit(_verify_release(path=str(path)))
 
 
 @app.command("version")

@@ -1,0 +1,42 @@
+{#- Overrides base.html to inject OpenGraph/Twitter/schema.org meta (WP M7).
+    Kept minimal and version-stable: we only add the `extrahead` block, which
+    mkdocs-material renders inside <head>. -#}
+{% extends "base.html" %}
+
+{% block extrahead %}
+  {%- if page is defined and page is not none -%}
+  {%- set page_title = (page.title | string) if page.title else (config.site_name | default("Knovaryn")) -%}
+  {%- set page_desc = (page.meta and page.meta.description) if (page.meta and page.meta.description) else (config.site_description | default("")) -%}
+  {%- set site_url = config.site_url | default("https://waalwalker1.github.io/knovaryn") -%}
+  {%- set canonical = page.canonical_url if page.canonical_url else site_url -%}
+
+  <!-- OpenGraph / social -->
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="{{ config.site_name }}">
+  <meta property="og:title" content="{{ page_title }}">
+  <meta property="og:description" content="{{ page_desc }}">
+  <meta property="og:url" content="{{ canonical }}">
+  <meta property="og:image" content="{{ site_url }}assets/knovaryn-banner.svg">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="{{ page_title }}">
+  <meta name="twitter:description" content="{{ page_desc }}">
+  <meta name="twitter:image" content="{{ site_url }}assets/knovaryn-banner.svg">
+
+  <!-- canonical URL -->
+  <link rel="canonical" href="{{ canonical }}">
+
+  <!-- schema.org SoftwareSourceCode -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareSourceCode",
+    "name": "Knovaryn",
+    "description": "{{ config.site_description }}",
+    "codeRepository": "{{ config.repo_url | default('https://github.com/waalwalker1/knovaryn') }}",
+    "license": "https://www.apache.org/licenses/LICENSE-2.0",
+    "programmingLanguage": "Python",
+    "url": "{{ site_url }}"
+  }
+  </script>
+  {%- endif -%}
+{% endblock %}

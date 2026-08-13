@@ -62,15 +62,18 @@ class AcceptancePolicy:
     ) -> tuple[bool, list[str], QualityStatus]:
         reasons: list[str] = []
         overall = dims.get("overall", sum(dims.values()) / max(len(dims), 1))
-        if dims.get("grounding", 1.0) < self.minimum_grounding:
+        # Fail-closed: a dimension that was never assessed must not pass. We
+        # default missing dimensions to 0.0 (failure) rather than 1.0 (perfect)
+        # so an unvalidated example can never be accepted (spec §13/§14, C2).
+        if dims.get("grounding", 0.0) < self.minimum_grounding:
             reasons.append(f"grounding<{self.minimum_grounding}")
-        if dims.get("instruction_fulfillment", 1.0) < self.minimum_instruction_fulfillment:
+        if dims.get("instruction_fulfillment", 0.0) < self.minimum_instruction_fulfillment:
             reasons.append(f"instruction_fulfillment<{self.minimum_instruction_fulfillment}")
         if overall < self.minimum_overall:
             reasons.append(f"overall<{self.minimum_overall}")
         if is_preference and dims.get("preference_signal", 0.0) < self.minimum_preference_signal:
             reasons.append(f"preference_signal<{self.minimum_preference_signal}")
-        if dims.get("artifact_resistance", 1.0) < self.minimum_artifact_resistance:
+        if dims.get("artifact_resistance", 0.0) < self.minimum_artifact_resistance:
             reasons.append(f"artifact_resistance<{self.minimum_artifact_resistance}")
         if reasons:
             return False, reasons, QualityStatus.rejected

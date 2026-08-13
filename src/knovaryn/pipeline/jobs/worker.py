@@ -109,3 +109,56 @@ class Worker:
         job.heartbeat_at = now
         job.lease_expires_at = now + timedelta(seconds=self._lease_seconds)
         await self._repo.save(job)
+
+
+class WorkerRepository:
+    """Durable job repository for the worker poll loop (spec §7.3, §12/E2).
+
+    ``Worker._tick`` and the :class:`JobEngine` operate over an unbounded number
+    of claim/heartbeat/resume cycles while the worker is idle between polls, so
+    no single long-lived transaction may be held open across the loop. This
+    adapter wraps a :class:`Database` and runs each operation in its own
+    session/transaction — every claim, heartbeat, event, and durable checkpoint
+    is independently committed and survives a crash. It satisfies both the
+    ``Worker``'s repo contract and the engine's ``JobEvents`` protocol.
+    """
+
+    def __init__(self, db: Any, ids: IdGenerator) -> None:
+        self._db = db
+        self._ids = ids
+
+    async def _op(self, method: str, *args: Any, **kwargs: Any) -> Any:
+        from ...infrastructure.database.repositories import JobRepository
+
+        async with self._db.session() as session, session.begin():
+            repo = JobRepository(session, self._ids)
+            op = getattr(repo, method)
+            return await op(*args, **kwargs)
+
+    # -- worker repo contract -------------------------------------------------
+    async def claim_eligible(self, *, worker: str, lease_seconds: int = 300) -> Any:
+        return await self._op("claim_eligible", worker=worker, lease_seconds=lease_seconds)
+
+    async def get(self, job_id: str) -> Any:
+        return await self._op("get", job_id)
+
+    async def save(self, job: Any) -> None:
+        await self._op("save", job)
+
+    # -- engine JobEvents protocol --------------------------------------------
+    async def append_event(self, job_id: str, event: Any) -> None:
+        await self._op("append_event", job_id, event)
+
+    async def get_events(
+        self, job_id: str, *, cursor: int | None = None, limit: int = 100
+    ) -> tuple[list[Any], int | None]:
+        return await self._op("get_events", job_id, cursor=cursor, limit=limit)  # type: ignore[no-any-return]
+
+    async def record_checkpoint(self, payload: dict[str, Any]) -> None:
+        await self._op("record_checkpoint", payload)
+
+    async def completed_checkpoints(self, job_id: str) -> list[str]:
+        return await self._op("completed_checkpoints", job_id)  # type: ignore[no-any-return]
+
+
+__all__ = ["Worker", "WorkerRepository"]

@@ -1,0 +1,25 @@
+# Knovaryn application config (non-secret) — mounted into api/worker/migration.
+# Secret material (DB password, S3 keys, API token) comes from Secret
+# `knovaryn-secrets` via envFrom, never from the ConfigMap.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: knovaryn-config
+  namespace: knovaryn
+data:
+  knovaryn.yaml: |
+    schema_version: "1.0"
+    profile: balanced
+    server:
+      host: 0.0.0.0
+      port: 8000
+    storage:
+      artifact_backend: s3
+      bucket: knovaryn-artifacts
+      endpoint_url: http://minio:9000
+      region: us-east-1
+    telemetry:
+      content_in_logs: false
+  # Knobs tuned for a container (no auto-TLS cert clocks, bounded threads):
+  knovaryn-container.env: |
+    KNOVARYN_TELEMETRY_CONTENT_IN_LOGS=false

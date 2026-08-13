@@ -22,12 +22,21 @@ from contextlib import asynccontextmanager
 from typing import Any
 
 from fastapi import Depends, FastAPI, HTTPException, status
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from ...application.service import ProjectService
 from ...application.workspace import Workspace
 from ...domain.ids import IdGenerator
 from ...domain.schemas import DatasetPlan, Project, SourceDocument, SourceKind
+from .schemas import (
+    ExportRequest,
+    PipelineStart,
+    ProjectCreate,
+    PublishRequest,
+    ReviewRequest,
+    SourceAdd,
+    VersionCreate,
+)
+from .security import Principal, require_scope
 
 # shared workspace instance (lazily opened on startup)
 _workspace: Workspace | None = None
@@ -50,25 +59,50 @@ app = FastAPI(
     description="Open, MCP-native training-data foundry REST API.",
     lifespan=lifespan,
 )
-_bearer = HTTPBearer(auto_error=False)
+
+# ---------------------------------------------------------- web security (J5)
+from .rate_limit import RateLimitMiddleware  # noqa: E402
+from .security_middleware import (  # noqa: E402
+    BodyLimitMiddleware,
+    SecurityHeadersMiddleware,
+    redacted_exception_handler,
+    restrict_cors,
+)
+
+# Order matters (inner-most declared last is applied first): rate limiting and
+# body limit should run before security headers so budgeted/toobig requests never
+# get a full response.
+app.add_middleware(BodyLimitMiddleware)
+app.add_middleware(RateLimitMiddleware)
+app.add_middleware(SecurityHeadersMiddleware)
+restrict_cors(app, allowed_origins=None)  # no allowlist => deny all cross-origin
+app.add_exception_handler(Exception, redacted_exception_handler)
+
+# Scope-gated dependencies. Each route declares the scope it needs; a missing
+# scope yields 403 (never a silent pass — rule 6). The returned Principal is
+# threaded into the workspace so ownership/tenancy is enforced on the shared
+# application-service path.
+P_PROJECT_READ = require_scope("project:read")
+P_PROJECT_WRITE = require_scope("project:write")
+P_SOURCE_WRITE = require_scope("source:write")
+P_JOB_RUN = require_scope("job:run")
+P_REVIEW_WRITE = require_scope("review:write")
+P_EXPORT_READ = require_scope("export:read")
+P_PUBLISH_WRITE = require_scope("publish:write")
+P_ADMIN = require_scope("admin")
 
 
-def _require_auth(creds: HTTPAuthorizationCredentials | None = Depends(_bearer)) -> str:
-    from ...domain.errors import AuthorizationError
-    from ...infrastructure.auth.bearer import authorize, expected_token
+def _require_auth(creds: str | None = None) -> str:
+    """Legacy no-arg auth guard kept for the ``/v1/demo`` and health routes.
 
-    expected = expected_token()
-    if not expected:
-        # no token configured: allow in local/offline detection mode, but refuse
-        # any publish-style operation at the service layer (defense in depth)
-        return "local"
-    if creds is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid or missing bearer token"
-        )
+    Resolves the principal without requiring a specific scope (demo runs the
+    local offline pipeline only).
+    """
+    from .security import resolve_principal
+
     try:
-        return authorize(creds.credentials)
-    except AuthorizationError as exc:
+        return resolve_principal(creds).name
+    except Exception as exc:  # noqa: BLE001 - AuthorizationError -> 401
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
 
 
@@ -79,14 +113,39 @@ def _ws() -> Workspace:
 
 
 def _err(exc: Exception) -> HTTPException:
-    from ...domain.errors import AlreadyExistsError, AuthorizationError, NotFoundError
+    """Map domain errors to correct HTTP status codes (WP J2).
 
-    if isinstance(exc, NotFoundError):
-        return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
-    if isinstance(exc, AlreadyExistsError):
-        return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
-    if isinstance(exc, AuthorizationError):
-        return HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc))
+    Never echoes internal detail that could leak secrets or path layout; the
+    ``detail`` is the public, redacted message only (J5 error redaction).
+    """
+    from ...domain import errors as E
+
+    mapping: list[tuple[type[Exception], int]] = [
+        (E.NotFoundError, status.HTTP_404_NOT_FOUND),
+        # already exists / version conflict / job-state conflict: 409
+        (E.AlreadyExistsError, status.HTTP_409_CONFLICT),
+        (E.ConcurrencyError, status.HTTP_409_CONFLICT),
+        (E.JobStateError, status.HTTP_409_CONFLICT),
+        # authorization / policy block: 403 (never 200, rule 6)
+        (E.AuthorizationError, status.HTTP_403_FORBIDDEN),
+        (E.PolicyBlockError, status.HTTP_403_FORBIDDEN),
+        (E.BudgetExceededError, status.HTTP_403_FORBIDDEN),
+        (E.ProviderError, status.HTTP_502_BAD_GATEWAY),
+        # a configured abuse-control budget is exhausted: 429 (J7)
+        (E.RateLimitError, status.HTTP_429_TOO_MANY_REQUESTS),
+        # payload too large / quarantine / unsafe intake: 413 / 422 / 400
+        (E.ArchiveBombError, status.HTTP_413_CONTENT_TOO_LARGE),
+        (E.PathTraversalError, status.HTTP_400_BAD_REQUEST),
+        (E.SSRFError, status.HTTP_400_BAD_REQUEST),
+        (E.MalwareScanError, status.HTTP_422_UNPROCESSABLE_CONTENT),
+        (E.CorruptedArtifactError, status.HTTP_422_UNPROCESSABLE_CONTENT),
+        (E.ValidationError, status.HTTP_422_UNPROCESSABLE_CONTENT),
+        (E.ExportError, status.HTTP_422_UNPROCESSABLE_CONTENT),
+        (E.IntakeError, status.HTTP_400_BAD_REQUEST),
+    ]
+    for cls, code in mapping:
+        if isinstance(exc, cls):
+            return HTTPException(status_code=code, detail=str(exc))
     return HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
 
 
@@ -96,29 +155,56 @@ def health() -> dict[str, Any]:
     return {"status": "ok", "product": "knovaryn", "server_id": "knovaryn_mcp"}
 
 
+# ----------------------------------------------------------- observability (K4)
+@app.get("/v1/metrics", dependencies=[Depends(P_ADMIN)], include_in_schema=False)
+def metrics_endpoint() -> Any:
+    """Prometheus text exposition of process-level runtime metrics (spec §22.2)."""
+    from fastapi.responses import PlainTextResponse
+
+    from ...infrastructure.telemetry.metrics import get_registry
+
+    return PlainTextResponse(get_registry().render_prometheus(), media_type="text/plain")
+
+
 # --------------------------------------------------------------- projects
-@app.post("/v1/projects", dependencies=[Depends(_require_auth)])
-async def create_project(body: dict[str, Any]) -> dict[str, Any]:
+@app.post(
+    "/v1/projects",
+    status_code=201,
+)
+async def create_project(
+    body: ProjectCreate, principal: Principal = Depends(P_PROJECT_WRITE)
+) -> dict[str, Any]:
     try:
         project = await _ws().create_project(
-            slug=body["slug"],
-            display_name=body["display_name"],
-            description=body.get("description", ""),
-            tags=body.get("tags"),
+            slug=body.slug,
+            display_name=body.display_name,
+            description=body.description,
+            tags=body.tags,
+            owner_principal=principal.name,
         )
     except Exception as exc:  # noqa: BLE001
         raise _err(exc) from exc
     return project.model_dump(mode="json")
 
 
-@app.get("/v1/projects", dependencies=[Depends(_require_auth)])
-async def list_projects(limit: int = 50, cursor: str | None = None) -> dict[str, Any]:
-    return await _ws().list_projects(limit=limit, cursor=cursor)
+@app.get("/v1/projects")
+async def list_projects(
+    limit: int = 50,
+    cursor: str | None = None,
+    principal: Principal = Depends(P_PROJECT_READ),
+) -> dict[str, Any]:
+    # owner-tenant isolation: non-admin principals only see projects they own
+    return await _ws().list_projects_visible(principal=principal.name, limit=limit, cursor=cursor)
 
 
-@app.get("/v1/projects/{project_id}", dependencies=[Depends(_require_auth)])
-async def get_project(project_id: str) -> dict[str, Any]:
+@app.get("/v1/projects/{project_id}")
+async def get_project(
+    project_id: str, principal: Principal = Depends(P_PROJECT_READ)
+) -> dict[str, Any]:
     try:
+        await _ws().require_project_access(
+            project_id=project_id, principal=principal.name, scope="project:read"
+        )
         project = await _ws().get_project(project_id)
     except Exception as exc:  # noqa: BLE001
         raise _err(exc) from exc
@@ -126,84 +212,145 @@ async def get_project(project_id: str) -> dict[str, Any]:
 
 
 # --------------------------------------------------------------- sources
-@app.post("/v1/projects/{project_id}/sources", dependencies=[Depends(_require_auth)])
-async def add_source(project_id: str, body: dict[str, Any]) -> dict[str, Any]:
+@app.post(
+    "/v1/projects/{project_id}/sources",
+    status_code=201,
+)
+async def add_source(
+    project_id: str,
+    body: SourceAdd,
+    principal: Principal = Depends(P_SOURCE_WRITE),
+) -> dict[str, Any]:
     try:
+        await _ws().require_project_access(
+            project_id=project_id, principal=principal.name, scope="source:write"
+        )
         src = await _ws().add_source(
             project_id=project_id,
-            original_name=body["original_name"],
-            media_type=body.get("media_type", "text/markdown"),
-            content=body.get("content", ""),
-            declared_license=body.get("declared_license"),
+            original_name=body.original_name,
+            media_type=body.media_type or "text/markdown",
+            content=body.content or "",
+            raw=body.raw,
+            declared_license=body.declared_license,
         )
     except Exception as exc:  # noqa: BLE001
         raise _err(exc) from exc
     return src.model_dump(mode="json")
 
 
-@app.get("/v1/projects/{project_id}/sources", dependencies=[Depends(_require_auth)])
-async def list_sources(project_id: str, limit: int = 100) -> dict[str, Any]:
-    return await _ws().list_sources(project_id=project_id, limit=limit)
+@app.get("/v1/projects/{project_id}/sources")
+async def list_sources(
+    project_id: str,
+    limit: int = 100,
+    principal: Principal = Depends(P_PROJECT_READ),
+) -> dict[str, Any]:
+    try:
+        await _ws().require_project_access(
+            project_id=project_id, principal=principal.name, scope="project:read"
+        )
+        return await _ws().list_sources(project_id=project_id, limit=limit)
+    except Exception as exc:  # noqa: BLE001
+        raise _err(exc) from exc
 
 
-@app.get("/v1/projects/{project_id}/sources/{source_id}", dependencies=[Depends(_require_auth)])
-async def inspect_source(project_id: str, source_id: str) -> dict[str, Any]:
-    data = await _ws().list_sources(project_id=project_id, limit=1000)
+@app.get("/v1/projects/{project_id}/sources/{source_id}")
+async def inspect_source(
+    project_id: str,
+    source_id: str,
+    principal: Principal = Depends(P_PROJECT_READ),
+) -> dict[str, Any]:
+    try:
+        await _ws().require_project_access(
+            project_id=project_id, principal=principal.name, scope="project:read"
+        )
+        data = await _ws().list_sources(project_id=project_id, limit=1000)
+    except Exception as exc:  # noqa: BLE001
+        raise _err(exc) from exc
     for s in data.get("sources", []):
         if s.get("id") == source_id:
             return {**s, "inspect": f"knovaryn://projects/{project_id}/sources/{source_id}/summary"}
     raise HTTPException(status_code=404, detail=f"source not found: {source_id}")
 
 
-@app.get("/v1/projects/{project_id}/license", dependencies=[Depends(_require_auth)])
-async def license_report(project_id: str) -> dict[str, Any]:
+@app.get("/v1/projects/{project_id}/license")
+async def license_report(
+    project_id: str, principal: Principal = Depends(P_PROJECT_READ)
+) -> dict[str, Any]:
     """Source license + privacy report and §15.6 publication-gate decision."""
-    return await _ws().license_report(project_id=project_id)
+    try:
+        await _ws().require_project_access(
+            project_id=project_id, principal=principal.name, scope="project:read"
+        )
+        return await _ws().license_report(project_id=project_id)
+    except Exception as exc:  # noqa: BLE001
+        raise _err(exc) from exc
 
 
 # --------------------------------------------------------- pipeline jobs
-@app.post("/v1/projects/{project_id}/pipeline", dependencies=[Depends(_require_auth)])
-async def start_pipeline(project_id: str, body: dict[str, Any]) -> dict[str, Any]:
+@app.post(
+    "/v1/projects/{project_id}/pipeline",
+    status_code=202,
+)
+async def start_pipeline(
+    project_id: str,
+    body: PipelineStart,
+    principal: Principal = Depends(P_JOB_RUN),
+) -> dict[str, Any]:
     try:
+        await _ws().require_project_access(
+            project_id=project_id, principal=principal.name, scope="job:run"
+        )
         job = await _ws().start_pipeline(
             project_id=project_id,
-            task_family_proportions=body.get("task_family_proportions"),
-            idempotency_key=body.get("idempotency_key"),
+            task_family_proportions=body.task_family_proportions,
+            idempotency_key=body.idempotency_key,
         )
     except Exception as exc:  # noqa: BLE001
         raise _err(exc) from exc
     return job.model_dump(mode="json")
 
 
-@app.get("/v1/jobs/{job_id}", dependencies=[Depends(_require_auth)])
-async def get_job(job_id: str) -> dict[str, Any]:
+async def _job_project_guard(job_id: str, principal: Principal, scope: str) -> None:
+    """Authorize ``principal`` to act on the project that owns ``job``."""
+    summary = await _ws().get_job(job_id)
+    await _ws().require_project_access(
+        project_id=summary.job.project_id, principal=principal.name, scope=scope
+    )
+
+
+@app.get("/v1/jobs/{job_id}")
+async def get_job(job_id: str, principal: Principal = Depends(P_JOB_RUN)) -> dict[str, Any]:
     try:
+        await _job_project_guard(job_id, principal, "job:run")
         summary = await _ws().get_job(job_id)
     except Exception as exc:  # noqa: BLE001
         raise _err(exc) from exc
     return summary.to_dict()
 
 
-@app.post("/v1/jobs/{job_id}/run", dependencies=[Depends(_require_auth)])
-async def run_job(job_id: str) -> dict[str, Any]:
+@app.post("/v1/jobs/{job_id}/run")
+async def run_job(job_id: str, principal: Principal = Depends(P_JOB_RUN)) -> dict[str, Any]:
     try:
+        await _job_project_guard(job_id, principal, "job:run")
         return await _ws().run_job(job_id)
     except Exception as exc:  # noqa: BLE001
         raise _err(exc) from exc
 
 
-@app.post("/v1/jobs/{job_id}/cancel", dependencies=[Depends(_require_auth)])
-async def cancel_job(job_id: str) -> dict[str, Any]:
+@app.post("/v1/jobs/{job_id}/cancel")
+async def cancel_job(job_id: str, principal: Principal = Depends(P_JOB_RUN)) -> dict[str, Any]:
     try:
+        await _job_project_guard(job_id, principal, "job:run")
         job = await _ws().request_cancel(job_id)
     except Exception as exc:  # noqa: BLE001
         raise _err(exc) from exc
     return {"job_id": job.id, "state": job.state.value, "cancellation_requested": True}
 
 
-@app.post("/v1/jobs/{job_id}/resume", dependencies=[Depends(_require_auth)])
-async def resume_job(job_id: str) -> dict[str, Any]:
+@app.post("/v1/jobs/{job_id}/resume")
+async def resume_job(job_id: str, principal: Principal = Depends(P_JOB_RUN)) -> dict[str, Any]:
     try:
+        await _job_project_guard(job_id, principal, "job:run")
         summary = await _ws().get_job(job_id)
     except Exception as exc:  # noqa: BLE001
         raise _err(exc) from exc
@@ -216,71 +363,150 @@ async def resume_job(job_id: str) -> dict[str, Any]:
     }
 
 
-@app.get("/v1/jobs", dependencies=[Depends(_require_auth)])
-async def list_jobs(project_id: str | None = None, limit: int = 50) -> dict[str, Any]:
-    return await _ws().list_jobs(project_id=project_id, limit=limit)
+@app.get("/v1/jobs")
+async def list_jobs(
+    project_id: str | None = None,
+    limit: int = 50,
+    principal: Principal = Depends(P_JOB_RUN),
+) -> dict[str, Any]:
+    try:
+        if project_id:
+            await _ws().require_project_access(
+                project_id=project_id, principal=principal.name, scope="job:run"
+            )
+        return await _ws().list_jobs(project_id=project_id, limit=limit)
+    except Exception as exc:  # noqa: BLE001
+        raise _err(exc) from exc
 
 
 # ------------------------------------------------------------- examples
-@app.get("/v1/projects/{project_id}/examples", dependencies=[Depends(_require_auth)])
+@app.get("/v1/projects/{project_id}/examples")
 async def list_examples(
-    project_id: str, status: str | None = None, limit: int = 100
+    project_id: str,
+    status: str | None = None,
+    limit: int = 100,
+    principal: Principal = Depends(P_EXPORT_READ),
 ) -> dict[str, Any]:
-    return await _ws().list_examples(project_id=project_id, status=status, limit=limit)
+    try:
+        await _ws().require_project_access(
+            project_id=project_id, principal=principal.name, scope="export:read"
+        )
+        return await _ws().list_examples(project_id=project_id, status=status, limit=limit)
+    except Exception as exc:  # noqa: BLE001
+        raise _err(exc) from exc
 
 
 @app.post(
-    "/v1/projects/{project_id}/examples/{example_id}/review", dependencies=[Depends(_require_auth)]
+    "/v1/projects/{project_id}/examples/{example_id}/review",
+    status_code=200,
 )
-async def review_example(project_id: str, example_id: str, body: dict[str, Any]) -> dict[str, Any]:
-    decision = body.get("decision", "accept")
-    if decision not in ("accept", "reject", "edit"):
-        raise HTTPException(status_code=400, detail=f"unsupported decision: {decision}")
-    return {
-        "status": "recorded",
-        "project_id": project_id,
-        "example_id": example_id,
-        "decision": decision,
-        "note": body.get("note", ""),
-        "relabel": body.get("relabel"),
-    }
+async def review_example(
+    project_id: str,
+    example_id: str,
+    body: ReviewRequest,
+    principal: Principal = Depends(P_REVIEW_WRITE),
+) -> dict[str, Any]:
+    """Apply a review by appending an immutable revision (H1/H2/P0-9).
+
+    Shares the single application-service path with the CLI/MCP/SDK — no
+    interface-specific review logic. A stale ``concurrency_token`` / base
+    ``revision_id`` returns ``409``.
+    """
+    try:
+        await _ws().require_project_access(
+            project_id=project_id, principal=principal.name, scope="review:write"
+        )
+        return await _ws().review_example(
+            example_id=example_id,
+            revision_id=body.revision_id or 1,
+            reviewer=principal.name,
+            decision=body.decision,
+            note=body.note,
+            policy_version=body.policy_version,
+            concurrency_token=body.concurrency_token,
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise _err(exc) from exc
 
 
 # ------------------------------------------------------------- datasets
-@app.post("/v1/projects/{project_id}/validate", dependencies=[Depends(_require_auth)])
-async def validate_dataset(project_id: str) -> dict[str, Any]:
-    return await _ws().validate_dataset(project_id=project_id)
-
-
-@app.post("/v1/projects/{project_id}/version", dependencies=[Depends(_require_auth)])
-async def create_version(project_id: str, body: dict[str, Any]) -> dict[str, Any]:
+@app.post("/v1/projects/{project_id}/validate")
+async def validate_dataset(
+    project_id: str, principal: Principal = Depends(P_EXPORT_READ)
+) -> dict[str, Any]:
     try:
+        await _ws().require_project_access(
+            project_id=project_id, principal=principal.name, scope="export:read"
+        )
+        return await _ws().validate_dataset(project_id=project_id)
+    except Exception as exc:  # noqa: BLE001
+        raise _err(exc) from exc
+
+
+@app.post(
+    "/v1/projects/{project_id}/version",
+    status_code=201,
+)
+async def create_version(
+    project_id: str,
+    body: VersionCreate,
+    principal: Principal = Depends(P_EXPORT_READ),
+) -> dict[str, Any]:
+    try:
+        await _ws().require_project_access(
+            project_id=project_id, principal=principal.name, scope="export:read"
+        )
         version = await _ws().create_version(
-            project_id=project_id, semantic_version=body.get("semantic_version")
+            project_id=project_id, semantic_version=body.semantic_version
         )
     except Exception as exc:  # noqa: BLE001
         raise _err(exc) from exc
     return version.model_dump(mode="json")
 
 
-@app.post("/v1/projects/{project_id}/export", dependencies=[Depends(_require_auth)])
-async def export_dataset(project_id: str, body: dict[str, Any] | None = None) -> dict[str, Any]:
-    body = body or {}
-    return await _ws().export_dataset(project_id=project_id, version_id=body.get("version_id"))
-
-
-@app.post("/v1/projects/{project_id}/publish", dependencies=[Depends(_require_auth)])
-async def publish_dataset(project_id: str, body: dict[str, Any]) -> dict[str, Any]:
-    dry_run = body.get("dry_run", True)
-    confirm = body.get("confirm", False)
-    repo_id = body.get("repo_id", "")
-    if not confirm and not dry_run:
-        raise HTTPException(
-            status_code=400, detail="publish requires confirm=true (external side effect)"
+@app.post("/v1/projects/{project_id}/export")
+async def export_dataset(
+    project_id: str,
+    body: ExportRequest,
+    principal: Principal = Depends(P_EXPORT_READ),
+) -> dict[str, Any]:
+    try:
+        await _ws().require_project_access(
+            project_id=project_id, principal=principal.name, scope="export:read"
         )
-    if not repo_id:
-        raise HTTPException(status_code=400, detail="repo_id is required")
-    return await _ws().publish_dataset(project_id=project_id, repo_id=repo_id, dry_run=dry_run)
+        result = await _ws().export_dataset(project_id=project_id, version_id=body.version_id)
+        # K4: export count (only a resolvable artifact counts — rule 13).
+        from ...infrastructure.telemetry.metrics import get_registry
+
+        fmt = str(getattr(body, "format", None) or "canonical-jsonl")
+        get_registry().inc("knovaryn_export_total", labels={"format": fmt})
+        return result
+    except Exception as exc:  # noqa: BLE001
+        raise _err(exc) from exc
+
+
+@app.post("/v1/projects/{project_id}/publish")
+async def publish_dataset(
+    project_id: str,
+    body: PublishRequest,
+    principal: Principal = Depends(P_PUBLISH_WRITE),
+) -> dict[str, Any]:
+    try:
+        await _ws().require_project_access(
+            project_id=project_id, principal=principal.name, scope="publish:write"
+        )
+        if not body.confirm and not body.dry_run:
+            raise HTTPException(
+                status_code=400, detail="publish requires confirm=true (external side effect)"
+            )
+        return await _ws().publish_dataset(
+            project_id=project_id,
+            repo_id=body.repo_id,
+            dry_run=body.dry_run,
+            principal=principal.name,
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise _err(exc) from exc
 
 
 # ------------------------------------------------------------------ demo
@@ -318,77 +544,12 @@ async def run_demo() -> dict[str, Any]:
 # ------------------------------------------------------------------ console
 @app.get("/", include_in_schema=False)
 def web_console() -> Any:
-    """Minimal web console dashboard backed by the REST control plane."""
+    """Accessible web console backed by the REST control plane (spec §17.4, WP J6)."""
     from fastapi.responses import HTMLResponse
 
-    html = (
-        '<!doctype html><html lang="en"><head>\n'
-        + '<meta charset="utf-8"><title>Knovaryn Console</title>\n'
-        + "<style>body{font-family:system-ui,sans-serif;max-width:820px;margin:36px auto;"
-        "padding:0 16px;color:#1a1a1a}\n"
-        + "h1{font-size:1.5rem}h2{font-size:1.1rem;margin-top:28px}\n"
-        + "input,select{font:inherit;padding:7px 10px;border:1px solid #d4d4d8;border-rad"
-        "ius:8px;margin:3px 0}\n"
-        + "button{padding:8px 14px;font-size:.95rem;cursor:pointer;border:0;border-radius"
-        ":8px;background:#2563eb;color:#fff;margin:3px 4px 3px 0}\n"
-        + "button.sec{background:#6b7280}pre{background:#f4f4f5;padding:14px;border-radiu"
-        "s:8px;overflow:auto;font-size:.85rem}\n"
-        + "label{display:block;font-weight:600;margin-top:10px;font-size:.85rem}.row{disp"
-        "lay:flex;gap:8px;align-items:center;flex-wrap:wrap}</style>\n"
-        + "</head><body>\n"
-        + "<h1>Knovaryn Console</h1>\n"
-        + "<p>Training-data foundry. Server: <code>knovaryn_mcp</code> · offline default "
-        "(fake provider).</p>\n"
-        + "\n"
-        + "<h2>Project</h2>\n"
-        + '<input id="slug" placeholder="my-project"><input id="name" placeholder="Displa'
-        'y name" style="width:220px">\n'
-        + "<button onclick=\"post('/v1/projects',{slug:slug.value,display_name:name.value}"
-        ')">Create project</button>\n'
-        + '<button class="sec" onclick="get(\'/v1/projects\')">List projects</button>\n'
-        + "\n"
-        + "<h2>Source</h2>\n"
-        + '<input id="pid" placeholder="project_id"><input id="srcname" placeholder="sour'
-        'ce name">\n'
-        + '<textarea id="srccontent" rows="3" style="width:100%" placeholder="markdown co'
-        'ntent"></textarea>\n'
-        + "<button onclick=\"post('/v1/projects/'+pid.value+'/sources',{original_name:srcn"
-        'ame.value,content:srccontent.value})">Add source</button>\n'
-        + "\n"
-        + "<h2>Pipeline</h2>\n"
-        + "<div class=\"row\"><button onclick=\"post('/v1/projects/'+pid.value+'/pipeline',{"
-        '})">Queue pipeline</button>\n'
-        + "<button onclick=\"get('/v1/jobs?project_id='+pid.value)\">List jobs</button></di"
-        "v>\n"
-        + "\n"
-        + "<h2>Run &amp; export</h2>\n"
-        + '<input id="jid" placeholder="job_id" style="width:240px"><button onclick="post'
-        "('/v1/jobs/'+jid.value+'/run',{})\">Run job</button>\n"
-        + "<button onclick=\"post('/v1/projects/'+pid.value+'/version',{})\">Create version"
-        "</button>\n"
-        + "<button onclick=\"post('/v1/projects/'+pid.value+'/export',{})\">Export</button>\n"
-        + "<button class=\"sec\" onclick=\"post('/v1/projects/'+pid.value+'/publish',{dry_ru"
-        "n:true,confirm:true,repo_id:'local/dry-run'})\">Publish (dry-run)</button>\n"
-        + "\n"
-        + "<h2>Demo</h2>\n"
-        + "<button onclick=\"fetch('/v1/demo',{method:'POST'}).then(r=>r.json()).then(rend"
-        'er)">Run full offline demo</button>\n'
-        + "\n"
-        + '<pre id="out">Use the buttons above; output appears here.</pre>\n'
-        + "<script>\n"
-        + "async function j(url,opts) { const r=await fetch(url,{method:(opts&&opts.metho"
-        "d)||'GET',headers:{'Content-Type':'application/json'},body:opts&&opts.body?JSO"
-        "N.stringify(opts.body):undefined}); return {status:r.status, body:await r.text"
-        "()}; }\n"
-        + "async function get(url){const r=await j(url);render(parse(r));}\n"
-        + "async function post(url,body){const r=await j(url,{method:'POST',body});render"
-        "(parse(r));}\n"
-        + "function parse(r){try{return JSON.parse(r.body)}catch(e){return {status:r.stat"
-        "us,raw:r.body}}}\n"
-        + "function render(x){document.getElementById('out').textContent=JSON.stringify(x"
-        ",null,2);}\n" + "</script>\n" + "</body></html>"
-    )
-    return HTMLResponse(html)
+    from .webconsole import render_console
+
+    return HTMLResponse(render_console())
 
 
 _DEMO_SOURCES = [

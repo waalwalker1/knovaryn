@@ -34,14 +34,14 @@ Source documents ──▶ Parse ──▶ Split & chunk ──▶ Generate ─�
 A high-level view of the end-to-end architecture. Six fully annotated diagrams —
 **system architecture**, **pipeline flow**, **durable jobs**, **MCP session**,
 **security**, and **value proposition** — plus their raw Mermaid source live in the
-[repository README](../README.md).
+[repository README](https://github.com/waalwalker1/knovaryn#readme).
 
 ```mermaid
 flowchart LR
     subgraph AGENTS["Host agents"]
         MCPAG["Claude · Cursor · Claude Code"]
     end
-    MCPAG --> M["knovaryn_mcp — 17 tools"]
+    MCPAG --> M["knovaryn_mcp — 23 tools"]
     subgraph CORE["Knovaryn core"]
         IN["Intake & preflight"] --> PA["Parse (Docling)"]
         PA --> SP["Split & chunk"]
@@ -95,7 +95,8 @@ your behalf.
 
 Knovaryn reads credentials **only from the environment** — no API keys are
 committed anywhere, the demo needs none at all, and secrets are redacted at
-display boundaries. See the placeholder-only [`.env.example`](../.env.example)
+display boundaries. See the placeholder-only
+[`.env.example`](https://github.com/waalwalker1/knovaryn/blob/main/.env.example)
 for the complete configuration reference. Publication is **dry-run by default**
 and gated on license approval.
 

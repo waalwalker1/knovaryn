@@ -11,7 +11,7 @@ gateway; a live gateway swaps in seamlessly.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, cast
+from typing import Any
 
 from ..domain.hashing import ContentHasher, normalize_hash
 from ..domain.ids import IdGenerator
@@ -20,10 +20,12 @@ from ..domain.schemas import (
     DatasetPlan,
     DatasetVersion,
     ExtractionStatus,
+    GenerationCandidate,
     ParsedDocument,
     Project,
     QualityStatus,
     SourceDocument,
+    SourceSpan,
     Topology,
     TrainingExample,
 )
@@ -36,14 +38,16 @@ from ..pipeline.planner import plan as plan_dataset
 from ..pipeline.quality.artifact import diagnose_example
 from ..pipeline.quality.reports import build_quality_report
 from ..pipeline.quality.validators import (
+    AnswerabilityValidator,
     CompletenessValidator,
     FormatValidator,
     GroundingValidator,
     RefusalValidator,
+    SchemaValidator,
     ValidatorContext,
     assemble_decision,
 )
-from ..pipeline.split import assign_splits
+from ..pipeline.split import assign_splits, check_split_integrity
 
 
 @dataclass
@@ -51,6 +55,8 @@ class PipelineResult:
     project: Project
     parsed: list[ParsedDocument] = field(default_factory=list)
     chunks: list[Chunk] = field(default_factory=list)
+    spans: list[SourceSpan] = field(default_factory=list)
+    candidates: list[GenerationCandidate] = field(default_factory=list)
     examples: list[TrainingExample] = field(default_factory=list)
     version: DatasetVersion | None = None
     quality: dict[str, Any] = field(default_factory=dict)
@@ -97,13 +103,15 @@ class ProjectService:
 
     # -- intake + parse (text fallback, docling optional) --------------------
     async def ingest_and_parse(
-        self, *, project: Project, source: SourceDocument, content: str
+        self, *, project: Project, source: SourceDocument, raw: bytes
     ) -> tuple[ParsedDocument, dict[str, Any]]:
         from ..infrastructure.docling.adapter import DoclingAdapter
 
-        raw = content.encode("utf-8")
         adapter = DoclingAdapter(ids=self._ids)
         outcome = await adapter.parse(source, raw, config={})
+        # Quarantined binary (WP G5): never promote garbage text to a parsed
+        # document — surface extraction as failed and let callers decide.
+        extraction = ExtractionStatus.failed if outcome.quarantined else ExtractionStatus.parsed
         parsed = ParsedDocument(
             id=self._ids.new_handle("par"),
             source_document_id=source.id,
@@ -113,28 +121,48 @@ class ProjectService:
             canonical_docling_json_artifact_id=self._ids.new_handle("art"),
             markdown_artifact_id=self._ids.new_handle("art"),
             text_artifact_id=self._ids.new_handle("art"),
-            extraction_status=ExtractionStatus.parsed,
+            extraction_status=extraction,
             extraction_quality_summary=outcome.diagnostics,
         )
         return parsed, outcome.canonical_json
 
     # -- chunking ------------------------------------------------------------
-    def chunk_document(self, *, parsed: ParsedDocument, canonical: dict[str, Any]) -> list[Chunk]:
+    def chunk_document(
+        self, *, parsed: ParsedDocument, canonical: dict[str, Any]
+    ) -> tuple[list[Chunk], list[SourceSpan]]:
         cfg = ChunkCfg.from_dict(self._chunk_config)
         results = chunk_document(canonical, cfg)
         chunks: list[Chunk] = []
+        spans: list[SourceSpan] = []
         for i, res in enumerate(results):
+            span_ids: list[str] = []
+            # one real, persisted span per chunk (character-located, quoted text)
+            span = SourceSpan(
+                id=self._ids.new_handle("sp"),
+                parsed_document_id=parsed.id,
+                page_number=None,
+                section_path="/".join(res.heading_path),
+                element_reference=f"chunk:{i}",
+                character_start=0,
+                character_end=len(res.main_text),
+                quoted_text=res.main_text,
+                sha256=normalize_hash(res.main_text),
+            )
+            spans.append(span)
+            span_ids.append(span.id)
             chunks.append(
                 Chunk(
                     id=self._ids.new_handle("ck"),
                     parsed_document_id=parsed.id,
+                    source_document_id=parsed.source_document_id,
+                    source_group_id=None,
                     ordinal=i,
                     heading_path=res.heading_path,
                     structural_type="text",
                     main_text=res.main_text,
                     rendered_context=res.context_text,
                     token_count=len(res.main_text.split()),
-                    source_span_ids=[f"span_{normalize_hash(res.main_text)[:8]}_{i}"],
+                    source_span_ids=span_ids,
                     chunker_name="structure_aware",
                     chunker_version="1",
                     chunker_config_hash=cfg.config_hash(),
@@ -142,7 +170,7 @@ class ProjectService:
                     metadata={"source_id": parsed.source_document_id},
                 )
             )
-        return chunks
+        return chunks, spans
 
     # -- full pipeline -------------------------------------------------------
     async def run_pipeline(
@@ -150,7 +178,8 @@ class ProjectService:
         *,
         project: Project,
         sources: list[SourceDocument],
-        contents: list[str],
+        contents: list[str] | None = None,
+        raw_contents: list[bytes] | None = None,
         plan: DatasetPlan | None = None,
     ) -> PipelineResult:
         plan = plan or DatasetPlan(
@@ -162,24 +191,44 @@ class ProjectService:
         )
         result = PipelineResult(project=project)
 
+        # raw bytes win; the legacy ``contents`` (text) path is encoded for
+        # compatibility.
+        if raw_contents is None:
+            raw_contents = [(c or "").encode("utf-8") for c in (contents or [])]
+
         # parse + chunk each source
-        for source, content in zip(sources, contents, strict=True):
-            parsed, canonical = await self.ingest_and_parse(
-                project=project, source=source, content=content
-            )
+        if len(raw_contents) != len(sources):
+            result.notes.append("source/raw length mismatch; nothing parsed")
+            return result
+        for source, raw in zip(sources, raw_contents, strict=True):
+            parsed, canonical = await self.ingest_and_parse(project=project, source=source, raw=raw)
             result.parsed.append(parsed)
-            result.chunks.extend(self.chunk_document(parsed=parsed, canonical=canonical))
+            chunks, spans = self.chunk_document(parsed=parsed, canonical=canonical)
+            for c in chunks:
+                c.source_group_id = source.group_key or source.id
+                c.split = None  # set after split assignment below
+            result.chunks.extend(chunks)
+            result.spans.extend(spans)
 
         if not result.chunks:
             result.notes.append("no chunks produced; nothing to generate")
             return result
 
-        # source-group split at SOURCE level before generation
+        # source-group split at SOURCE level before generation (P0-2/B1)
         split = assign_splits(sources, strategy="grouped_random", seed=42)
-        chunk_split = {
-            c.id: split.split_of(_chunk_source(c, sources)) or "train" for c in result.chunks
-        }
-        result.notes.append(f"split: {split.strategy}")
+        # propagate split to each chunk as DATA (explicit field), not parsed from ids
+        for source in sources:
+            s = split.split_of(source.id) or ""
+            for c in result.chunks:
+                if c.source_document_id == source.id:
+                    c.split = s
+        effective = {c.id: c.split for c in result.chunks if c.split}
+        result.notes.append(
+            f"split: {split.strategy} (assigned {len(effective)}/{len(result.chunks)} chunks)"
+        )
+
+        # build span_texts from REAL persisted spans (cited-only evidence, C2)
+        span_texts: dict[str, str] = {sp.id: sp.quoted_text for sp in result.spans}
 
         # plan + generate candidates
         plan_result = plan_dataset(plan, chunk_count=len(result.chunks))
@@ -193,41 +242,57 @@ class ProjectService:
         )
         result.notes.append(f"generated {gen_outcome.candidates_generated} candidates")
 
-        # build training examples from candidates + validate
+        # build persisted candidates + training examples from candidates; validate
+        gen_candidates, generated_of = _build_candidates(
+            ids=self._ids, project=project, gen_outcome=gen_outcome
+        )
+        result.candidates = gen_candidates
+
         examples: list[TrainingExample] = []
         assessments: list[Any] = []
         topology_of: dict[str, str] = {}
-        span_texts: dict[str, str] = {}
-        for chunk in result.chunks:
-            for span_id in chunk.source_span_ids:
-                span_texts[span_id] = chunk.main_text
-            if not chunk.source_span_ids:
-                span_texts[f"auto:{chunk.id}"] = chunk.main_text
-
-        for batch in gen_outcome.batches:
-            for cand in batch.candidates:
-                topo = _topology_of_candidate(cand)
-                ex = _candidate_to_example(
-                    ex_id=self._ids.new_handle("ex"),
-                    project_id=project.id,
-                    topo=topo,
-                    cand=cand,
-                    source_span_ids=_candidate_span_ids(cand),
-                    split=chunk_split.get(_candidate_chunk(cand), "train"),
-                )
-                # validate
-                ctx = ValidatorContext(source_texts=span_texts, policy_version="1")
-                sub = await self._validate(ex, ctx, is_preference=(topo == "preference"))
-                assessments.append(sub)
-                ex.quality_status = sub.status
-                ex.quality_score = sub.score
-                ex.quality_dimensions = _dims_from(sub)
-                topology_of[ex.id] = topo
-                if sub.status == QualityStatus.accepted:
-                    examples.append(ex)
+        for cand in gen_candidates:
+            topo = cand.topology
+            split_v = cand.split
+            source_document_id = cand.source_document_id
+            pid = cand.id
+            ex = _candidate_to_example(
+                ex_id=self._ids.new_handle("ex"),
+                project_id=project.id,
+                topo=topo,
+                cand=generated_of[pid],
+                source_span_ids=cand.source_span_ids,
+                split=split_v,
+            )
+            # real provenance: explicit document + candidate references (P0-1)
+            ex.source_document_ids = [source_document_id] if source_document_id else []
+            ex.generation_candidate_ids = [pid]
+            # validate against ONLY cited evidence
+            ctx = ValidatorContext(source_texts=span_texts, policy_version="1")
+            sub = await self._validate(ex, ctx, is_preference=(topo == "preference"))
+            assessments.append(sub)
+            ex.quality_status = sub.status
+            ex.quality_score = sub.score
+            ex.quality_dimensions = _dims_from(sub)
+            ex.private_audit_metadata["quality_verify"] = _verify_metadata(sub)
+            topology_of[ex.id] = topo
+            if sub.status == QualityStatus.accepted:
+                examples.append(ex)
 
         result.examples = examples
         result.quality = build_quality_report(assessments, topologies=topology_of).to_dict()
+
+        # honest split-integrity / contamination evidence over persisted lineage
+        # (each candidate carries explicit source_group_id + split; WP B). A group
+        # must never cross train/validation/test — this is machine-checkable.
+        integrity = check_split_integrity(
+            (c.source_group_id or c.source_document_id, c.split) for c in gen_candidates
+        )
+        result.quality["split_integrity"] = integrity.to_dict()
+        result.notes.append(
+            f"split integrity: ok={integrity.ok} groups={integrity.group_count} "
+            f"splits={integrity.groups_per_split}"
+        )
 
         # version + export accepted examples
         if examples:
@@ -254,7 +319,7 @@ class ProjectService:
                 readme=_default_readme(project, examples),
             )
             result.release_bundle_bytes = bundle.to_zip()
-            result.release_sha256 = bundle.sha256()
+            result.release_sha256 = bundle.detached_sha256()
         return result
 
     async def _validate(
@@ -264,10 +329,12 @@ class ProjectService:
         complete = await CompletenessValidator().assess(ex, ctx)
         fmt = await FormatValidator().assess(ex, ctx)
         refusal = await RefusalValidator().assess(ex, ctx)
+        schema = await SchemaValidator().assess(ex, ctx)
+        answerability = await AnswerabilityValidator().assess(ex, ctx)
         diag = diagnose_example(ex)
         artifact = _artifact_assessment(ex, diag)
         overall = assemble_decision(
-            [grounding, complete, fmt, refusal, artifact],
+            [grounding, complete, fmt, refusal, schema, answerability, artifact],
             example_id=ex.id,
             is_preference=is_preference,
         )
@@ -340,37 +407,40 @@ def _candidate_to_example(
     )
 
 
-def _topology_of_candidate(cand: Any) -> str:
-    from ..domain.schemas import (
-        GeneratedEvaluationCandidate,
-        GeneratedKTOCandidate,
-        GeneratedPreferenceCandidate,
-    )
+def _build_candidates(
+    *, ids: IdGenerator, project: Project, gen_outcome: Any
+) -> tuple[list[GenerationCandidate], dict[str, Any]]:
+    """Persist each generated candidate carrying explicit lineage (P0-1).
 
-    if isinstance(cand, GeneratedPreferenceCandidate):
-        return "preference"
-    if isinstance(cand, GeneratedKTOCandidate):
-        return "kto"
-    if isinstance(cand, GeneratedEvaluationCandidate):
-        return "evaluation"
-    return "sft"
+    Returns ``(candidates, generated_of)`` where ``generated_of`` maps each
+    persisted candidate id to its Generated* object (used to build examples).
+    Provenance fields are explicit data, never parsed from identifier strings.
+    """
+    from ..domain.hashing import normalize_hash
 
-
-def _candidate_span_ids(cand: Any) -> list[str]:
-    return [e.span_id for e in cand.evidence if e.span_id]
-
-
-def _candidate_chunk(cand: Any) -> str:
-    for e in cand.evidence:
-        if e.span_id:
-            return cast(str, e.span_id.split("_")[0])
-    return ""
-
-
-def _chunk_source(chunk: Chunk, sources: list[SourceDocument]) -> str:
-    # In the demo, chunks are mapped by parsing the span/candidate id. We map
-    # chunk -> its source via the parsed document order stored in metadata.
-    return chunk.metadata.get("source_id") or (sources[0].id if sources else "")
+    candidates: list[GenerationCandidate] = []
+    generated_of: dict[str, Any] = {}
+    for batch in gen_outcome.batches:
+        for gen in batch.candidates:
+            cand = GenerationCandidate(
+                id=ids.new_handle("cand"),
+                project_id=project.id,
+                chunk_id=getattr(gen, "chunk_id", "") or "",
+                source_document_id=getattr(gen, "source_document_id", "") or "",
+                source_group_id=getattr(gen, "source_group_id", None),
+                split=getattr(gen, "split", "") or "",
+                source_span_ids=[e.span_id for e in getattr(gen, "evidence", []) if e.span_id],
+                topology=getattr(gen, "topology", "sft") or "sft",
+                task_family=getattr(gen, "task_family", "") or "",
+                provider=getattr(gen, "provider", "") or "",
+                model=getattr(gen, "model", "") or "",
+                candidate_hash=normalize_hash(
+                    getattr(gen, "concise_generation_note", "") or repr(gen)[:2000]
+                ),
+            )
+            candidates.append(cand)
+            generated_of[cand.id] = gen
+    return candidates, generated_of
 
 
 def _dims_from(assessment: Any) -> dict[str, float]:
@@ -380,6 +450,30 @@ def _dims_from(assessment: Any) -> dict[str, float]:
         else {}
     )
     return dict(ev) if isinstance(ev, dict) else {}
+
+
+def _verify_metadata(assessment: Any) -> dict[str, Any]:
+    """Extract the durable three-state verification record (WP C1).
+
+    Stored on the example's private audit metadata so review/approval tooling
+    can retrace, per dimension, whether it was executed and above its floor
+    (verified), executed and below (failed), or never assessed (absent =>
+    unverified). Fail-closed: an absent dimension is unverified, not a pass.
+    """
+    if not isinstance(assessment.evidence, dict):
+        return {"verify_state": assessment.verify_state.value}
+    verify = assessment.evidence.get("verify", {})
+    if not isinstance(verify, dict):
+        verify = {}
+    # the overall assessment's own verdict is the definitive three-state signal
+    return {
+        "verify_state": assessment.verify_state.value,
+        "per_dimension": {k: v for k, v in verify.items() if k != "overall"},
+        "critical_unverified": [
+            c for c in assessment.reason_codes if c.startswith("critical_unverified")
+        ],
+        "critical_failed": [c for c in assessment.reason_codes if c.startswith("critical_failed")],
+    }
 
 
 def _artifact_assessment(ex: TrainingExample, diag: Any) -> Any:

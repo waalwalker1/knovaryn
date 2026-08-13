@@ -102,6 +102,8 @@ class ChunkDB(Base):
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     parsed_document_id: Mapped[str] = mapped_column(ForeignKey("parsed_documents.id"), index=True)
+    source_document_id: Mapped[str] = mapped_column(String(64), default="", index=True)
+    source_group_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
     split_group_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     ordinal: Mapped[int] = mapped_column(Integer, default=0)
     heading_path: Mapped[list] = mapped_column(JSON, default=list)
@@ -186,6 +188,99 @@ class QualityAssessmentDB(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
+class ExampleRevisionDB(Base):
+    """Immutable per-example revision snapshot (WP H1). One row per revision."""
+
+    __tablename__ = "example_revisions"
+    __table_args__ = (
+        Index("ix_revision_example", "example_logical_id"),
+        Index("ix_revision_example_rev", "example_logical_id", "revision_id"),
+    )
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    example_logical_id: Mapped[str] = mapped_column(String(64), index=True)
+    revision_id: Mapped[int] = mapped_column(Integer)
+    parent_revision_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    content_hash: Mapped[str] = mapped_column(String(64))
+    snapshot: Mapped[dict] = mapped_column(JSON, default=dict)
+    review_state: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    concurrency_token: Mapped[str] = mapped_column(String(64), index=True)
+    created_by: Mapped[str] = mapped_column(String(255), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class ReviewDecisionDB(Base):
+    """Persisted review decision on a specific base revision (WP H2)."""
+
+    __tablename__ = "review_decisions"
+    __table_args__ = (Index("ix_review_example", "example_id"),)
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    example_id: Mapped[str] = mapped_column(String(64), index=True)
+    revision_id: Mapped[int] = mapped_column(Integer)
+    reviewer_principal: Mapped[str] = mapped_column(String(255))
+    decision: Mapped[str] = mapped_column(String(32))
+    note: Mapped[str] = mapped_column(Text, default="")
+    policy_version: Mapped[str] = mapped_column(String(64), default="")
+    concurrency_token: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class GenerationCandidateDB(Base):
+    __tablename__ = "generation_candidates"
+    __table_args__ = (Index("ix_cand_fingerprint", "call_fingerprint"),)
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), index=True)
+    chunk_id: Mapped[str] = mapped_column(ForeignKey("chunks.id"), index=True)
+    source_document_id: Mapped[str] = mapped_column(String(64), index=True)
+    source_group_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    split: Mapped[str] = mapped_column(String(32))
+    source_span_ids: Mapped[list] = mapped_column(JSON, default=list)
+    topology: Mapped[str] = mapped_column(String(32))
+    task_family: Mapped[str] = mapped_column(String(64))
+    prompt_template_name: Mapped[str] = mapped_column(String(128), default="")
+    prompt_template_version: Mapped[str] = mapped_column(String(64), default="")
+    prompt_template_hash: Mapped[str] = mapped_column(String(64), default="")
+    schema_hash: Mapped[str] = mapped_column(String(64), default="")
+    provider: Mapped[str] = mapped_column(String(128), default="")
+    model: Mapped[str] = mapped_column(String(128), default="")
+    profile: Mapped[str] = mapped_column(String(64), default="")
+    call_fingerprint: Mapped[str] = mapped_column(String(64), default="")
+    raw_output_artifact_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    candidate_hash: Mapped[str] = mapped_column(String(64), index=True)
+    status: Mapped[str] = mapped_column(String(32), default="accepted")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    metadata_: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
+
+
+class ModelCallDB(Base):
+    __tablename__ = "model_calls"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    job_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    project_id: Mapped[str] = mapped_column(String(64), index=True)
+    stage: Mapped[str] = mapped_column(String(64), default="")
+    provider: Mapped[str] = mapped_column(String(128), default="")
+    requested_model: Mapped[str] = mapped_column(String(128), default="")
+    resolved_model: Mapped[str] = mapped_column(String(128), default="")
+    profile: Mapped[str] = mapped_column(String(64), default="")
+    prompt_template_hash: Mapped[str] = mapped_column(String(64), default="")
+    request_fingerprint: Mapped[str] = mapped_column(String(64), index=True)
+    schema_hash: Mapped[str] = mapped_column(String(64), default="")
+    sampling_params: Mapped[dict] = mapped_column(JSON, default=dict)
+    input_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    cached_input_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    output_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    estimated_cost: Mapped[float] = mapped_column(Float, default=0.0)
+    provider_request_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    latency_ms: Mapped[int] = mapped_column(Integer, default=0)
+    retry_count: Mapped[int] = mapped_column(Integer, default=0)
+    result_artifact_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    status: Mapped[str] = mapped_column(String(32), default="ok")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 class DatasetVersionDB(Base):
     __tablename__ = "dataset_versions"
     __table_args__ = (Index("ix_version_project", "project_id"),)
@@ -194,6 +289,7 @@ class DatasetVersionDB(Base):
     project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), index=True)
     semantic_version: Mapped[str] = mapped_column(String(32))
     parent_version_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    member_example_ids: Mapped[list] = mapped_column(JSON, default=list)
     manifest_artifact_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     quality_report_artifact_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     dataset_card_artifact_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
@@ -258,6 +354,36 @@ class JobEventDB(Base):
     stage: Mapped[str] = mapped_column(String(64), default="")
     message: Mapped[str] = mapped_column(Text, default="")
     structured_payload: Mapped[dict] = mapped_column(JSON, default=dict)
+
+
+class JobCheckpointDB(Base):
+    """Durable per-stage checkpoint (spec §12/E2).
+
+    The engine writes one row per completed/explicitly-skipped stage. Payload
+    values are never discarded — they are the crash-recovery source of truth so
+    a resumed job skips recompute instead of repeating paid provider calls.
+    """
+
+    __tablename__ = "job_checkpoints"
+    __table_args__ = (
+        Index("ix_checkpoint_job_stage", "job_id", "stage_name"),
+        Index("ix_checkpoint_worker", "worker_id"),
+    )
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    job_id: Mapped[str] = mapped_column(ForeignKey("jobs.id"), index=True)
+    stage_name: Mapped[str] = mapped_column(String(64))
+    stage_version: Mapped[str] = mapped_column(String(64), default="1")
+    checkpoint_key: Mapped[str] = mapped_column(String(255), default="")
+    checkpoint_sequence: Mapped[int] = mapped_column(Integer, default=1)
+    status: Mapped[str] = mapped_column(String(32), default="completed")  # completed | skipped
+    input_hash: Mapped[str] = mapped_column(String(64), default="")
+    output_artifact_ids: Mapped[list] = mapped_column(JSON, default=list)
+    output_summary: Mapped[dict] = mapped_column(JSON, default=dict)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    worker_id: Mapped[str] = mapped_column(String(255), default="")
+    error: Mapped[str] = mapped_column(Text, default="")
 
 
 class AuditEventDB(Base):

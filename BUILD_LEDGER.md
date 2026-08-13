@@ -368,3 +368,33 @@ A follow-up build closed the remaining honest gaps recorded below:
 9. **`mkdocs.yml`** — docs site config so `make docs-build`/§31 site builds (previously missing).
 10. **`tests/test_migrations.py`** — 3 migration-contract tests.
 
+## ✅ Phase 12 — final adversarial audit (2026-08-13)
+
+Executed the Phase 12 hostile-audit packet (`.knovaryn-build/INDEPENDENT_AUDIT_PROMPT.md`):
+ran all gates, inspected public claims vs implementation, reproduced P0/release/security/
+chaos tests, and ran the clean-install wheel path. Full evidence: `.knovaryn-build/COMPLETION_REPORT.md`.
+
+**Findings fixed (blocking the wheel build):**
+- `pyproject.toml`: removed the invalid trove classifier `Framework :: MCP` (not a real
+  PyPI value; hatchling ≥1.31 rejects the entire build) → wheel now builds.
+- `pyproject.toml`: the `[project.urls]` table was placed before the top-level
+  `dependencies` list, so `dependencies` was parsed as `project.urls.dependencies` (a list)
+  and hatchling rejected it → moved `[project.urls]` after the rest of `[project.*]`.
+- `tests/release/test_mcp_wheel.py`: added an offline (no-PyPI) skip guard — it now **passes**
+  on network (wheel → fresh venv → `knovaryn-mcp` stdio → 23 tools) and skips only when PyPI
+  is unreachable.
+
+**Gates (all GREEN):** offline suite **412 passed / 1 skipped / 5 deselected**; coverage
+**77.70%** (gate PASSED); ruff check + format clean; mypy clean (109 files); mkdocs strict
+clean; `pip-audit` **no known vulnerabilities**; security+chaos **51 passed**; release
+tier **passed**; wheel builds + clean-install MCP verified.
+
+**Verified pass/fail matrix** (see COMPLETION_REPORT §13): core product promises proven on
+evidence; not an unconditional 10/10 because live-provider-cost, real-volume leakage,
+container, and browser-E2E require resources/credentials this offline environment cannot
+supply (documented precisely, not hidden).
+
+**Status:** all owner-independent gates are green; remaining items are owner-only external
+actions (commit/push, publishing, trusted-publisher, DNS, live-run) per Section 14 of the
+completion report.
+

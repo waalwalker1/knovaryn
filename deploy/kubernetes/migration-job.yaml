@@ -1,0 +1,67 @@
+# Database migration Job (spec WP K3). Runs SQLAlchemy `create_all` (idempotent
+# DDL) against the shared Postgres before API/worker scale out. Run once after
+# Postgres is ready:
+#   kubectl -n knovaryn apply -f deploy/kubernetes/migration-job.yaml
+#   kubectl -n knovaryn wait --for=condition=complete job/knovaryn-migrate --timeout=120s
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: knovaryn-migrate
+  namespace: knovaryn
+spec:
+  backoffLimit: 4
+  ttlSecondsAfterFinished: 600
+  template:
+    spec:
+      restartPolicy: Never
+      serviceAccountName: knovaryn
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        - name: wait-for-db
+          image: postgres:16.3   # pinned
+          command: ["sh", "-c", "until pg_isready -h postgres -U knovaryn -d knovaryn; do sleep 2; done"]
+          securityContext:
+            readOnlyRootFilesystem: true   # harden (Trivy AVD-KSV-0014); pg_isready writes nothing
+          env:
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: knovaryn-secrets
+                  key: postgres_password
+                  optional: true
+          resources:
+            requests: {cpu: 10m, memory: 32Mi}
+            limits: {cpu: 100m, memory: 128Mi}
+      containers:
+        - name: migrate
+          image: ghcr.io/knovaryn/knovaryn:0.1.0   # PINNED tag (K3)
+          imagePullPolicy: IfNotPresent
+          command: ["python", "-c"]
+          securityContext:
+            readOnlyRootFilesystem: true   # harden (Trivy AVD-KSV-0014); DDL/create_all writes to Postgres only
+          args:
+            - |
+              import asyncio
+              from knovaryn.infrastructure.database.session import Database
+              url = __import__("os").environ["KNOVARYN_STORAGE_DATABASE_URL"]
+              async def run():
+                  db = Database(url)
+                  try:
+                      await db.create_all()
+                      print("create_all complete")
+                  finally:
+                      await db.dispose()
+              asyncio.run(run())
+          env:
+            - name: KNOVARYN_STORAGE_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: knovaryn-secrets
+                  key: db_url
+          resources:
+            requests: {cpu: 50m, memory: 128Mi}
+            limits: {cpu: 250m, memory: 512Mi}

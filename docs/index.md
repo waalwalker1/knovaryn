@@ -1,3 +1,12 @@
+---
+description: >-
+  Open-source, MCP-native training-data foundry: turn permitted PDFs and
+  documents into traceable, quality-gated SFT, DPO/preference, KTO, and
+  evaluation datasets. Every exported example is linked to persisted source
+  evidence, quality assessments, review state, version metadata, and
+  reproducible release artifacts.
+image: assets/knovaryn-banner.svg
+---
 # Knovaryn
 
 > **Every training example, traced to its source.**
@@ -5,9 +14,13 @@
 > **New here?** Start with the [OmniTrain MCP ecosystem overview](omnitrain-mcp.md) —
 > *"how the whole thing works as a product and service."*
 
-Knovaryn is an **open-source, MCP-native training-data foundry**. It converts
-*permitted* source documents into **traceable, quality-gated SFT and preference
-datasets** that any MCP-capable agent can build, review, and export.
+Knovaryn is an **open-source, MCP-native training-data foundry** that turns
+*permitted* PDFs and documents into **traceable, quality-gated SFT,
+DPO/preference, KTO, and evaluation datasets**.
+
+**Every exported example is linked to persisted source evidence, quality
+assessments, review state, version metadata, and reproducible release
+artifacts.**
 
 It is local-first by default (SQLite + filesystem) and scales to a team
 deployment (PostgreSQL + S3-compatible storage) as a configuration change — not

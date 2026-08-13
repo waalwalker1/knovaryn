@@ -143,3 +143,41 @@ def test_check_db_missing_path_ok() -> None:
     ok, detail = cli_commands._check_db("/nonexistent/does-not-exist.db")
     assert ok is True
     assert "not yet initialized" in detail
+
+
+# ---------------------------------------------------------------------------
+# WP F1 — the ``knovaryn mcp`` subcommand (canonical MCP entry point alias)
+# ---------------------------------------------------------------------------
+
+
+def test_mcp_subcommand_is_registered() -> None:
+    """The ``knovaryn mcp`` subcommand is present (WP F1 canonical aliasing)."""
+    from knovaryn.interfaces.cli.main import app
+
+    names = {cmd.name for cmd in app.registered_commands}
+    assert "mcp" in names
+
+
+def test_mcp_cmd_delegates_to_mcp_entry_point(monkeypatch) -> None:
+    """``knovaryn mcp`` forwards to the packaged MCP server entry point."""
+    from typer.testing import CliRunner
+
+    from knovaryn.interfaces.cli.main import app
+
+    captured: list[str] = []
+
+    def fake_mcp_main(argv: list[str]) -> int:
+        captured.append(argv)
+        return 7
+
+    # ``mcp_cmd`` imports ``_mcp_main`` from knovaryn.interfaces.mcp.__main__
+    # inside the function body, so patch that module's ``main``. Driving through
+    # the Typer runner unwraps the Option defaults (host/port -> None) exactly
+    # as a real ``knovaryn mcp`` invocation would.
+    monkeypatch.setattr("knovaryn.interfaces.mcp.__main__.main", fake_mcp_main)
+
+    result = CliRunner().invoke(
+        app, ["mcp", "--transport", "stdio", "--database-url", "sqlite+aiosqlite:///t.db"]
+    )
+    assert result.exit_code == 7  # the MCP entry point's return value
+    assert captured == [["--transport=stdio", "--database-url=sqlite+aiosqlite:///t.db"]]

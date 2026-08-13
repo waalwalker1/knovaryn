@@ -67,6 +67,19 @@ class QualityStatus(StrEnum):
     blocked = "blocked"
 
 
+class Verification(StrEnum):
+    """WP C1 — three-state verification for a quality dimension.
+
+    ``verified`` means the dimension was actually assessed and met its floor;
+    ``failed`` means it was assessed and missed the floor; ``unverified`` means
+    it was never assessed (missing execution must never become a perfect score).
+    """
+
+    verified = "verified"
+    unverified = "unverified"
+    failed = "failed"
+
+
 class JobState(StrEnum):
     queued = "queued"
     leased = "leased"
@@ -86,6 +99,14 @@ class ReleaseStatus(StrEnum):
     approved = "approved"
     published = "published"
     withdrawn = "withdrawn"
+
+
+class ReviewDecision(StrEnum):
+    """A human/automated review verdict on an example's current revision."""
+
+    approve = "approve"
+    reject = "reject"
+    needs_work = "needs_work"
 
 
 class SupportType(StrEnum):
@@ -134,6 +155,11 @@ class GeneratedSFTCandidate(BaseModel):
     evidence: list[EvidenceRef]
     answerability: Literal["answerable", "unanswerable"]
     concise_generation_note: str = ""
+    chunk_id: str = ""
+    source_document_id: str = ""
+    source_group_id: str | None = None
+    split: str = ""
+    topology: str = "sft"
 
     @field_validator("messages")
     @classmethod
@@ -168,6 +194,11 @@ class GeneratedPreferenceCandidate(BaseModel):
     ]
     expected_preference_margin: Literal["small", "medium", "large"]
     concise_generation_note: str = ""
+    chunk_id: str = ""
+    source_document_id: str = ""
+    source_group_id: str | None = None
+    split: str = ""
+    topology: str = "preference"
 
     @field_validator("chosen_messages", "rejected_messages")
     @classmethod
@@ -183,6 +214,11 @@ class GeneratedKTOCandidate(BaseModel):
     desirability: Literal["good", "bad"]
     evidence: list[EvidenceRef]
     concise_generation_note: str = ""
+    chunk_id: str = ""
+    source_document_id: str = ""
+    source_group_id: str | None = None
+    split: str = ""
+    topology: str = "kto"
 
 
 class GeneratedEvaluationCandidate(BaseModel):
@@ -191,6 +227,11 @@ class GeneratedEvaluationCandidate(BaseModel):
     reference_answer: str | None = None
     evidence: list[EvidenceRef]
     concise_generation_note: str = ""
+    chunk_id: str = ""
+    source_document_id: str = ""
+    source_group_id: str | None = None
+    split: str = ""
+    topology: str = "evaluation"
 
 
 class GeneratedBatch(BaseModel):
@@ -300,7 +341,13 @@ class Chunk(BaseModel):
     model_config = ConfigDict(extra="allow")
     id: str
     parsed_document_id: str
+    source_document_id: str = ""
+    source_group_id: str | None = None
     split_group_id: str | None = None
+    # explicit source-level split assigned to this chunk (WP B/P0-2). Persisted
+    # on the chunk in-memory; the authoritative split for examples comes from the
+    # generation candidate, which carries it as a first-class field.
+    split: str | None = None
     ordinal: int = 0
     heading_path: list[str] = Field(default_factory=list)
     page_start: int | None = None
@@ -314,6 +361,38 @@ class Chunk(BaseModel):
     chunker_version: str
     chunker_config_hash: str
     sha256: str = ""
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class GenerationCandidate(BaseModel):
+    """A raw, persisted generation candidate before it becomes an example.
+
+    Carries explicit lineage fields (never derived from identifier strings) so
+    provenance and split can be resolved as data (§4 P0-2, §5.3, §A4).
+    """
+
+    model_config = ConfigDict(extra="allow")
+    id: str
+    project_id: str
+    chunk_id: str
+    source_document_id: str
+    source_group_id: str | None = None
+    split: str
+    source_span_ids: list[str] = Field(default_factory=list)
+    topology: str
+    task_family: str
+    prompt_template_name: str = ""
+    prompt_template_version: str = ""
+    prompt_template_hash: str = ""
+    schema_hash: str = ""
+    provider: str = ""
+    model: str = ""
+    profile: str = ""
+    call_fingerprint: str = ""
+    raw_output_artifact_id: str | None = None
+    candidate_hash: str
+    status: str = "accepted"
+    created_at: datetime = Field(default_factory=utcnow)
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -349,11 +428,55 @@ class QualityAssessment(BaseModel):
     validator_version: str
     policy_version: str = ""
     status: QualityStatus = QualityStatus.accepted
+    verify_state: Verification = Verification.unverified  # WP C1 (fail-closed default)
     score: float = 0.0
     reason_codes: list[str] = Field(default_factory=list)
     concise_rationale: str = ""
     evidence: dict[str, Any] = Field(default_factory=dict)
     usage: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime = Field(default_factory=utcnow)
+
+
+class ExampleRevision(BaseModel):
+    """An immutable snapshot of a training example at a point in time (WP H1).
+
+    Applying any change to an example (e.g. a review decision that flips
+    ``quality_status``) creates a NEW revision rather than mutating an existing
+    row, so the full history is auditable and prior states stay recoverable
+    (P0-9). ``parent_revision_id`` chains revisions; the first revision of an
+    example has a null parent.
+    """
+
+    model_config = ConfigDict(extra="allow")
+    id: str
+    example_logical_id: str
+    revision_id: int
+    parent_revision_id: int | None = None
+    content_hash: str
+    snapshot: dict[str, Any]  # full TrainingExample field dump
+    review_state: ReviewDecision | None = None
+    concurrency_token: str
+    created_by: str = ""
+    created_at: datetime = Field(default_factory=utcnow)
+
+
+class ReviewDecisionRecord(BaseModel):
+    """A persisted review decision on a specific base revision (WP H2).
+
+    Optimistic concurrency: the caller must present the ``concurrency_token``
+    of the revision they reviewed; if the example has moved on (a newer
+    revision was created), the stale token is rejected with a 409 conflict.
+    """
+
+    model_config = ConfigDict(extra="allow")
+    id: str
+    example_id: str
+    revision_id: int
+    reviewer_principal: str
+    decision: ReviewDecision
+    note: str = ""
+    policy_version: str = ""
+    concurrency_token: str
     created_at: datetime = Field(default_factory=utcnow)
 
 
@@ -363,6 +486,10 @@ class DatasetVersion(BaseModel):
     project_id: str
     semantic_version: str
     parent_version_id: str | None = None
+    # Immutable membership snapshot (WP H3): the set of example ids captured at
+    # version-creation time. A later review cannot silently change what a
+    # version contains because this list is persisted with the version row.
+    member_example_ids: list[str] = Field(default_factory=list)
     manifest_artifact_id: str | None = None
     quality_report_artifact_id: str | None = None
     dataset_card_artifact_id: str | None = None
@@ -375,6 +502,28 @@ class DatasetVersion(BaseModel):
     content_hash: str = ""
     created_at: datetime = Field(default_factory=utcnow)
     release_status: ReleaseStatus = ReleaseStatus.draft
+
+
+class ExportArtifact(BaseModel):
+    """H5 — complete response for a formatted dataset export.
+
+    Contract rule 13: a successful export is never reported without a resolvable
+    artifact id AND a verifiable ``sha256`` digest. ``per_split_counts`` and
+    ``record_count`` are computed from the serialized rows, not asserted from a
+    pipeline return.
+    """
+
+    model_config = ConfigDict(extra="allow")
+    artifact_id: str
+    download_path: str
+    media_type: str
+    format: str
+    version_id: str | None = None
+    record_count: int
+    per_split_counts: dict[str, int] = Field(default_factory=dict)
+    sha256: str
+    manifest_artifact_id: str | None = None
+    created_at: datetime = Field(default_factory=utcnow)
 
 
 class Job(BaseModel):

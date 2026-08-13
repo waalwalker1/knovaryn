@@ -24,30 +24,35 @@ _SOURCES = [
         "MLOps lifecycle",
         """# MLOps Lifecycle
 ## Data preparation
-Data preparation is the first step of any machine learning project. It involves collecting raw data, cleaning it, and transforming it into a usable format. Practitioners must document the provenance of every data source to keep the dataset auditable.
+Data preparation is the first step of any machine learning project. It involves collecting raw data, cleaning it, and transforming it into a usable format. Practitioners must document the provenance of every data source to keep the dataset auditable.  # noqa: E501
 ## Model training
-Model training consumes the prepared data. The training process optimizes model weights against a loss function. Hyperparameters such as the learning rate and batch size materially affect the final model quality.
+Model training consumes the prepared data. The training process optimizes model weights against a loss function. Hyperparameters such as the learning rate and batch size materially affect the final model quality.  # noqa: E501
 ## Evaluation
-Evaluation measures model performance on held-out data. A held-out test set must never be used to tune hyperparameters, because doing so leaks signal and inflates reported accuracy.
+Evaluation measures model performance on held-out data. A held-out test set must never be used to tune hyperparameters, because doing so leaks signal and inflates reported accuracy.  # noqa: E501
 ## Deployment and monitoring
-Once deployed, models require ongoing monitoring for drift. Concept drift occurs when the statistical properties of the input distribution change over time.""",
+Once deployed, models require ongoing monitoring for drift. Concept drift occurs when the statistical properties of the input distribution change over time.""",  # noqa: E501
     ),
     (
         "Runbook",
         """# Incident Response Runbook
 ## Triage
-Upon receiving an alert, the on-call engineer first confirms the alert is genuine and not a false positive. The engineer classifies severity as low, medium, high, or critical.
+Upon receiving an alert, the on-call engineer first confirms the alert is genuine and not a false positive. The engineer classifies severity as low, medium, high, or critical.  # noqa: E501
 ## Containment
-Containment isolates the affected component to prevent further damage. For a compromised service, this may mean rotating credentials and removing network egress.
+Containment isolates the affected component to prevent further damage. For a compromised service, this may mean rotating credentials and removing network egress.  # noqa: E501
 ## Recovery
-Recovery restores service from a known-good backup. The team verifies data integrity before declaring recovery complete.""",
+Recovery restores service from a known-good backup. The team verifies data integrity before declaring recovery complete.""",  # noqa: E501
     ),
 ]
 
 
 async def _run() -> dict[str, float | int]:
     ids = IdGenerator()
-    project = Project(id=ids.new_handle("proj"), slug="bench", display_name="Knovaryn Benchmark", owner_principal="bench")
+    project = Project(
+        id=ids.new_handle("proj"),
+        slug="bench",
+        display_name="Knovaryn Benchmark",
+        owner_principal="bench",
+    )
     plan = DatasetPlan(
         task_family_proportions={"factual_explanation": 0.5, "procedure": 0.3, "comparison": 0.2},
         difficulty_distribution={"basic": 0.3, "intermediate": 0.5, "advanced": 0.2},
@@ -58,9 +63,14 @@ async def _run() -> dict[str, float | int]:
     for name, text in _SOURCES:
         sources.append(
             SourceDocument(
-                id=ids.new_handle("src"), project_id=project.id, original_name=name,
-                media_type="text/markdown", byte_size=len(text.encode()), sha256=ids.new_handle("d"),
-                source_kind=SourceKind.local_path, group_key=name,
+                id=ids.new_handle("src"),
+                project_id=project.id,
+                original_name=name,
+                media_type="text/markdown",
+                byte_size=len(text.encode()),
+                sha256=ids.new_handle("d"),
+                source_kind=SourceKind.local_path,
+                group_key=name,
             )
         )
         contents.append(text)

@@ -2,12 +2,13 @@ site_name: Knovaryn
 site_description: >-
   Open, MCP-native training-data foundry: turn permitted documents into
   traceable, quality-gated SFT and preference datasets.
-site_url: https://knovaryn.github.io/
-repo_url: https://github.com/knovaryn/knovaryn
+site_url: https://waalwalker1.github.io/knovaryn/
+repo_url: https://github.com/waalwalker1/knovaryn
 edit_uri: edit/main/docs/
 
 theme:
   name: material
+  custom_dir: overrides
   palette:
     - media: "(prefers-color-scheme: light)"
       scheme: default
@@ -51,24 +52,40 @@ nav:
   - OmniTrain MCP (umbrella): omnitrain-mcp.md
   - Concepts:
       - Overview: concepts/overview.md
-      - Provenance: concepts/provenance.md
-      - Quality: concepts/quality.md
+      - Dataset provenance: concepts/dataset-provenance.md
+      - Quality gates: concepts/quality-gates.md
+      - License & privacy: concepts/license-and-privacy.md
+      - Provenance (deep dive): concepts/provenance.md
+      - Quality (deep dive): concepts/quality.md
       - Preference data: concepts/preference-data.md
   - Architecture:
       - Overview: architecture/overview.md
       - Durable jobs: architecture/jobs.md
       - Data flow: architecture/diagram.md
       - Security: architecture/security.md
+      - At a glance (diagrams): architecture/readme-diagrams.md
   - Guides:
       - Quickstart: guides/quickstart.md
       - First real project: guides/first-real-project.md
       - MCP clients: guides/mcp-clients.md
+      - MCP training-data server: guides/mcp-training-data-server.md
+      - PDF to SFT dataset: guides/pdf-to-sft-dataset.md
+      - Build DPO preference data: guides/build-dpo-preference-data.md
+      - Grounded QA datasets: guides/grounded-qa-dataset-from-documents.md
+      - Hugging Face export: guides/hugging-face-export.md
+  - Comparisons:
+      - Peer landscape: peers/index.md
+      - vs Synthetic Data Kit: comparisons/synthetic-data-kit.md
+      - vs Distilabel: comparisons/distilabel.md
+      - vs Docling SDK: comparisons/docling-sdg.md
+      - vs Easy Dataset: comparisons/easy-dataset.md
   - Deployment:
       - Profiles: deployment/profiles.md
       - Docker: deployment/docker.md
   - Security:
       - Hardening: security/hardening.md
       - Privacy & licensing: security/privacy-licensing.md
+      - Governance & CI: security/governance-and-ci.md
   - Reference:
       - CLI: reference/cli.md
       - Configuration: reference/config.md

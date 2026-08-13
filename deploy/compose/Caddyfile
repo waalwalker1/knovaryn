@@ -1,0 +1,35 @@
+# Knovaryn reverse-proxy Caddyfile (spec WP K2).
+# Terminates (or passes through) TLS and routes to the api service.
+:80 {
+    # Plain HTTP behind an ingress/TLS terminator. To terminate TLS here,
+    # replace `:80` with your FQDN (e.g. `knovaryn.example.com`) and Caddy
+    # will obtain certificates automatically.
+
+    # REST + JSON surface
+    handle /api/* {
+        reverse_proxy api:8000
+    }
+
+    # Console + static assets
+    handle {
+        reverse_proxy api:8000
+    }
+
+    # Deny common probes/crawlers explicitly rather than serving them
+    @blocked {
+        path /proc/* /etc/* /var/* /admin
+    }
+    handle @blocked {
+        respond 403
+    }
+
+    header {
+        # Baseline security headers on every response
+        X-Content-Type-Options nosniff
+        X-Frame-Options DENY
+        Referrer-Policy no-referrer
+        -Server
+    }
+
+    encode gzip
+}

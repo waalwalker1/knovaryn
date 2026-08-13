@@ -1,0 +1,108 @@
+# PostgreSQL — shared database (spec WP K1/K3: multi-worker-safe queue/state).
+# SQLite is deliberately NOT used in production: it is a single-writer,
+# single-machine local mode only, never a safe multi-worker enterprise queue.
+# Runs as a StatefulSet so each replica (here 1) has stable identity + PVC.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: knovaryn
+  labels:
+    app: knovaryn
+    component: postgres
+spec:
+  serviceName: postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      component: postgres
+  template:
+    metadata:
+      labels:
+        component: postgres
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999         # postgres image user
+        fsGroup: 999
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: postgres
+          image: postgres:16.3   # pinned tag (K3: no `latest`)
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            readOnlyRootFilesystem: true   # harden (Trivy AVD-KSV-0014); DB writes go to the /var/lib/postgresql/data volume
+          ports:
+            - name: pg
+              containerPort: 5432
+          env:
+            - name: POSTGRES_USER
+              value: knovaryn
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: knovaryn-secrets
+                  key: postgres_password
+                  optional: true   # fall back to DB_URL which embeds the password
+            - name: POSTGRES_DB
+              value: knovaryn
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", "knovaryn", "-d", "knovaryn"]
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 6
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "knovaryn", "-d", "knovaryn"]
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          startupProbe:
+            exec:
+              command: ["pg_isready", "-U", "knovaryn", "-d", "knovaryn"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 30
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: postgres-data
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-data
+  namespace: knovaryn
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 10Gi
+  # Optional: pin a StorageClass with backups enabled.
+  # storageClassName: standard
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: knovaryn
+  labels:
+    component: postgres
+spec:
+  selector:
+    component: postgres
+  ports:
+    - name: pg
+      port: 5432
+      targetPort: pg

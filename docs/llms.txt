@@ -1,0 +1,64 @@
+# Knovaryn
+
+> Open, MCP-native training-data foundry: turn *permitted* documents into
+> traceable, quality-gated SFT, DPO/preference, KTO, and evaluation datasets.
+> Every exported example is linked to persisted source evidence, quality
+> assessments, review state, version metadata, and reproducible release
+> artifacts.
+
+Knovaryn is a local-first (SQLite + filesystem) tool and MCP server that ingests
+permitted PDFs and documents, parses them with Docling, splits them into
+structure-aware chunks, generates SFT / preference / KTO / QA examples through a
+provider-agnostic model gateway (offline fake provider by default), validates
+every candidate through fail-closed quality gates, and exports immutable
+versioned release bundles (JSONL / Parquet, TRL, ShareGPT, Alpaca, OpenAI chat,
+HF layouts) with detached checksums. It scales to a team deployment (PostgreSQL +
+S3-compatible storage) as a configuration change.
+
+## Interfaces
+
+- CLI: `knovaryn` (demo, doctor, repair, backup, restore, server, worker, mcp,
+  verify-release, version)
+- MCP: `knovaryn-mcp` (stdio) / `knovaryn mcp` — 23-tool server
+- REST + web console: `knovaryn server` (bearer-token aware)
+- Python SDK: `knovaryn.application.workspace.Workspace`
+
+## Key tools / capabilities
+
+- `knovaryn_create_project`, `knovaryn_add_source`, `knovaryn_inspect_source`
+- `knovaryn_license_report`, `knovaryn_estimate_run` (dry-run cost)
+- `knovaryn_start_pipeline`, `knovaryn_get_job`, `knovaryn_list_jobs`,
+  `knovaryn_cancel_job`, `knovaryn_resume_job`
+- `knovaryn_lineage`, `knovaryn_preview_examples`, `knovaryn_review_example`
+- `knovaryn_validate_dataset`, `knovaryn_create_dataset_version`
+- `knovaryn_export_dataset`, `knovaryn_publish_dataset` (dry-run),
+  `knovaryn_compare_runs`, `knovaryn_doctor`
+
+## Documentation
+
+- Quickstart: https://waalwalker1.github.io/knovaryn/guides/quickstart/
+- PDF to SFT dataset: https://waalwalker1.github.io/knovaryn/guides/pdf-to-sft-dataset/
+- Build DPO preference data: https://waalwalker1.github.io/knovaryn/guides/build-dpo-preference-data/
+- Grounded QA datasets: https://waalwalker1.github.io/knovaryn/guides/grounded-qa-dataset-from-documents/
+- MCP training-data server: https://waalwalker1.github.io/knovaryn/guides/mcp-training-data-server/
+- MCP clients: https://waalwalker1.github.io/knovaryn/guides/mcp-clients/
+- First real project: https://waalwalker1.github.io/knovaryn/guides/first-real-project/
+- Hugging Face export: https://waalwalker1.github.io/knovaryn/guides/hugging-face-export/
+- Dataset provenance: https://waalwalker1.github.io/knovaryn/concepts/dataset-provenance/
+- Quality gates: https://waalwalker1.github.io/knovaryn/concepts/quality-gates/
+- License & privacy: https://waalwalker1.github.io/knovaryn/concepts/license-and-privacy/
+- Overview: https://waalwalker1.github.io/knovaryn/concepts/overview/
+- Reference — CLI: https://waalwalker1.github.io/knovaryn/reference/cli/
+- Reference — configuration: https://waalwalker1.github.io/knovaryn/reference/config/
+- Reference — exporters: https://waalwalker1.github.io/knovaryn/reference/exporters/
+
+## Repositories
+
+- GitHub: https://github.com/waalwalker1/knovaryn
+- Issues: https://github.com/waalwalker1/knovaryn/issues
+- PyPI: https://pypi.org/project/knovaryn/
+
+## License
+
+Apache-2.0 (code). Dataset licensing governed separately by the source-license
+registry.

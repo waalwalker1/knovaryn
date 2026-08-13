@@ -1,0 +1,56 @@
+# Build the mkdocs-material site and deploy it to GitHub Pages.
+# Serves sitemap.xml (auto-generated from site_url), llms.txt, and robots.txt
+# (copied verbatim from docs/), plus the schema.org/OpenGraph head injection
+# from overrides/main.html — full AI-agent + SEO discoverability surface.
+#
+# The site is published to https://waalwalker1.github.io/knovaryn/ (the repo is
+# owned by the waalwalker1 account; there is no custom knovaryn.dev domain).
+name: Deploy docs to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# One in-flight deployment at a time; old runs cancel.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+# Deploying Pages via the Pages API needs these permissions.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  build:
+    name: Build mkdocs site
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.11"
+      - name: Install mkdocs + material (dev extras)
+        run: uv sync --extra dev
+      - name: Configure Pages (uploads artifact with proper metadata)
+        uses: actions/configure-pages@v5
+      - name: Build site (strict) into ./site
+        run: uv run mkdocs build --strict -d ./site
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./site
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        name: Deploy
+        uses: actions/deploy-pages@v4

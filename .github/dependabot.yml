@@ -1,0 +1,38 @@
+# Dependency governance (spec WP L10).
+#
+# Dependabot keeps runtime + dev dependencies and pinned GitHub Actions
+# up-to-date with automated PRs. All PRs go through the normal
+# protected-branch review (branch protection + CODEOWNERS) before merge, so
+# dependency bumps are gated, not auto-merged.
+#
+# bumping defaults: weekly, with a limit so the PR queue stays reviewable.
+version: 2
+updates:
+  # Python runtime + dev dependencies (from uv.lock / pyproject.toml).
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "04:31"   # deliberately off the :00/:30 marks
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "python"
+    commit-message:
+      prefix: "chore(deps)"
+      prefix-development: "chore(deps-dev)"
+
+  # GitHub Actions workflows (pinned action refs/tags).
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "05:02"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "github-actions"
+    commit-message:
+      prefix: "chore(ci)"

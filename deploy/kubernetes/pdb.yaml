@@ -1,0 +1,23 @@
+# PodDisruptionBudgets (spec WP K3) — protect availability during node drains.
+# For the stateless API + worker (N≥2) keep at least 1 available per disruption.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: knovaryn-api
+  namespace: knovaryn
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      component: api
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: knovaryn-worker
+  namespace: knovaryn
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      component: worker

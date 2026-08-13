@@ -9,7 +9,9 @@ from __future__ import annotations
 
 import hashlib
 import random
+from collections.abc import Iterable
 from dataclasses import dataclass, field
+from typing import Any
 
 from ..domain.errors import ConfigurationError
 from ..domain.schemas import SourceDocument
@@ -24,6 +26,48 @@ class SplitAssignment:
 
     def split_of(self, source_id: str) -> str | None:
         return self.by_source_id.get(source_id)
+
+
+@dataclass
+class SplitIntegrityResult:
+    """Leakage check: no source-group may appear in more than one split (WP B2)."""
+
+    ok: bool
+    group_count: int = 0
+    leaked_groups: list[str] = field(default_factory=list)
+    groups_per_split: dict[str, int] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "ok": self.ok,
+            "group_count": self.group_count,
+            "leaked_groups": self.leaked_groups,
+            "groups_per_split": self.groups_per_split,
+        }
+
+
+def check_split_integrity(group_splits: Iterable[tuple[str, str]]) -> SplitIntegrityResult:
+    """Return a leakage-free verdict for a stream of ``(group_key, split)`` pairs.
+
+    A single source-group must never be split across train/validation/test; if
+    it is, the result is NOT ok and the offending groups are named. Pair this
+    over persisted candidate/chunk lineage (which carries explicit
+    ``source_group_id`` and ``split``) to prove contamination control.
+    """
+    seen: dict[str, str] = {}
+    per_split: dict[str, int] = {}
+    leaked: list[str] = []
+    for group, split in group_splits:
+        per_split[split] = per_split.get(split, 0) + 1
+        if group in seen and seen[group] != split and group not in leaked:
+            leaked.append(group)
+        seen.setdefault(group, split)
+    return SplitIntegrityResult(
+        ok=not leaked,
+        group_count=len(seen),
+        leaked_groups=leaked,
+        groups_per_split=per_split,
+    )
 
 
 def _stable_bucket(group_key: str, seed: int, ratios: tuple[float, float]) -> int:

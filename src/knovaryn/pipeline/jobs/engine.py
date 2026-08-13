@@ -34,6 +34,10 @@ class JobEvents(Protocol):
         self, job_id: str, *, cursor: int | None = None, limit: int = 100
     ) -> tuple[list[JobEvent], int | None]: ...
 
+    async def record_checkpoint(self, payload: dict[str, Any]) -> None: ...
+
+    async def completed_checkpoints(self, job_id: str) -> list[str]: ...
+
 
 @dataclass
 class StageContext:
@@ -44,7 +48,10 @@ class StageContext:
     budget: BudgetState
     config: dict[str, Any]  # resolved pipeline config
     cache: dict[str, Any] = field(default_factory=dict)  # per-run in-memory stage results
-    checkpoint_store: Any = None  # artifact store for cross-restart checkpoints
+    checkpoint_store: Any = None  # job repo (durable checkpoints + events)
+    checkpoint_sequence: int = 0  # monotonic durable checkpoint counter
+    worker_id: str = ""
+    stage_version: str = "1"
     services: dict[str, Any] = field(default_factory=dict)
     extras: dict[str, Any] = field(default_factory=dict)
 
@@ -70,11 +77,43 @@ class StageContext:
         await self.checkpoint_store.append_event(self.job.id, ev)
 
     async def checkpoint(
-        self, stage: str, *, step: int = 0, key: str, value: dict[str, Any]
+        self,
+        stage: str,
+        *,
+        key: str = "",
+        value: dict[str, Any] | None = None,
+        status: str = "completed",
+        input_hash: str = "",
+        artifact_ids: list[str] | None = None,
+        error: str = "",
+        poi: Any = None,
+        step: int = 0,
     ) -> None:
-        """Persist a stage result so a restart can skip recompute."""
+        """Persist a durable stage checkpoint (spec §12/E2).
+
+        The full checkpoint payload is written to ``job_checkpoints`` so a
+        crash + restart resumes from the last committed stage instead of
+        repeating provider calls. Payload values are never discarded.
+        """
+        self.checkpoint_sequence += 1
+        now = datetime.now(UTC)
         self.job.current_stage = stage
-        self.job.progress_current = self.job.progress_current + 0  # stage controls progress
+        payload = {
+            "job_id": self.job.id,
+            "stage_name": stage,
+            "stage_version": self.stage_version,
+            "checkpoint_key": key,
+            "checkpoint_sequence": self.checkpoint_sequence,
+            "status": status,
+            "input_hash": input_hash,
+            "output_artifact_ids": artifact_ids or [],
+            "output_summary": value or {},
+            "started_at": self.job.started_at,
+            "completed_at": now,
+            "worker_id": self.worker_id,
+            "error": error,
+        }
+        await self.checkpoint_store.record_checkpoint(payload)
         await self.checkpoint_store.save(self.job)
 
     def cancellation_requested(self) -> bool:
@@ -102,6 +141,9 @@ class JobEngine:
             ids=self._ids,
             budget=budget,
             config=stashed.get("pipeline", {}) or stashed,
+            checkpoint_store=self._repo,
+            worker_id=stashed.get("worker_id", ""),
+            stage_version=stashed.get("stage_version", "1"),
             services=services or {},
         )
         try:
@@ -110,6 +152,10 @@ class JobEngine:
             job.started_at = job.started_at or datetime.now(UTC)
             job.current_stage = None
             await self._repo.save(job)
+
+            # durable resume source of truth: committed stage checkpoints survive
+            # a crash, so a replacement worker skips recompute (WP E2/P0-5).
+            ctx.extras["completed_stages"] = set(await self._repo.completed_checkpoints(job.id))
 
             for idx, (name, fn) in enumerate(stages):
                 if ctx.cancellation_requested():
@@ -126,7 +172,19 @@ class JobEngine:
                 job.progress_current = idx
                 ctx.checkpoint_store = self._repo
                 await self._repo.save(job)
-                await self._execute_with_retry(ctx, name, fn)
+                # K4: job-stage duration histogram (labelled by stage name).
+                from ...infrastructure.telemetry.metrics import Timer, get_registry
+
+                with Timer(get_registry(), "knovaryn_job_stage_duration_seconds", {"stage": name}):
+                    await self._execute_with_retry(ctx, name, fn)
+                if name not in ctx.extras["completed_stages"]:
+                    # durably commit the stage so a crash here never re-runs it
+                    await ctx.checkpoint(
+                        name,
+                        key=f"{name}:done",
+                        value={"stage": name},
+                    )
+                    ctx.extras["completed_stages"].add(name)
 
             if job.cancellation_requested_at is not None:
                 job.state = JobState.cancelled
@@ -181,6 +239,10 @@ class JobEngine:
                     exc, max_attempts=self._retry_policy.max_attempts, attempt=attempt
                 ):
                     raise
+                # K4: retry count by stage (retryable transient failure).
+                from ...infrastructure.telemetry.metrics import get_registry
+
+                get_registry().inc("knovaryn_job_stage_retries_total", labels={"stage": name})
                 await ctx.event(
                     f"stage {name} retrying ({attempt + 1})", level="warning", stage=name
                 )

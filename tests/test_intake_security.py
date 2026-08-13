@@ -243,3 +243,94 @@ def test_resolve_all_skips_bad_entries(monkeypatch) -> None:
     addrs = resolve_all("example.com")
     assert len(addrs) == 1
     assert str(addrs[0]) == "8.8.8.8"
+
+
+# ---------------------------------------------------------------------------
+# §8.5 / WP G4 — nested archive + allowed-extension + malware hook
+# ---------------------------------------------------------------------------
+
+
+def test_validate_local_path_rejects_hardlink(tmp_path: Path) -> None:
+    """A hard-linked file is an unbounded indirection and is rejected."""
+    import os
+
+    root = tmp_path / "root"
+    root.mkdir()
+    original = root / "orig.md"
+    original.write_text("# hard link target")
+    link = root / "alias.md"
+    os.link(original, link)  # create a hard link (st_nlink == 2)
+
+    with pytest.raises(PathTraversalError):
+        validate_local_path(str(link), allowed_roots=[str(root)])
+
+
+def test_nested_archive_rejected_by_default() -> None:
+    """Zip members that are themselves archives are rejected unless allowed."""
+    import io
+    import zipfile
+
+    from knovaryn.domain.errors import IntakeError
+    from knovaryn.infrastructure.intake.archive import validate_zip_archive
+
+    inner = io.BytesIO()
+    with zipfile.ZipFile(inner, "w") as z:
+        z.writestr("a.txt", "hello")
+    inner_bytes = inner.getvalue()
+
+    outer = io.BytesIO()
+    with zipfile.ZipFile(outer, "w") as z:
+        z.writestr("nested.tar", inner_bytes)
+    with pytest.raises(IntakeError):
+        validate_zip_archive(outer.getvalue(), max_uncompressed_bytes=10_000_000)
+
+    # explicitly allowed when the flag is set
+    members = validate_zip_archive(
+        outer.getvalue(), max_uncompressed_bytes=10_000_000, allow_nested=True
+    )
+    assert "nested.tar" in members
+
+
+def test_nested_archive_policy_in_intake(tmp_path: Path) -> None:
+    """The wired IntakeService path enforces the nested-archive policy."""
+    import asyncio
+    import io
+    import zipfile
+
+    from knovaryn.domain.errors import IntakeError
+    from knovaryn.infrastructure.intake.intake import IntakeService
+
+    class _Ids:
+        def new_handle(self, prefix: str) -> str:
+            return f"{prefix}_sec"
+
+    class _Store:
+        async def put(self, data, *, media_type, producer, privacy):
+            return {"artifact_id": "art_sec"}
+
+    svc = IntakeService(ids=_Ids(), store=_Store(), quarantine_dir=tmp_path / "q")
+
+    inner = io.BytesIO()
+    with zipfile.ZipFile(inner, "w") as z:
+        z.writestr("a.txt", "hello")
+    outer = io.BytesIO()
+    with zipfile.ZipFile(outer, "w") as z:
+        z.writestr("nested.zip", inner.getvalue())
+
+    async def _go():
+        return await svc.ingest_bytes(project_id="p1", name="outer.docs", data=outer.getvalue())
+
+    with pytest.raises(IntakeError):
+        asyncio.run(_go())
+
+
+def test_malware_scanner_noop_default() -> None:
+    """The shipped scanner is a no-op by default; unknown modes fail loud."""
+    from knovaryn.infrastructure.intake.malware import NullMalwareScanner, build_malware_scanner
+
+    scanner = build_malware_scanner("off")
+    assert isinstance(scanner, NullMalwareScanner)
+    scanner.scan(b"\x00\x01")  # no-op, does not raise
+
+    with pytest.raises(NotImplementedError):
+        build_malware_scanner("clamav")  # no binding adapter shipped

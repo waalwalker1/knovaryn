@@ -62,3 +62,36 @@ def test_kfold_single_fold_valid_splits() -> None:
     assign = assign_splits(sources, strategy="kfold", k=5, fold=0)
     for s in sources:
         assert assign.split_of(s.id) in ("train", "validation", "test")
+
+
+def test_check_split_integrity_detects_leakage() -> None:
+    from knovaryn.pipeline.split import check_split_integrity
+
+    # clean: each group maps to exactly one split
+    ok = check_split_integrity(
+        [
+            (g, s)
+            for g, s in [
+                ("g1", "train"),
+                ("g1", "train"),
+                ("g1", "train"),
+                ("g2", "validation"),
+                ("g3", "test"),
+            ]
+        ]
+    )
+    assert ok.ok is True
+    assert ok.leaked_groups == []
+    assert ok.groups_per_split["train"] == 3
+
+    # leaked: g1 appears in both train and test
+    bad = check_split_integrity(
+        [
+            ("g1", "train"),
+            ("g1", "train"),
+            ("g1", "test"),  # same group leaked across splits
+            ("g2", "validation"),
+        ]
+    )
+    assert bad.ok is False
+    assert "g1" in bad.leaked_groups
