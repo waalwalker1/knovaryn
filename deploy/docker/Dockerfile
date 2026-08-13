@@ -20,16 +20,23 @@ COPY pyproject.toml uv.lock README.md LICENSE ./
 COPY src ./src
 RUN uv pip install --system --no-cache --lockfile uv.lock . \
     || uv pip install --system --no-cache .
-# Upgrade the pip build-toolchain that ships with the base image; Trivy flags
-# older `wheel` (CVE-2026-24049) and `jaraco.context` (CVE-2026-23949) as HIGH.
-# These are build/install-time only, but patching them in-image keeps the runtime
-# image free of those toolchain vulnerabilities with zero behavioral change.
-RUN python -m pip install --no-cache-dir --upgrade "jaraco.context>=6.1.0" "wheel>=0.46.2"
 
 # ---- run stage ----
 FROM base AS runtime
 COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
+
+# Strip the pip build/install toolchain packages that Trivy flags as HIGH in the
+# base image (wheel CVE-2026-24049, jaraco.context CVE-2026-23949). The runtime
+# only executes the pre-built `knovaryn` console script and never installs
+# packages; these are build-time-only. Remove the files directly rather than via
+# `pip uninstall` because setuptools (kept, not flagged) declares jaraco.context
+# as a dependency, which would block a dependency-aware uninstall.
+RUN rm -rf \
+      /usr/local/lib/python3.11/site-packages/wheel \
+      /usr/local/lib/python3.11/site-packages/wheel-*.dist-info \
+      /usr/local/lib/python3.11/site-packages/jaraco \
+      /usr/local/lib/python3.11/site-packages/jaraco_context-*.dist-info
 
 # Non-root operator by default (defense in depth).
 RUN useradd --create-home --uid 10001 knovaryn
