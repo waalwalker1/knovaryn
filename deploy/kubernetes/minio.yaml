@@ -31,6 +31,8 @@ spec:
         - name: minio
           image: minio/minio:RELEASE.2025-04-22T22-12-26Z   # pinned
           args: ["server", "/data", "--console-address", ":9001"]
+          securityContext:
+            readOnlyRootFilesystem: true   # harden (Trivy AVD-KSV-0014); objects go to the /data volume
           ports:
             - name: s3
               containerPort: 9000

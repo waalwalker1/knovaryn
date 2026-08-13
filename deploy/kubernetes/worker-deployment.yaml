@@ -32,6 +32,8 @@ spec:
           image: ghcr.io/knovaryn/knovaryn:0.1.0   # PINNED tag (K3)
           imagePullPolicy: IfNotPresent
           command: ["knovaryn", "worker", "--id", "worker"]
+          securityContext:
+            readOnlyRootFilesystem: true   # harden (Trivy AVD-KSV-0014); state goes to external storage
           envFrom:
             - secretRef:
                 name: knovaryn-secrets

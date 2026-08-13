@@ -31,6 +31,8 @@ spec:
         - name: postgres
           image: postgres:16.3   # pinned tag (K3: no `latest`)
           imagePullPolicy: IfNotPresent
+          securityContext:
+            readOnlyRootFilesystem: true   # harden (Trivy AVD-KSV-0014); DB writes go to the /var/lib/postgresql/data volume
           ports:
             - name: pg
               containerPort: 5432

@@ -16,13 +16,8 @@ spec:
       containers:
         - name: mc
           image: minio/mc:RELEASE.2025-04-16T18-13-26Z   # pinned
-          command:
-            - /bin/sh
-            - -c
-            - |
-              mc alias set local http://minio:9000 "$$S3_ACCESS" "$$S3_SECRET" &&
-              mc mb --ignore-existing local/knovaryn-artifacts &&
-              echo "artifact bucket ready"
+          securityContext:
+            readOnlyRootFilesystem: true   # harden (Trivy AVD-KSV-0014); mc config lives in the writable /tmp volume
           env:
             - name: S3_ACCESS
               valueFrom:
@@ -34,6 +29,18 @@ spec:
                 secretKeyRef:
                   name: knovaryn-secrets
                   key: s3_secret_key
+            - name: HOME
+              value: /tmp   # mc writes its alias config under $HOME/.mc -> writable emptyDir
+          command:
+            - /bin/sh
+            - -c
+            - |
+              mc alias set local http://minio:9000 "$$S3_ACCESS" "$$S3_SECRET" &&
+              mc mb --ignore-existing local/knovaryn-artifacts &&
+              echo "artifact bucket ready"
+          volumeMounts:
+            - name: scratch
+              mountPath: /tmp
           resources:
             requests:
               cpu: 50m
@@ -41,3 +48,6 @@ spec:
             limits:
               cpu: 250m
               memory: 256Mi
+      volumes:
+        - name: scratch
+          emptyDir: {}
