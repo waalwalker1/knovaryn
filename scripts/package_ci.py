@@ -66,8 +66,11 @@ def _build(tmp: Path) -> tuple[Path, Path]:
     return wheels[0], sdists[0]
 
 
-def _twine_check(dist: Path) -> None:
-    _run([sys.executable, "-m", "twine", "check", str(dist)])
+def _twine_check(wheel: Path, sdist: Path) -> None:
+    # `twine check` requires explicit distribution file paths (a `.whl`/`.tar.gz`),
+    # not a directory — passing the directory yields
+    # "InvalidDistribution: Unknown distribution format".
+    _run([sys.executable, "-m", "twine", "check", str(wheel), str(sdist)])
 
 
 def _metadata_ok(wheel: Path) -> None:
@@ -192,7 +195,7 @@ def main() -> int:
         print(f"  built {wheel.name} / {sdist.name}")
 
         print("[2/8] twine check ...")
-        _twine_check(tmp / "dist")
+        _twine_check(wheel, sdist)
         print("  twine check OK")
 
         print("[3/8] wheel metadata ...")
