@@ -110,16 +110,20 @@ def workspace(tmp_path: Path):
 def _make_job(workspace: Workspace) -> Any:
     """Create a project with a source and a queued pipeline job."""
     proj = run(workspace.create_project(slug="budg", display_name="Budg"))
-    run(workspace.add_source(
-        project_id=proj.id,
-        original_name="a.md",
-        media_type="text/markdown",
-        content="Alpha protocol uses cobalt keys. Repeated enough material to split.",
-    ))
-    job = run(workspace.start_pipeline(
-        project_id=proj.id,
-        task_family_proportions={"factual_explanation": 1.0},
-    ))
+    run(
+        workspace.add_source(
+            project_id=proj.id,
+            original_name="a.md",
+            media_type="text/markdown",
+            content="Alpha protocol uses cobalt keys. Repeated enough material to split.",
+        )
+    )
+    job = run(
+        workspace.start_pipeline(
+            project_id=proj.id,
+            task_family_proportions={"factual_explanation": 1.0},
+        )
+    )
     return job
 
 

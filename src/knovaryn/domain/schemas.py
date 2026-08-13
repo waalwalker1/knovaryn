@@ -101,6 +101,14 @@ class ReleaseStatus(StrEnum):
     withdrawn = "withdrawn"
 
 
+class ReviewDecision(StrEnum):
+    """A human/automated review verdict on an example's current revision."""
+
+    approve = "approve"
+    reject = "reject"
+    needs_work = "needs_work"
+
+
 class SupportType(StrEnum):
     direct = "direct"
     derived = "derived"
@@ -429,12 +437,59 @@ class QualityAssessment(BaseModel):
     created_at: datetime = Field(default_factory=utcnow)
 
 
+class ExampleRevision(BaseModel):
+    """An immutable snapshot of a training example at a point in time (WP H1).
+
+    Applying any change to an example (e.g. a review decision that flips
+    ``quality_status``) creates a NEW revision rather than mutating an existing
+    row, so the full history is auditable and prior states stay recoverable
+    (P0-9). ``parent_revision_id`` chains revisions; the first revision of an
+    example has a null parent.
+    """
+
+    model_config = ConfigDict(extra="allow")
+    id: str
+    example_logical_id: str
+    revision_id: int
+    parent_revision_id: int | None = None
+    content_hash: str
+    snapshot: dict[str, Any]  # full TrainingExample field dump
+    review_state: ReviewDecision | None = None
+    concurrency_token: str
+    created_by: str = ""
+    created_at: datetime = Field(default_factory=utcnow)
+
+
+class ReviewDecisionRecord(BaseModel):
+    """A persisted review decision on a specific base revision (WP H2).
+
+    Optimistic concurrency: the caller must present the ``concurrency_token``
+    of the revision they reviewed; if the example has moved on (a newer
+    revision was created), the stale token is rejected with a 409 conflict.
+    """
+
+    model_config = ConfigDict(extra="allow")
+    id: str
+    example_id: str
+    revision_id: int
+    reviewer_principal: str
+    decision: ReviewDecision
+    note: str = ""
+    policy_version: str = ""
+    concurrency_token: str
+    created_at: datetime = Field(default_factory=utcnow)
+
+
 class DatasetVersion(BaseModel):
     model_config = ConfigDict(extra="allow")
     id: str
     project_id: str
     semantic_version: str
     parent_version_id: str | None = None
+    # Immutable membership snapshot (WP H3): the set of example ids captured at
+    # version-creation time. A later review cannot silently change what a
+    # version contains because this list is persisted with the version row.
+    member_example_ids: list[str] = Field(default_factory=list)
     manifest_artifact_id: str | None = None
     quality_report_artifact_id: str | None = None
     dataset_card_artifact_id: str | None = None
@@ -447,6 +502,28 @@ class DatasetVersion(BaseModel):
     content_hash: str = ""
     created_at: datetime = Field(default_factory=utcnow)
     release_status: ReleaseStatus = ReleaseStatus.draft
+
+
+class ExportArtifact(BaseModel):
+    """H5 — complete response for a formatted dataset export.
+
+    Contract rule 13: a successful export is never reported without a resolvable
+    artifact id AND a verifiable ``sha256`` digest. ``per_split_counts`` and
+    ``record_count`` are computed from the serialized rows, not asserted from a
+    pipeline return.
+    """
+
+    model_config = ConfigDict(extra="allow")
+    artifact_id: str
+    download_path: str
+    media_type: str
+    format: str
+    version_id: str | None = None
+    record_count: int
+    per_split_counts: dict[str, int] = Field(default_factory=dict)
+    sha256: str
+    manifest_artifact_id: str | None = None
+    created_at: datetime = Field(default_factory=utcnow)
 
 
 class Job(BaseModel):

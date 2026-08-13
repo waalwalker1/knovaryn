@@ -49,7 +49,9 @@ def test_preference_row_has_chosen_rejected() -> None:
     assert row["topology"] == "preference"
 
 
-def test_release_bundle_produces_zip_and_hash() -> None:
+def test_release_bundle_produces_zip_and_detached_checksum() -> None:
+    import hashlib
+
     split_files = {"train": b"line1\nline2\n", "validation": b"", "test": b""}
     bundle = build_release_bundle(
         version="0.1.0",
@@ -66,6 +68,16 @@ def test_release_bundle_produces_zip_and_hash() -> None:
     assert bundle.byte_size() > 0
     assert len(bundle.sha256()) == 64
     assert "data/train.jsonl" in bundle.files
+    # I2: the detached checksum is the hexdigest of the zip bytes, exposed
+    # separately and never stored inside the archive (P0-8 fixed).
+    detached = bundle.detached_sha256()
+    assert detached == hashlib.sha256(bundle.to_zip()).hexdigest()
+    assert b"bundle_sha256" not in bundle.to_zip()
+    # I1: per-file manifest records present
+    assert any(f["logical_path"] == "data/train.jsonl" for f in bundle.manifest["files"])
+    # I4: content root hash present and distinct from the zip digest
+    assert bundle.manifest["content_root_sha256"]
+    assert bundle.manifest["content_root_sha256"] != bundle.sha256()
 
 
 def test_export_carries_resolvable_provenance() -> None:

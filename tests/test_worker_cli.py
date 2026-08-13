@@ -97,6 +97,9 @@ def _build_worker(workspace: Workspace, ids: IdGenerator, worker_id: str) -> Wor
     )
 
 
+pytestmark = [pytest.mark.integration, pytest.mark.chaos]
+
+
 async def test_worker_repo_runs_queued_job_to_success(workspace: Workspace) -> None:
     """A real WorkerRepository + Worker drive a queued pipeline job to succeeded."""
     job = await _queue_job(workspace, "worker-e2e")
@@ -234,7 +237,10 @@ async def test_cli_worker_command_once_drains_queued_job(
 
     # run the worker against the SAME store the workspace queued the job on
     await cli_commands.worker_async(
-        worker_id="w-cli", poll_interval_s=0.05, lease_seconds=300, once=True,
+        worker_id="w-cli",
+        poll_interval_s=0.05,
+        lease_seconds=300,
+        once=True,
         database_url=database_url,
     )
 

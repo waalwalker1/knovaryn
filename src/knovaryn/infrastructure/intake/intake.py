@@ -25,15 +25,47 @@ from .redact import redact_locator
 # Magic bytes may override an unknown extension when they resolve to an allowed
 # type, but a name with a *known but disallowed* extension is always rejected.
 _ALLOWED_SUFFIXES = {
-    ".pdf", ".docx", ".pptx", ".xlsx", ".html", ".htm", ".md", ".markdown",
-    ".txt", ".csv", ".tsv", ".png", ".jpg", ".jpeg", ".gif", ".xml", ".json",
-    ".epub", ".zip", ".tar",
+    ".pdf",
+    ".docx",
+    ".pptx",
+    ".xlsx",
+    ".html",
+    ".htm",
+    ".md",
+    ".markdown",
+    ".txt",
+    ".csv",
+    ".tsv",
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".gif",
+    ".xml",
+    ".json",
+    ".epub",
+    ".zip",
+    ".tar",
 }
 # extensions that are recognized but intentionally unsupported (reject loudly
 # rather than silently mis-parsing).
 _DISALLOWED_SUFFIXES = {
-    ".exe", ".dll", ".so", ".dylib", ".sh", ".bat", ".ps1", ".py", ".js",
-    ".php", ".cgi", ".class", ".jar", ".wasm", ".ttf", ".otf", ".woff",
+    ".exe",
+    ".dll",
+    ".so",
+    ".dylib",
+    ".sh",
+    ".bat",
+    ".ps1",
+    ".py",
+    ".js",
+    ".php",
+    ".cgi",
+    ".class",
+    ".jar",
+    ".wasm",
+    ".ttf",
+    ".otf",
+    ".woff",
 }
 
 # magic-bytes detection (spec §8.2 step 5): don't trust the extension
@@ -75,7 +107,6 @@ def _suffix(name: str) -> str:
     import os
 
     return os.path.splitext(name)[1].lower()
-
 
 
 @dataclass
@@ -127,9 +158,7 @@ class IntakeService:
             except MalwareScanError:
                 raise
             except Exception as exc:  # noqa: BLE001
-                raise MalwareScanError(
-                    f"malware scan failed for {name!r}"
-                ) from exc
+                raise MalwareScanError(f"malware scan failed for {name!r}") from exc
 
         head = data[:_MAGIC_MAX]
         media_type, from_magic = sniff_media_type(name, head)

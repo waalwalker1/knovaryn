@@ -1,0 +1,19 @@
+{
+  "ignorePatterns": [
+    { "pattern": "^http://localhost" },
+    { "pattern": "^http://127.0.0.1" },
+    { "pattern": "^https://github.com/([^/]+)/([^/]+)/(blob|raw)/main/deploy" },
+    { "pattern": "^https://pypi.org/project/" }
+  ],
+  "replacementPatterns": [
+    {
+      "pattern": "^/docs/",
+      "replacement": "docs/"
+    }
+  ],
+  "timeout": "15s",
+  "retryOn429": true,
+  "retryCount": 3,
+  "fallbackRetryDelay": "30s",
+  "aliveStatusCodes": [200, 206]
+}

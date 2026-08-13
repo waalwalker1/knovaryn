@@ -308,6 +308,17 @@ class JobRepository:
         next_cursor = rows[-1].sequence if has_more and rows else None
         return [_event_from_row(r) for r in rows], next_cursor
 
+    async def count_in_progress(self, *, owner_principal: str | None = None) -> int:
+        """Count jobs currently leased or running (J7 concurrent-job cap).
+
+        These are the states that consume worker capacity; a queued job has not
+        been claimed yet and does not count against concurrency.
+        """
+        stmt = select(func.count()).where(m.JobDB.state.in_(("leased", "running")))
+        if owner_principal:
+            stmt = stmt.where(m.JobDB.owner_principal == owner_principal)
+        return int((await self._s.execute(stmt)).scalar_one())
+
     # -- durable stage checkpoints (WP E2; the engine's checkpoint store) -------
     async def record_checkpoint(self, payload: dict[str, Any]) -> None:
         # The durable sequence must be globally monotonic per job. The in-memory
@@ -318,8 +329,9 @@ class JobRepository:
         next_seq = int(
             (
                 await self._s.execute(
-                    select(func.coalesce(func.max(m.JobCheckpointDB.checkpoint_sequence), 0) + 1)
-                    .where(m.JobCheckpointDB.job_id == payload["job_id"])
+                    select(
+                        func.coalesce(func.max(m.JobCheckpointDB.checkpoint_sequence), 0) + 1
+                    ).where(m.JobCheckpointDB.job_id == payload["job_id"])
                 )
             ).scalar_one()
         )
@@ -609,6 +621,19 @@ class ExampleRepository:
         """Insert or update by id (used by validators writing assessments)."""
         await self._s.merge(_example_to_row(ex))
 
+    async def update_quality_status(self, example_id: str, status: schemas.QualityStatus) -> None:
+        """Reflect an applied review decision on the current row (WP H2).
+
+        The immutable revision chain is the audit trail (prior statuses stay
+        recoverable); this keeps the accepted-filtered version/export queries in
+        sync so a rejected example is excluded from new versions and exports.
+        """
+        await self._s.execute(
+            update(m.TrainingExampleDB)
+            .where(m.TrainingExampleDB.id == example_id)
+            .values(quality_status=status.value)
+        )
+
     async def count(self, *, where: tuple[Any, ...] = ()) -> int:
         stmt = select(func.count()).select_from(m.TrainingExampleDB)
         for cond in where:
@@ -667,6 +692,129 @@ def _example_from_row(r: m.TrainingExampleDB) -> schemas.TrainingExample:
     )
 
 
+class RevisionRepository:
+    """Immutable per-example revision store (WP H1).
+
+    Each row is a full snapshot of ``TrainingExample`` at a point in time.
+    Revisions are never mutated; the latest revision is the current state.
+    """
+
+    def __init__(self, session: AsyncSession) -> None:
+        self._s = session
+
+    async def add(self, rev: schemas.ExampleRevision) -> None:
+        self._s.add(
+            m.ExampleRevisionDB(
+                id=rev.id,
+                example_logical_id=rev.example_logical_id,
+                revision_id=rev.revision_id,
+                parent_revision_id=rev.parent_revision_id,
+                content_hash=rev.content_hash,
+                snapshot=rev.snapshot,
+                review_state=rev.review_state.value if rev.review_state else None,
+                concurrency_token=rev.concurrency_token,
+                created_by=rev.created_by,
+                created_at=rev.created_at,
+            )
+        )
+
+    async def latest(self, example_logical_id: str) -> schemas.ExampleRevision | None:
+        res = await self._s.execute(
+            select(m.ExampleRevisionDB)
+            .where(m.ExampleRevisionDB.example_logical_id == example_logical_id)
+            .order_by(m.ExampleRevisionDB.revision_id.desc())
+            .limit(1)
+        )
+        row = res.scalars().first()
+        return _revision_from_row(row) if row else None
+
+    async def get(
+        self, example_logical_id: str, revision_id: int
+    ) -> schemas.ExampleRevision | None:
+        res = await self._s.execute(
+            select(m.ExampleRevisionDB).where(
+                m.ExampleRevisionDB.example_logical_id == example_logical_id,
+                m.ExampleRevisionDB.revision_id == revision_id,
+            )
+        )
+        row = res.scalar_one_or_none()
+        return _revision_from_row(row) if row else None
+
+    async def list_revisions(self, example_logical_id: str) -> list[schemas.ExampleRevision]:
+        res = await self._s.execute(
+            select(m.ExampleRevisionDB)
+            .where(m.ExampleRevisionDB.example_logical_id == example_logical_id)
+            .order_by(m.ExampleRevisionDB.revision_id)
+        )
+        rows = res.scalars().all()
+        return [_revision_from_row(r) for r in rows if r]
+
+
+def _revision_from_row(r: m.ExampleRevisionDB) -> schemas.ExampleRevision:
+    return schemas.ExampleRevision(
+        id=r.id,
+        example_logical_id=r.example_logical_id,
+        revision_id=r.revision_id,
+        parent_revision_id=r.parent_revision_id,
+        content_hash=r.content_hash,
+        snapshot=r.snapshot or {},
+        review_state=schemas.ReviewDecision(r.review_state) if r.review_state else None,
+        concurrency_token=r.concurrency_token,
+        created_by=r.created_by,
+        created_at=r.created_at,
+    )
+
+
+class ReviewRepository:
+    """Persisted review decisions (WP H2). Each decision references a base revision."""
+
+    def __init__(self, session: AsyncSession, ids: IdGenerator) -> None:
+        self._s = session
+        self._ids = ids
+
+    async def add(self, rec: schemas.ReviewDecisionRecord) -> None:
+        self._s.add(
+            m.ReviewDecisionDB(
+                id=rec.id,
+                example_id=rec.example_id,
+                revision_id=rec.revision_id,
+                reviewer_principal=rec.reviewer_principal,
+                decision=rec.decision.value,
+                note=rec.note,
+                policy_version=rec.policy_version,
+                concurrency_token=rec.concurrency_token,
+                created_at=rec.created_at,
+            )
+        )
+
+    async def get(self, record_id: str) -> schemas.ReviewDecisionRecord | None:
+        row = await self._s.get(m.ReviewDecisionDB, record_id)
+        return _review_from_row(row) if row else None
+
+    async def list_for_example(self, example_id: str) -> list[schemas.ReviewDecisionRecord]:
+        res = await self._s.execute(
+            select(m.ReviewDecisionDB)
+            .where(m.ReviewDecisionDB.example_id == example_id)
+            .order_by(m.ReviewDecisionDB.created_at)
+        )
+        rows = res.scalars().all()
+        return [_review_from_row(r) for r in rows if r]
+
+
+def _review_from_row(r: m.ReviewDecisionDB) -> schemas.ReviewDecisionRecord:
+    return schemas.ReviewDecisionRecord(
+        id=r.id,
+        example_id=r.example_id,
+        revision_id=r.revision_id,
+        reviewer_principal=r.reviewer_principal,
+        decision=schemas.ReviewDecision(r.decision),
+        note=r.note or "",
+        policy_version=r.policy_version or "",
+        concurrency_token=r.concurrency_token,
+        created_at=r.created_at,
+    )
+
+
 class VersionRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._s = session
@@ -678,6 +826,7 @@ class VersionRepository:
                 project_id=v.project_id,
                 semantic_version=v.semantic_version,
                 parent_version_id=v.parent_version_id,
+                member_example_ids=v.member_example_ids,
                 manifest_artifact_id=v.manifest_artifact_id,
                 quality_report_artifact_id=v.quality_report_artifact_id,
                 dataset_card_artifact_id=v.dataset_card_artifact_id,
@@ -729,6 +878,7 @@ def _version_from_row(r: m.DatasetVersionDB) -> schemas.DatasetVersion:
         project_id=r.project_id,
         semantic_version=r.semantic_version,
         parent_version_id=r.parent_version_id,
+        member_example_ids=r.member_example_ids or [],
         manifest_artifact_id=r.manifest_artifact_id,
         quality_report_artifact_id=r.quality_report_artifact_id,
         dataset_card_artifact_id=r.dataset_card_artifact_id,
@@ -906,9 +1056,7 @@ class SpanRepository:
     async def get_many(self, span_ids: list[str]) -> list[schemas.SourceSpan]:
         if not span_ids:
             return []
-        res = await self._s.execute(
-            select(m.SourceSpanDB).where(m.SourceSpanDB.id.in_(span_ids))
-        )
+        res = await self._s.execute(select(m.SourceSpanDB).where(m.SourceSpanDB.id.in_(span_ids)))
         rows = [await self.get(r.id) for r in res.scalars().all() if r]
         return [x for x in rows if x is not None]
 

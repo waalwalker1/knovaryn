@@ -40,7 +40,14 @@ _MAX_COMPRESSED_RATIO = 200.0
 # archives are rejected unless explicitly allowed (they hide decompression bombs
 # behind nested zip layers and are never parseable in our single-pass model).
 _NESTED_ARCHIVE_SUFFIXES = {
-    ".zip", ".tar", ".tgz", ".gz", ".bz2", ".xz", ".7z", ".rar",
+    ".zip",
+    ".tar",
+    ".tgz",
+    ".gz",
+    ".bz2",
+    ".xz",
+    ".7z",
+    ".rar",
 }
 
 

@@ -177,6 +177,21 @@ def backup(
     raise typer.Exit(_backup(out=out, json_plain=json_plain))
 
 
+@app.command("restore")
+def restore(
+    archive: Path = typer.Option(..., "--from", "-f", help="Backup archive to restore."),
+    json_plain: bool = typer.Option(False, "--json", help="Machine-readable output."),
+) -> None:
+    """Restore a ``backup`` archive into the configured state directory.
+
+    Verifies the restored database integrity; refuses to overwrite a non-empty
+    state directory (WP K5 backup/restore).
+    """
+    from .commands import restore as _restore
+
+    raise typer.Exit(_restore(archive=archive, json_plain=json_plain))
+
+
 @app.command("server")
 def server(
     host: str | None = typer.Option(None, "--host", help="Bind host (default from config)."),
@@ -246,6 +261,16 @@ def mcp_cmd(
     if database_url is not None:
         argv.append(f"--database-url={database_url}")
     raise typer.Exit(_mcp_main(argv))
+
+
+@app.command("verify-release")
+def verify_release(
+    path: Path = typer.Argument(..., help="Path to a release.zip bundle."),
+) -> None:
+    """Verify a release bundle's detached checksum + per-file manifest (I5)."""
+    from .commands import verify_release as _verify_release
+
+    raise typer.Exit(_verify_release(path=str(path)))
 
 
 @app.command("version")

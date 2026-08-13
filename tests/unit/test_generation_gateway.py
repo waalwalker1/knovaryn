@@ -68,13 +68,16 @@ def test_output_schema_excludes_lineage_fields() -> None:
         for lineage in ("chunk_id", "source_document_id", "source_group_id", "split"):
             assert lineage not in props, f"{topo} schema exposes lineage {lineage}"
         # required set must never include lineage
-        assert all(f not in schema.get("required", []) for f in (
-            "chunk_id",
-            "source_document_id",
-            "source_group_id",
-            "split",
-            "topology",
-        ))
+        assert all(
+            f not in schema.get("required", [])
+            for f in (
+                "chunk_id",
+                "source_document_id",
+                "source_group_id",
+                "split",
+                "topology",
+            )
+        )
 
 
 def test_schema_hash_is_content_derived_and_stable() -> None:
@@ -144,40 +147,8 @@ def test_generate_renders_system_and_user_messages() -> None:
 
 def test_fake_request_uses_fake() -> None:
     gw = ModelGateway()  # no real provider
-    result = run(gw.generate(
-        prompt_template_version="1",
-        sampling={"temperature": 0.3},
-        schema_hash="s",
-        source_hashes=[],
-        messages=[{"role": "user", "content": "x"}],
-        source_text="Enough repeated source material for a sentence.",
-        mode="sft",
-        task_family="factual_explanation",
-        model="fake",
-    ))
-    assert result.get("model") == "fake"
-
-
-def test_default_generator_model_is_fake() -> None:
-    gw = ModelGateway()
-    result = run(gw.generate(
-        prompt_template_version="1",
-        sampling={"temperature": 0.3},
-        schema_hash="s",
-        source_hashes=[],
-        messages=[{"role": "user", "content": "x"}],
-        source_text="Enough repeated source material for a sentence.",
-        mode="sft",
-        task_family="factual_explanation",
-        model=None,
-    ))
-    assert result.get("model") == "fake"
-
-
-def test_live_request_without_provider_fails_loudly() -> None:
-    gw = ModelGateway()  # no real provider configured
-    with pytest.raises(UnsupportedOperationError):
-        run(gw.generate(
+    result = run(
+        gw.generate(
             prompt_template_version="1",
             sampling={"temperature": 0.3},
             schema_hash="s",
@@ -186,8 +157,46 @@ def test_live_request_without_provider_fails_loudly() -> None:
             source_text="Enough repeated source material for a sentence.",
             mode="sft",
             task_family="factual_explanation",
-            model="deepseek-v4-flash",
-        ))
+            model="fake",
+        )
+    )
+    assert result.get("model") == "fake"
+
+
+def test_default_generator_model_is_fake() -> None:
+    gw = ModelGateway()
+    result = run(
+        gw.generate(
+            prompt_template_version="1",
+            sampling={"temperature": 0.3},
+            schema_hash="s",
+            source_hashes=[],
+            messages=[{"role": "user", "content": "x"}],
+            source_text="Enough repeated source material for a sentence.",
+            mode="sft",
+            task_family="factual_explanation",
+            model=None,
+        )
+    )
+    assert result.get("model") == "fake"
+
+
+def test_live_request_without_provider_fails_loudly() -> None:
+    gw = ModelGateway()  # no real provider configured
+    with pytest.raises(UnsupportedOperationError):
+        run(
+            gw.generate(
+                prompt_template_version="1",
+                sampling={"temperature": 0.3},
+                schema_hash="s",
+                source_hashes=[],
+                messages=[{"role": "user", "content": "x"}],
+                source_text="Enough repeated source material for a sentence.",
+                mode="sft",
+                task_family="factual_explanation",
+                model="deepseek-v4-flash",
+            )
+        )
 
 
 class _FakeRealProvider:
@@ -201,15 +210,17 @@ class _FakeRealProvider:
 
 def test_live_request_with_provider_uses_live() -> None:
     gw = ModelGateway(real_provider=_FakeRealProvider(), generator_model="deepseek-v4-flash")
-    result = run(gw.generate(
-        prompt_template_version="1",
-        sampling={"temperature": 0.3},
-        schema_hash="s",
-        source_hashes=[],
-        messages=[{"role": "user", "content": "x"}],
-        mode="sft",
-        model="deepseek-v4-flash",
-    ))
+    result = run(
+        gw.generate(
+            prompt_template_version="1",
+            sampling={"temperature": 0.3},
+            schema_hash="s",
+            source_hashes=[],
+            messages=[{"role": "user", "content": "x"}],
+            mode="sft",
+            model="deepseek-v4-flash",
+        )
+    )
     assert result.get("_fingerprint")
 
 
@@ -236,17 +247,19 @@ def test_gateway_records_full_model_call_ledger() -> None:
         profile="fake",
         model_call_repo=repo,
     )
-    run(gw.generate(
-        prompt_template_version="v1",
-        sampling={"temperature": 0.3, "max_output_tokens": 100},
-        schema_hash="schema:abc",
-        source_hashes=["h1"],
-        messages=[{"role": "user", "content": "x"}],
-        source_text="Enough repeated source material for a sentence.",
-        mode="sft",
-        task_family="factual_explanation",
-        model="fake",
-    ))
+    run(
+        gw.generate(
+            prompt_template_version="v1",
+            sampling={"temperature": 0.3, "max_output_tokens": 100},
+            schema_hash="schema:abc",
+            source_hashes=["h1"],
+            messages=[{"role": "user", "content": "x"}],
+            source_text="Enough repeated source material for a sentence.",
+            mode="sft",
+            task_family="factual_explanation",
+            model="fake",
+        )
+    )
     assert len(repo.calls) == 1
     call = repo.calls[0]
     assert call["job_id"] == "job_1"
@@ -310,11 +323,13 @@ def test_generator_quarantines_persistently_malformed_output() -> None:
     )
     plan = PlanResult(specs=[spec])
 
-    outcome = run(gen.generate_for_plan(
-        chunks=[_Chunk()],
-        plan=plan,
-        seed_base=1,
-    ))
+    outcome = run(
+        gen.generate_for_plan(
+            chunks=[_Chunk()],
+            plan=plan,
+            seed_base=1,
+        )
+    )
     # D3: malformed output is quarantined — recorded as an error, never emitted
     assert outcome.candidates_generated == 0
     assert outcome.errors, "persistently malformed output must be quarantined with an error"

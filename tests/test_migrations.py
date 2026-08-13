@@ -54,6 +54,9 @@ def _table_names(database_url: str) -> set[str]:
     return {row[0] for row in rows}
 
 
+pytestmark = [pytest.mark.integration]
+
+
 def test_upgrade_head_creates_full_metadata_schema(db_url: str) -> None:
     command.upgrade(_config(db_url), "head")
 

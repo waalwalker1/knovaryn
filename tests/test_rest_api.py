@@ -32,6 +32,9 @@ def client(tmp_path, monkeypatch):
     rest_app._workspace = None
 
 
+pytestmark = [pytest.mark.rest]
+
+
 def test_health(client):
     r = client.get("/v1/health")
     assert r.status_code == 200
@@ -39,13 +42,13 @@ def test_health(client):
 
 
 def test_full_rest_lifecycle(client):
-    # create project
+    # create project -> 201 (J2)
     r = client.post("/v1/projects", json={"slug": "rest-widgets", "display_name": "Rest Widgets"})
-    assert r.status_code == 200, r.text
+    assert r.status_code == 201, r.text
     proj = r.json()
     assert proj["id"].startswith("proj_")
 
-    # add source
+    # add source -> 201
     CONTENT = (
         "# Widgets\n## Assembly\n"
         "The widget is assembled from a base plate and a lid. The lid must be torqued to 5 N·m. "
@@ -57,16 +60,16 @@ def test_full_rest_lifecycle(client):
         f"/v1/projects/{proj['id']}/sources",
         json={"original_name": "a.md", "media_type": "text/markdown", "content": CONTENT},
     )
-    assert r.status_code == 200, r.text
+    assert r.status_code == 201, r.text
     src = r.json()
     assert src["id"].startswith("src_")
 
-    # queue pipeline
+    # queue pipeline -> 202 (accepted/queued)
     r = client.post(
         f"/v1/projects/{proj['id']}/pipeline",
         json={"task_family_proportions": {"factual_explanation": 1.0}},
     )
-    assert r.status_code == 200, r.text
+    assert r.status_code == 202, r.text
     job = r.json()
     assert job["id"].startswith("job_")
 
@@ -102,4 +105,81 @@ def test_full_rest_lifecycle(client):
 def test_rest_requires_repo_for_publish(client):
     proj = client.post("/v1/projects", json={"slug": "p2", "display_name": "P2"}).json()
     r = client.post(f"/v1/projects/{proj['id']}/publish", json={"dry_run": True, "confirm": True})
-    assert r.status_code == 400
+    # repo_id is required by the typed schema -> 422 validation (J2), never 200
+    assert r.status_code == 422
+    assert r.json()["detail"][0]["loc"] == ["body", "repo_id"]
+
+
+def test_rest_typed_api_openapi_and_validation(client):
+    """J1: the OpenAPI schema exposes typed request bodies; malformed payloads
+    return 422 and extra fields are rejected (extra='forbid')."""
+    schema = client.get("/openapi.json").json()
+    paths = schema["paths"]
+    assert "/v1/projects" in paths
+    assert "requestBody" in paths["/v1/projects"]["post"]
+    ref = paths["/v1/projects"]["post"]["requestBody"]["content"]["application/json"]["schema"]
+    assert ref["$ref"].endswith("ProjectCreate")
+    components = schema["components"]["schemas"]
+    assert "ProjectCreate" in components
+    assert "ReviewRequest" in components
+    # decision is a typed 3-value literal within the review request model
+    review_props = components["ReviewRequest"]["properties"]
+    assert review_props["decision"]["enum"] == ["approve", "reject", "needs_work"]
+
+    # extra field -> 422 (extra='forbid')
+    r = client.post("/v1/projects", json={"slug": "x", "display_name": "X", "bogus": 1})
+    assert r.status_code == 422
+    # invalid semver -> 422
+    proj = client.post("/v1/projects", json={"slug": "v2", "display_name": "V"}).json()
+    r = client.post(
+        f"/v1/projects/{proj['id']}/version", json={"semantic_version": "not-a-version"}
+    )
+    assert r.status_code == 422
+
+
+def test_rest_review_is_real_not_fake(client):
+    """J1: the review endpoint shares the canonical ReviewService path — a real
+    immutable revision is appended, not a fake 'recorded' stub (P0-9)."""
+    proj = client.post("/v1/projects", json={"slug": "rev", "display_name": "Rev"}).json()
+    CONTENT = (
+        "# Widgets\n## Assembly\n"
+        "The widget is assembled from a base plate and a lid. The lid must be torqued to 5 N·m. "
+        "Assembly takes about three minutes per unit.\n"
+    )
+    client.post(
+        f"/v1/projects/{proj['id']}/sources",
+        json={"original_name": "a.md", "media_type": "text/markdown", "content": CONTENT},
+    )
+    r = client.post(
+        f"/v1/projects/{proj['id']}/pipeline",
+        json={"task_family_proportions": {"factual_explanation": 1.0}},
+    )
+    job = r.json()
+    client.post(f"/v1/jobs/{job['id']}/run")
+    ex = client.get(f"/v1/projects/{proj['id']}/examples").json()["examples"]
+    assert ex, "pipeline should produce examples"
+
+    target = ex[0]["id"]
+    r = client.post(
+        f"/v1/projects/{proj['id']}/examples/{target}/review",
+        json={"decision": "reject", "note": "must link citation"},
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    # a real immutable revision was appended and the decision persisted (P0-9),
+    # not a fake 'recorded' stub — the review *changed* the example via a new
+    # revision whose snapshot carries the rejected quality status.
+    assert body["revision"]["revision_id"] >= 1
+    assert body["revision"]["snapshot"]["quality_status"] == "rejected"
+    assert body["decision"]["decision"] == "reject"
+    # invalid decision -> 422 (typed literal), never a silent 'recorded'
+    r = client.post(
+        f"/v1/projects/{proj['id']}/examples/{target}/review",
+        json={"decision": "accept"},
+    )
+    assert r.status_code in (200, 409, 422)  # accept on an already-rejected base
+    r = client.post(
+        f"/v1/projects/{proj['id']}/examples/{target}/review",
+        json={"decision": "bogus"},
+    )
+    assert r.status_code == 422

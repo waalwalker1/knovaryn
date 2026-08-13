@@ -205,3 +205,128 @@ def test_add_source_binary_routes_artifact_first(workspace: Workspace, tmp_path:
     job = run(workspace.start_pipeline(project_id=proj.id))
     result = run(workspace.run_job(job.id))
     assert result["state"] == JobState.succeeded.value
+
+
+def test_version_snapshot_unchanged_by_review(workspace: Workspace):
+    """WP H3: a version captures an immutable membership snapshot + parent chain.
+
+    Reviewing (rejecting) an example afterwards must NOT change what an already-
+    created version contains; only a NEW version reflects the decision.
+    """
+    proj = run(workspace.create_project(slug="verimm", display_name="Version Immutability"))
+    run(
+        workspace.add_source(
+            project_id=proj.id,
+            original_name="assembly.md",
+            media_type="text/markdown",
+            content=CONTENT,
+        )
+    )
+    job = run(
+        workspace.start_pipeline(
+            project_id=proj.id, task_family_proportions={"factual_explanation": 1.0}
+        )
+    )
+    result = run(workspace.run_job(job.id))
+    assert result["state"] == JobState.succeeded.value
+
+    v1 = run(workspace.create_version(project_id=proj.id, semantic_version="0.1.0"))
+    assert v1.member_example_ids, "version must snapshot its member examples"
+    member_ids = list(v1.member_example_ids)
+    content_hash = v1.content_hash
+
+    # reject one example after the version was created (P0-9 path)
+    target = member_ids[0]
+    reviewed = run(
+        workspace.review_example(
+            example_id=target, revision_id=1, reviewer="alice", decision="reject"
+        )
+    )
+    assert reviewed["revision"]["snapshot"]["quality_status"] == "rejected"
+
+    # v1 is unchanged: same membership, same content hash (version is immutable)
+    v1_reloaded = run(workspace.get_version(version_id=v1.id))
+    assert v1_reloaded.member_example_ids == member_ids
+    assert v1_reloaded.content_hash == content_hash
+    total = v1_reloaded.train_count + v1_reloaded.validation_count + v1_reloaded.test_count
+    assert total == len(member_ids)
+
+    # a second version chains to v1 and excludes the rejected example
+    v2 = run(workspace.create_version(project_id=proj.id, semantic_version="0.1.1"))
+    assert v2.parent_version_id == v1.id
+    assert target not in v2.member_example_ids
+    assert len(v2.member_example_ids) == len(member_ids) - 1
+
+
+def test_publication_dry_run_emits_full_h6_plan(workspace: Workspace, monkeypatch):
+    """H6: a publication dry-run returns a complete, side-effect-free plan with a
+    verifiable detached checksum + artifact digests (no external side effects)."""
+    import knovaryn.infrastructure.publish.hf as hf
+
+    monkeypatch.setattr(hf, "hub_available", lambda: True)
+    proj = run(workspace.create_project(slug="h6plan", display_name="H6 Plan"))
+    run(
+        workspace.add_source(
+            project_id=proj.id,
+            original_name="mit.md",
+            media_type="text/markdown",
+            content=CONTENT,
+            declared_license="MIT",  # approved redistribution -> gate passes
+        )
+    )
+    job = run(
+        workspace.start_pipeline(
+            project_id=proj.id, task_family_proportions={"factual_explanation": 1.0}
+        )
+    )
+    result = run(workspace.run_job(job.id))
+    assert result["state"] == JobState.succeeded.value
+
+    plan = run(workspace.publish_dataset(project_id=proj.id, repo_id="local/h6", dry_run=True))
+    assert plan["status"] == "dry_run", plan
+    assert plan["destination"] == "local/h6"
+    # H6 required plan fields
+    assert plan["immutability_ok"] is True
+    assert plan["provenance_verified"] is True
+    assert plan["quality_gate"]["allowed"] is True
+    assert plan["license_gate"]["allowed"] is True
+    assert plan["human_review_ok"] is True
+    assert plan["critical_warnings_resolved"] is True
+    # I2: a real detached checksum (64 hex chars), not truthiness-only (rule 6/13)
+    detached = plan["detached_checksum_sha256"]
+    assert len(detached) == 64
+    assert all(c in "0123456789abcdef" for c in detached)
+    # the plan's artifact list maps logical paths to sha256 digests
+    artifacts = plan["plan_artifacts"]
+    assert any(a["logical_path"] == "release.zip.sha256" for a in artifacts)
+    assert any(a["logical_path"] == "data/train.jsonl" for a in artifacts)
+    for a in artifacts:
+        assert len(a["sha256"]) == 64
+
+
+def test_publication_dry_run_works_when_hub_unavailable(workspace: Workspace):
+    """When huggingface-hub is not installed, dry-run reports 'unavailable' with
+    the publication gate — never a fabricated success (rule 13)."""
+    import knovaryn.infrastructure.publish.hf as hf
+
+    proj = run(workspace.create_project(slug="h6unav", display_name="H6 Unav"))
+    run(
+        workspace.add_source(
+            project_id=proj.id,
+            original_name="mit.md",
+            media_type="text/markdown",
+            content=CONTENT,
+            declared_license="MIT",
+        )
+    )
+    job = run(workspace.start_pipeline(project_id=proj.id))
+    run(workspace.run_job(job.id))
+    # force hub unavailable even if installed (fail-closed for live publish)
+    original = hf.hub_available
+    hf.hub_available = lambda: False
+    try:
+        plan = run(workspace.publish_dataset(project_id=proj.id, repo_id="local/x"))
+        assert plan["status"] == "unavailable"
+        assert "publication_gate" in plan
+    finally:
+        hf.hub_available = original

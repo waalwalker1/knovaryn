@@ -1,0 +1,36 @@
+# Kustomize entrypoint for the Knovaryn production manifests (spec WP K3).
+#
+#   # 0. Create the Secret (never commit real values):
+#   kubectl create namespace knovaryn
+#   kubectl -n knovaryn create secret generic knovaryn-secrets \
+#     --from-literal=db_url='postgresql+asyncpg://knovaryn:CHANGE_ME@postgres:5432/knovaryn' \
+#     --from-literal=s3_endpoint='http://minio:9000' \
+#     --from-literal=s3_access_key='CHANGE_ME' \
+#     --from-literal=s3_secret_key='CHANGE_ME' \
+#     --from-literal=postgres_password='CHANGE_ME' \
+#     --from-literal=api_token=''
+#
+#   # 1. Apply everything (namespace, storage, migrate, api, worker, netpols)
+#   kubectl apply -k deploy/kubernetes
+#
+#   # 2. Confirm the migration Job completed before traffic arrives
+#   kubectl -n knovaryn wait --for=condition=complete job/knovaryn-migrate --timeout=120s
+#
+# See deploy/kubernetes/README.md for the scaling + backup/restore runbook.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: knovaryn
+resources:
+  - namespace.yaml
+  - serviceaccount.yaml
+  - configmap.yaml
+  # NOTE: the real Secret `knovaryn-secrets` is created by the operator (see
+  # header comment) — never applied here, to avoid committing placeholder creds.
+  - postgres.yaml
+  - minio.yaml
+  - minio-init.yaml
+  - migration-job.yaml
+  - api-deployment.yaml
+  - worker-deployment.yaml
+  - networkpolicy.yaml
+  - pdb.yaml

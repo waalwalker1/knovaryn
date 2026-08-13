@@ -1,0 +1,107 @@
+# Knovaryn security scanning (spec WP L5).
+#
+# Runs on every push/PR and on a weekly schedule. Scans:
+#   - dependency audit (pip-audit)
+#   - secret scanning (gitleaks)
+#   - static security scan (bandit)
+#   - container vulnerabilities + IaC/Kubernetes (Trivy)
+#   - SBOM generation (anchore cycloneDX, container)
+#   - license inventory
+#
+# Licensing note: scans report findings; non-blocking informational rows are
+# logged, while HIGH vulnerabilities / leaked secrets fail the job.
+name: Security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "27 4 * * 1"   # weekly Monday ~04:27 UTC
+
+permissions:
+  contents: read
+  security-events: write   # for gitleaks SARIF upload + code scanning
+
+jobs:
+  secrets:
+    name: Secret scan (gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  deps-and-static:
+    name: Dependency + static scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.13"
+      - name: Install deps
+        run: uv sync --extra dev --extra mcp
+      - name: pip-audit (vulnerable dependencies)
+        run: uv run pip-audit
+      - name: bandit static security scan (fail on HIGH)
+        # bandit exits non-zero when issues are found; failing on HIGH only.
+        run: uv run --with bandit bandit -r src -q -lll
+      - name: License inventory
+        run: uv run --with pip-licenses pip-licenses --format=plain --order=count
+
+  container-and-iac:
+    name: Container + IaC (Trivy)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: docker build -f deploy/docker/Dockerfile -t knovaryn:scan .
+      - name: Trivy — container image (HIGH/CRITICAL fail)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: knovaryn:scan
+          format: table
+          exit-code: "1"
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+      - name: Trivy — filesystem scan (source)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          format: table
+          severity: CRITICAL,HIGH
+          exit-code: "1"
+      - name: Trivy — IaC / Kubernetes manifests
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: config
+          scan-ref: deploy/
+          format: table
+          exit-code: "1"
+
+  sbom:
+    name: SBOM (cycloneDX)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Generate SBOM from uv.lock
+        run: |
+          uv export --format requirements-txt --no-hashes -o requirements.txt
+          uv run --with cyclonedx-bom cyclonedx-py -i requirements.txt -o sbom.cdx.json --format json || true
+      - uses: anchore/sbom-action@v0
+        with:
+          path: ./
+      - name: Upload SBOM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: sbom.cdx.json
+          if-no-files-found: ignore

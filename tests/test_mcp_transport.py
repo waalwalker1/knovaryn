@@ -135,6 +135,9 @@ DOCUMENTED_TOOLS = {
 }
 
 
+pytestmark = [pytest.mark.mcp]
+
+
 async def test_documented_tool_list_matches_registry(server) -> None:
     async with _session(server) as session:
         tools = await session.list_tools()
@@ -155,8 +158,7 @@ async def test_tool_catalogue_covers_required_categories(server) -> None:
     required_minima = {
         "health/doctor": lambda n: "health" in n or "doctor" in n,
         "project lifecycle": lambda n: n in ("knovaryn_create_project", "knovaryn_list_projects"),
-        "source intake/inspection": {"knovaryn_add_source", "knovaryn_inspect_source"}
-        <= names,
+        "source intake/inspection": {"knovaryn_add_source", "knovaryn_inspect_source"} <= names,
         "run estimate": "knovaryn_estimate_run" in names,
         "start/get/list/cancel/resume": {
             "knovaryn_start_pipeline",
@@ -167,8 +169,7 @@ async def test_tool_catalogue_covers_required_categories(server) -> None:
         }
         <= names,
         "lineage": "knovaryn_lineage" in names,
-        "example preview/review": {"knovaryn_preview_examples", "knovaryn_review_example"}
-        <= names,
+        "example preview/review": {"knovaryn_preview_examples", "knovaryn_review_example"} <= names,
         "validation": "knovaryn_validate_dataset" in names,
         "versioning": "knovaryn_create_dataset_version" in names,
         "export": "knovaryn_export_dataset" in names,
@@ -220,8 +221,9 @@ async def _read_resource(server, uri: str) -> dict[str, Any]:
 
 async def test_project_resource_authorizes(server) -> None:
     async with _session(server) as session:
-        body = _json(await _acall(session, "knovaryn_create_project",
-                                  {"slug": "rp", "display_name": "RP"}))
+        body = _json(
+            await _acall(session, "knovaryn_create_project", {"slug": "rp", "display_name": "RP"})
+        )
     pid = body.get("project_id")
     assert pid
     # read resource for an existing project
@@ -235,16 +237,31 @@ async def test_project_resource_authorizes(server) -> None:
 async def test_job_resource_and_events_authorize(server) -> None:
     # create + source + run
     async with _session(server) as session:
-        proj = _json(await _acall(session, "knovaryn_create_project",
-                                    {"slug": "rj", "display_name": "RJ"}))
+        proj = _json(
+            await _acall(session, "knovaryn_create_project", {"slug": "rj", "display_name": "RJ"})
+        )
         pid = proj["project_id"]
-        _json(await _acall(session, "knovaryn_add_source", {
-            "project_id": pid, "original_name": "s.md",
-            "content": _RICH_CORPUS,
-        }))
-        job = _json(await _acall(session, "knovaryn_start_pipeline", {
-            "project_id": pid, "task_fam_families": "factual_explanation:1.0",
-        }))
+        _json(
+            await _acall(
+                session,
+                "knovaryn_add_source",
+                {
+                    "project_id": pid,
+                    "original_name": "s.md",
+                    "content": _RICH_CORPUS,
+                },
+            )
+        )
+        job = _json(
+            await _acall(
+                session,
+                "knovaryn_start_pipeline",
+                {
+                    "project_id": pid,
+                    "task_fam_families": "factual_explanation:1.0",
+                },
+            )
+        )
         jid = job["job_id"]
         _json(await _acall(session, "knovaryn_run_job", {"job_id": jid}))
     job_uri = f"knovaryn://projects/{pid}/jobs/{jid}"
@@ -261,16 +278,24 @@ async def test_job_resource_and_events_authorize(server) -> None:
 async def test_source_resource_authorizes_and_bounds_content(server) -> None:
     pid = None
     async with _session(server) as session:
-        proj = _json(await _acall(session, "knovaryn_create_project",
-                                    {"slug": "rsrc", "display_name": "R"}))
+        proj = _json(
+            await _acall(session, "knovaryn_create_project", {"slug": "rsrc", "display_name": "R"})
+        )
         pid = proj["project_id"]
-        src = _json(await _acall(session, "knovaryn_add_source", {
-            "project_id": pid, "original_name": "p.md",
-            "content": (
-                "# P\nA paragraph that must never leak as raw content "
-                "through the source resource.\n"
-            ),
-        }))
+        src = _json(
+            await _acall(
+                session,
+                "knovaryn_add_source",
+                {
+                    "project_id": pid,
+                    "original_name": "p.md",
+                    "content": (
+                        "# P\nA paragraph that must never leak as raw content "
+                        "through the source resource.\n"
+                    ),
+                },
+            )
+        )
         sid = src["source_id"]
     got = await _read_resource(server, f"knovaryn://projects/{pid}/sources/{sid}")
     assert got.get("id") == sid
@@ -282,16 +307,31 @@ async def test_lineage_resource_authorizes(server) -> None:
     pid = None
     ex_id = None
     async with _session(server) as session:
-        proj = _json(await _acall(session, "knovaryn_create_project",
-                                    {"slug": "rl", "display_name": "L"}))
+        proj = _json(
+            await _acall(session, "knovaryn_create_project", {"slug": "rl", "display_name": "L"})
+        )
         pid = proj["project_id"]
-        _json(await _acall(session, "knovaryn_add_source", {
-            "project_id": pid, "original_name": "l.md",
-            "content": _RICH_CORPUS,
-        }))
-        job = _json(await _acall(session, "knovaryn_start_pipeline", {
-            "project_id": pid, "task_fam_families": "factual_explanation:1.0",
-        }))
+        _json(
+            await _acall(
+                session,
+                "knovaryn_add_source",
+                {
+                    "project_id": pid,
+                    "original_name": "l.md",
+                    "content": _RICH_CORPUS,
+                },
+            )
+        )
+        job = _json(
+            await _acall(
+                session,
+                "knovaryn_start_pipeline",
+                {
+                    "project_id": pid,
+                    "task_fam_families": "factual_explanation:1.0",
+                },
+            )
+        )
         _json(await _acall(session, "knovaryn_run_job", {"job_id": job["job_id"]}))
         prev = _json(await _acall(session, "knovaryn_preview_examples", {"project_id": pid}))
         assert prev.get("examples"), prev
@@ -299,8 +339,7 @@ async def test_lineage_resource_authorizes(server) -> None:
     got = await _read_resource(server, f"knovaryn://projects/{pid}/examples/{ex_id}/lineage")
     assert got.get("example_id") == ex_id
     assert got.get("source_document_ids")
-    denied = await _read_resource(
-        server, f"knovaryn://projects/{pid}/examples/ex_missing/lineage")
+    denied = await _read_resource(server, f"knovaryn://projects/{pid}/examples/ex_missing/lineage")
     assert denied.get("authorized") is False
 
 
@@ -308,16 +347,31 @@ async def test_dataset_version_resource_authorizes(server) -> None:
     pid = None
     ver_id = None
     async with _session(server) as session:
-        proj = _json(await _acall(session, "knovaryn_create_project",
-                                    {"slug": "rd", "display_name": "D"}))
+        proj = _json(
+            await _acall(session, "knovaryn_create_project", {"slug": "rd", "display_name": "D"})
+        )
         pid = proj["project_id"]
-        _json(await _acall(session, "knovaryn_add_source", {
-            "project_id": pid, "original_name": "d.md",
-            "content": _RICH_CORPUS,
-        }))
-        job = _json(await _acall(session, "knovaryn_start_pipeline", {
-            "project_id": pid, "task_fam_families": "factual_explanation:1.0",
-        }))
+        _json(
+            await _acall(
+                session,
+                "knovaryn_add_source",
+                {
+                    "project_id": pid,
+                    "original_name": "d.md",
+                    "content": _RICH_CORPUS,
+                },
+            )
+        )
+        job = _json(
+            await _acall(
+                session,
+                "knovaryn_start_pipeline",
+                {
+                    "project_id": pid,
+                    "task_fam_families": "factual_explanation:1.0",
+                },
+            )
+        )
         _json(await _acall(session, "knovaryn_run_job", {"job_id": job["job_id"]}))
         ver = _json(await _acall(session, "knovaryn_create_dataset_version", {"project_id": pid}))
         ver_id = ver["version_id"]
@@ -337,8 +391,13 @@ async def test_dataset_version_resource_authorizes(server) -> None:
 async def test_pagination_list_projects(server) -> None:
     async with _session(server) as session:
         for i in range(5):
-            _json(await _acall(session, "knovaryn_create_project",
-                               {"slug": f"pg{i}", "display_name": f"PG {i}"}))
+            _json(
+                await _acall(
+                    session,
+                    "knovaryn_create_project",
+                    {"slug": f"pg{i}", "display_name": f"PG {i}"},
+                )
+            )
         # small page
         page1 = _json(await _acall(session, "knovaryn_list_projects", {"limit": 2}))
         assert "projects" in page1
@@ -351,6 +410,7 @@ async def test_concurrent_tool_calls(server) -> None:
     import asyncio
 
     async with _session(server) as session:
+
         async def health_call():
             r = await session.call_tool("health", {})
             text = "\n".join(t for b in r.content if (t := _block_text(b)))
@@ -363,19 +423,35 @@ async def test_concurrent_tool_calls(server) -> None:
 async def test_bounded_preview_output(server) -> None:
     """preview_examples is bounded: content is redacted and limited."""
     async with _session(server) as session:
-        proj = _json(await _acall(session, "knovaryn_create_project",
-                                    {"slug": "bd", "display_name": "B"}))
+        proj = _json(
+            await _acall(session, "knovaryn_create_project", {"slug": "bd", "display_name": "B"})
+        )
         pid = proj["project_id"]
-        _json(await _acall(session, "knovaryn_add_source", {
-            "project_id": pid, "original_name": "b.md",
-            "content": _RICH_CORPUS,
-        }))
-        job = _json(await _acall(session, "knovaryn_start_pipeline", {
-            "project_id": pid, "task_fam_families": "factual_explanation:1.0",
-        }))
+        _json(
+            await _acall(
+                session,
+                "knovaryn_add_source",
+                {
+                    "project_id": pid,
+                    "original_name": "b.md",
+                    "content": _RICH_CORPUS,
+                },
+            )
+        )
+        job = _json(
+            await _acall(
+                session,
+                "knovaryn_start_pipeline",
+                {
+                    "project_id": pid,
+                    "task_fam_families": "factual_explanation:1.0",
+                },
+            )
+        )
         _json(await _acall(session, "knovaryn_run_job", {"job_id": job["job_id"]}))
-        preview = _json(await _acall(session, "knovaryn_preview_examples",
-                                     {"project_id": pid, "limit": 3}))
+        preview = _json(
+            await _acall(session, "knovaryn_preview_examples", {"project_id": pid, "limit": 3})
+        )
         assert len(preview.get("examples", [])) <= 3
         for e in preview.get("examples", []):
             assert "content" not in e  # redacted
@@ -519,8 +595,7 @@ def test_stdio_graceful_shutdown(tmp_path: Path) -> None:
     db_url = f"sqlite+aiosqlite:///{tmp_path}/shutdown.db"
     params = StdioServerParameters(
         command=sys.executable,
-        args=["-m", "knovaryn.interfaces.mcp", "--transport", "stdio",
-              "--database-url", db_url],
+        args=["-m", "knovaryn.interfaces.mcp", "--transport", "stdio", "--database-url", db_url],
         env={**os.environ},
     )
 

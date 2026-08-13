@@ -62,9 +62,7 @@ def _block_text(block: Any) -> str | None:
     return getattr(block, "text", None)
 
 
-async def acall(
-    server: Any, tool: str, arguments: dict[str, Any] | None = None
-) -> tuple[Any, str]:
+async def acall(server: Any, tool: str, arguments: dict[str, Any] | None = None) -> tuple[Any, str]:
     """Await ``tool`` with ``arguments`` through a fresh connected session."""
     async with _session(server) as session:
         result = await session.call_tool(tool, arguments or {})
@@ -94,6 +92,9 @@ def _json(text: str) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 # health / doctor
 # ---------------------------------------------------------------------------
+
+
+pytestmark = [pytest.mark.mcp]
 
 
 async def test_health(server) -> None:
@@ -278,9 +279,7 @@ async def test_list_projects(server) -> None:
 
 
 async def test_lineage_missing_example_reports_error(server) -> None:
-    _, text = await acall(
-        server, "knovaryn_lineage", {"project_id": "p", "example_id": "ex_none"}
-    )
+    _, text = await acall(server, "knovaryn_lineage", {"project_id": "p", "example_id": "ex_none"})
     body = _json(text)
     assert body.get("authorized") is False
     assert "not found" in body.get("error", "")

@@ -133,12 +133,22 @@ def test_pipeline_reports_split_integrity_ok():
     proj = Project(id="int_p", slug="intp", display_name="Integrity", owner_principal="test")
     sources = [
         SourceDocument(
-            id="s1", project_id="int_p", original_name="a.md", media_type="text/markdown",
-            byte_size=1, sha256="h1", group_key="alpha",
+            id="s1",
+            project_id="int_p",
+            original_name="a.md",
+            media_type="text/markdown",
+            byte_size=1,
+            sha256="h1",
+            group_key="alpha",
         ),
         SourceDocument(
-            id="s2", project_id="int_p", original_name="b.md", media_type="text/markdown",
-            byte_size=1, sha256="h2", group_key="beta",
+            id="s2",
+            project_id="int_p",
+            original_name="b.md",
+            media_type="text/markdown",
+            byte_size=1,
+            sha256="h2",
+            group_key="beta",
         ),
     ]
     contents = [

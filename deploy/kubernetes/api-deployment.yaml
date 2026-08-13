@@ -1,0 +1,114 @@
+# API Deployment + Service (spec WP K3). Stateless HTTP: scale horizontally
+# with `kubectl scale deployment/... --replicas=N` or HPA on cpu. State lives in
+# Postgres (DB) + MinIO (artifacts), so replicas are safe.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: knovaryn-api
+  namespace: knovaryn
+  labels:
+    app: knovaryn
+    component: api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      component: api
+  template:
+    metadata:
+      labels:
+        component: api
+    spec:
+      serviceAccountName: knovaryn
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: api
+          image: ghcr.io/knovaryn/knovaryn:0.1.0   # PINNED tag (K3)
+          imagePullPolicy: IfNotPresent
+          command: ["knovaryn", "server", "--host", "0.0.0.0", "--port", "8000"]
+          ports:
+            - name: http
+              containerPort: 8000
+          envFrom:
+            - secretRef:
+                name: knovaryn-secrets
+                optional: true   # runs without it in local/dev (no auth)
+            - configMapRef:
+                name: knovaryn-config
+                optional: true
+          env:
+            - name: KNOVARYN_STORAGE_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: knovaryn-secrets
+                  key: db_url
+                  optional: true
+          volumeMounts:
+            - name: config
+              mountPath: /opt/knovaryn/config
+              readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /v1/health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /v1/health
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 15
+            failureThreshold: 6
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+      volumes:
+        - name: config
+          configMap:
+            name: knovaryn-config
+            optional: true
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: knovaryn-api
+  namespace: knovaryn
+  labels:
+    component: api
+spec:
+  selector:
+    component: api
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+# Horizontal scaling guidance (K3): expose cpu-based autoscaling.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: knovaryn-api
+  namespace: knovaryn
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: knovaryn-api
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70

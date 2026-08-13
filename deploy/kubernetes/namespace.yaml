@@ -1,0 +1,7 @@
+# Knovaryn Kubernetes namespace (spec WP K3).
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: knovaryn
+  labels:
+    pod-security.kubernetes.io/enforce: restricted

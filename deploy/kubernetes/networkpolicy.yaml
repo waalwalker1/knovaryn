@@ -1,0 +1,106 @@
+# NetworkPolicy — default-deny with explicit allow rules (spec WP K3).
+# Ingress: only the ingress/edge may reach the API service; nothing reaches
+# postgres/minio from outside the namespace.
+# Egress: API + worker may reach postgres (5432) and minio (9000); workers may
+# egress to model providers (443) for generation.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+  namespace: knovaryn
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: api-ingress
+  namespace: knovaryn
+spec:
+  podSelector:
+    matchLabels:
+      component: api
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector: {}        # any namespace (tingress controller)
+      ports:
+        - protocol: TCP
+          port: 8000
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: postgres-egress
+  namespace: knovaryn
+spec:
+  podSelector:
+    matchExpressions:
+      - key: component
+        operator: In
+        values: [api, worker, migration]
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              component: postgres
+      ports:
+        - protocol: TCP
+          port: 5432
+    # DNS for service name resolution
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: minio-egress
+  namespace: knovaryn
+spec:
+  podSelector:
+    matchExpressions:
+      - key: component
+        operator: In
+        values: [api, worker]
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              component: minio
+      ports:
+        - protocol: TCP
+          port: 9000
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+---
+# Workers reach model providers for live generation (HTTPS 443).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: worker-provider-egress
+  namespace: knovaryn
+spec:
+  podSelector:
+    matchLabels:
+      component: worker
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
+        - protocol: TCP
+          port: 443

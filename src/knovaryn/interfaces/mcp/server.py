@@ -371,9 +371,7 @@ def build_server(database_url: str | None = None) -> Any:
         return data
 
     @mcp.tool()
-    async def knovaryn_lineage(
-        ctx: Context, project_id: str, example_id: str
-    ) -> dict[str, Any]:
+    async def knovaryn_lineage(ctx: Context, project_id: str, example_id: str) -> dict[str, Any]:
         """Provenance + lineage for an example (source docs, spans, chunks)."""
         ws = _get_workspace(ctx)
         data = await ws.list_examples(project_id=project_id, limit=10000)
@@ -432,9 +430,7 @@ def build_server(database_url: str | None = None) -> Any:
     ) -> dict[str, Any]:
         """Assemble an immutable draft version from accepted examples."""
         ws = _get_workspace(ctx)
-        version = await ws.create_version(
-            project_id=project_id, semantic_version=semantic_version
-        )
+        version = await ws.create_version(project_id=project_id, semantic_version=semantic_version)
         return {
             "version_id": version.id,
             "semantic_version": version.semantic_version,
@@ -468,9 +464,7 @@ def build_server(database_url: str | None = None) -> Any:
                 "status": "error",
                 "error": "publish requires confirm=true (external side effect)",
             }
-        return await ws.publish_dataset(
-            project_id=project_id, repo_id=repo_id, dry_run=dry_run
-        )
+        return await ws.publish_dataset(project_id=project_id, repo_id=repo_id, dry_run=dry_run)
 
     @mcp.tool()
     async def knovaryn_compare_runs(

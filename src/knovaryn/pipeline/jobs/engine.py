@@ -172,7 +172,11 @@ class JobEngine:
                 job.progress_current = idx
                 ctx.checkpoint_store = self._repo
                 await self._repo.save(job)
-                await self._execute_with_retry(ctx, name, fn)
+                # K4: job-stage duration histogram (labelled by stage name).
+                from ...infrastructure.telemetry.metrics import Timer, get_registry
+
+                with Timer(get_registry(), "knovaryn_job_stage_duration_seconds", {"stage": name}):
+                    await self._execute_with_retry(ctx, name, fn)
                 if name not in ctx.extras["completed_stages"]:
                     # durably commit the stage so a crash here never re-runs it
                     await ctx.checkpoint(
@@ -235,6 +239,10 @@ class JobEngine:
                     exc, max_attempts=self._retry_policy.max_attempts, attempt=attempt
                 ):
                     raise
+                # K4: retry count by stage (retryable transient failure).
+                from ...infrastructure.telemetry.metrics import get_registry
+
+                get_registry().inc("knovaryn_job_stage_retries_total", labels={"stage": name})
                 await ctx.event(
                     f"stage {name} retrying ({attempt + 1})", level="warning", stage=name
                 )

@@ -168,9 +168,7 @@ async def test_p0_5_kill_lease_expire_reclaim_resume_no_repeat(
             job_a.lease_expires_at = datetime.now(UTC) + timedelta(seconds=300)
         await repo.save(job_a)
 
-        engine = JobEngine(
-            ids=ids, repo=repo, retry_policy=RetryPolicy(max_attempts=0)
-        )
+        engine = JobEngine(ids=ids, repo=repo, retry_policy=RetryPolicy(max_attempts=0))
         result = await engine.run(job_a, _make_stages(crash_on_generate=True))
         completed = await repo.completed_checkpoints(job_a.id)
         assert completed == ["parse", "chunk", "split"]
@@ -205,9 +203,7 @@ async def test_p0_5_kill_lease_expire_reclaim_resume_no_repeat(
 
         # worker B re-runs the FULL stage list; engine resumes from durable
         # checkpoints (skips parse/chunk/split) and completes `generate`.
-        engine_b = JobEngine(
-            ids=ids, repo=repo, retry_policy=RetryPolicy(max_attempts=0)
-        )
+        engine_b = JobEngine(ids=ids, repo=repo, retry_policy=RetryPolicy(max_attempts=0))
         result_b = await engine_b.run(claimed, _make_stages(crash_on_generate=False))
         assert result_b.state == JobState.succeeded
 
@@ -248,9 +244,7 @@ async def test_p0_5_resume_skips_completed_stages_even_on_clean_rerun(
         assert claimed is not None
 
         # pass A: crash during generate (parse/chunk/split committed)
-        engine = JobEngine(
-            ids=ids, repo=repo, retry_policy=RetryPolicy(max_attempts=0)
-        )
+        engine = JobEngine(ids=ids, repo=repo, retry_policy=RetryPolicy(max_attempts=0))
         res_a = await engine.run(claimed, _make_stages(crash_on_generate=True))
         assert res_a.state == JobState.failed
         assert _count("parse") == 1 and _count("chunk") == 1 and _count("split") == 1

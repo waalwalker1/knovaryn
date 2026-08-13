@@ -6,7 +6,30 @@ readme = "README.md"
 requires-python = ">=3.11"
 license = "Apache-2.0"
 authors = [{ name = "Knovaryn maintainers" }]
-keywords = ["mcp", "training-data", "sft", "dpo", "dataset", "docling", "llm"]
+keywords = [
+    "mcp",
+    "model-context-protocol",
+    "training-data",
+    "llm-training-data",
+    "synthetic-data",
+    "sft",
+    "dpo",
+    "rlhf",
+    "kto",
+    "preference-data",
+    "dataset",
+    "dataset-provenance",
+    "data-lineage",
+    "fine-tuning",
+    "huggingface",
+    "docling",
+    "llmops",
+    "mlops",
+    "data-quality",
+    "dataset-curation",
+    "ai-agents",
+    "llm",
+]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
@@ -16,6 +39,8 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Software Development :: Build Tools",
 ]
 
 dependencies = [
@@ -87,6 +112,14 @@ dev = [
     "pip-audit>=2.7",
 ]
 
+[project.urls]
+Homepage = "https://knovaryn.dev"
+Documentation = "https://knovaryn.dev"
+Repository = "https://github.com/knovaryn/knovaryn"
+Issues = "https://github.com/knovaryn/knovaryn/issues"
+Changelog = "https://github.com/knovaryn/knovaryn/blob/main/CHANGELOG.md"
+Security = "https://github.com/knovaryn/knovaryn/blob/main/SECURITY.md"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
@@ -98,18 +131,25 @@ packages = ["src/knovaryn"]
 line-length = 100
 target-version = "py311"
 src = ["src", "tests"]
-
 [tool.ruff.lint]
 select = ["E", "F", "I", "W", "B", "UP", "C4", "SIM", "B008"]
 ignore = ["B008"]
+# The web console is a single self-contained HTML template; its lines are part
+# of a static string literal and must not be reflowed, so E501 is per-file
+# ignored there (code in the module still satisfies line-length).
+[tool.ruff.lint.per-file-ignores]
+"src/knovaryn/interfaces/rest/webconsole.py" = ["E501"]
+# Operational scripts carry long subprocess/command literals that should not be
+# reflowed; code in them still satisfies the 100-char style except these lines.
+"scripts/*.py" = ["E501"]
 
 [tool.mypy]
 python_version = "3.11"
-# Optional/third-party deps (docling, docetl, litellm, mcp, torch, yaml, pandas,
-# aiofiles, huggingface_hub, aioboto3) are not installed in the type-check env
-# and have no stubs there; suppress missing-import only for those, never for
-# our own code.
-ignore_missing_imports = true
+# Optional/third-party deps (docling, docetl, litellm, mcp, torch, pandas,
+# aiofiles, huggingface_hub, aioboto3, yaml) are not always installed in the
+# type-check env and have no stubs there. Missing-import ignores are scoped to
+# those modules only (per-module), NOT applied globally — first-party modules
+# must resolve, so we never globally silence a missing first-party import (L4).
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
@@ -120,6 +160,24 @@ warn_redundant_casts = true
 warn_unused_ignores = true
 strict_equality = true
 exclude = ["migrations/versions/", "tests/", "benchmarks/"]
+
+[[tool.mypy.overrides]]
+module = [
+    "docling.*",
+    "docetl.*",
+    "litellm.*",
+    "mcp.*",
+    "yaml",
+    "torch.*",
+    "pandas.*",
+    "aiofiles.*",
+    "huggingface_hub.*",
+    "aioboto3.*",
+    "uvicorn.*",
+    "structlog.*",
+    "uuid6.*",
+]
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 minversion = "7.0"

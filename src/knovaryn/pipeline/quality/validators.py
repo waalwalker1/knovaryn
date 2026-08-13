@@ -349,13 +349,9 @@ def assemble_decision(
     # OR returned unverified is not certifiable (fail-closed).
     critical = ["grounding", "schema", "answerability", "instruction_fulfillment"]
     present = set(verify.keys())
-    failed_critical = [
-        d for d in critical if d in present and verify.get(d) == Verification.failed
-    ]
+    failed_critical = [d for d in critical if d in present and verify.get(d) == Verification.failed]
     unverified_critical = [
-        d
-        for d in critical
-        if d not in present or verify.get(d) == Verification.unverified
+        d for d in critical if d not in present or verify.get(d) == Verification.unverified
     ]
     certifiable = not failed_critical and not unverified_critical
 

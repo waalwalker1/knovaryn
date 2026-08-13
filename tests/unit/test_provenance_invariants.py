@@ -109,6 +109,4 @@ def test_source_spans_resolve_to_persisted_spans(workspace: Workspace):
 def test_generation_candidate_ids_present(workspace: Workspace):
     proj, src, examples = _run_pipeline(workspace)
     for ex in examples:
-        assert ex["generation_candidate_ids"], (
-            f"example {ex['id']} has no generation_candidate_ids"
-        )
+        assert ex["generation_candidate_ids"], f"example {ex['id']} has no generation_candidate_ids"

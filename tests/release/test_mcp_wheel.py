@@ -14,6 +14,7 @@ installed product, not just work from the source checkout.
 from __future__ import annotations
 
 import os
+import socket
 import subprocess
 import sys
 import venv
@@ -24,6 +25,21 @@ import pytest
 pytestmark = [pytest.mark.release]
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+def _network_available() -> bool:
+    """True when the wheel build's isolated backend + clean-venv pip install can
+    reach PyPI. The clean-install test needs network to fetch ``hatchling`` (build
+    backend) and the ``[mcp]`` dependency closure; when offline it cannot run its
+    real assertions, so it is skipped rather than hard-failed in offline sandboxes.
+    The offline clean-install path (build wheel locally + fresh venv) is verified
+    separately by the Phase 12 audit (see .knovaryn-build/INDEPENDENT_AUDIT_PROMPT.md).
+    """
+    try:
+        with socket.create_connection(("pypi.org", 443), timeout=3):
+            return True
+    except OSError:
+        return False
 
 
 def _venv_python(env_dir: Path) -> Path:
@@ -40,8 +56,7 @@ def _build_wheel(tmp_path: Path) -> Path:
     # ``hatchling`` backend into an isolated env, so the local env needs no
     # backend preinstalled).
     subprocess.run(
-        [sys.executable, "-m", "build", "--wheel",
-         "--outdir", str(dist_dir), str(_REPO_ROOT)],
+        [sys.executable, "-m", "build", "--wheel", "--outdir", str(dist_dir), str(_REPO_ROOT)],
         check=True,
         capture_output=True,
     )
@@ -62,8 +77,16 @@ def _install_and_run_mcp(tmp_path: Path, database_url: str) -> None:
     # pinned 1.x lineage whose ``fastmcp`` module supports this server; mcp 2.0
     # restructured without ``mcp.server.fastmcp``).
     subprocess.run(
-        [str(py), "-m", "pip", "install", "--quiet", "--no-input",
-         f"{str(wheel)}[mcp]", "mcp>=1.0,<2"],
+        [
+            str(py),
+            "-m",
+            "pip",
+            "install",
+            "--quiet",
+            "--no-input",
+            f"{str(wheel)}[mcp]",
+            "mcp>=1.0,<2",
+        ],
         check=True,
         capture_output=True,
     )
@@ -104,5 +127,7 @@ def _install_and_run_mcp(tmp_path: Path, database_url: str) -> None:
 
 def test_mcp_wheel_clean_install_serves_stdlib(tmp_path: Path) -> None:
     """The built wheel, in an empty venv, serves the MCP server over stdio."""
+    if not _network_available():
+        pytest.skip("offline: clean-install wheel test needs PyPI for build backend + [mcp] deps")
     db_url = f"sqlite+aiosqlite:///{tmp_path}/wheel.db"
     _install_and_run_mcp(tmp_path, db_url)

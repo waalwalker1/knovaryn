@@ -292,9 +292,7 @@ class DoclingAdapter:
     ) -> ParseOutcome:
         quarantine = _quarantine_reason(source.media_type, raw)
         if quarantine:
-            return self._quarantine_outcome(
-                source, raw, config_hash, engine_engines, quarantine
-            )
+            return self._quarantine_outcome(source, raw, config_hash, engine_engines, quarantine)
         text = _decode_text(raw, source.media_type)
         blocks = _split_blocks(text)
         doc = {

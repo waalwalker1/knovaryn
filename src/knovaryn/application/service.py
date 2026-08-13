@@ -111,9 +111,7 @@ class ProjectService:
         outcome = await adapter.parse(source, raw, config={})
         # Quarantined binary (WP G5): never promote garbage text to a parsed
         # document — surface extraction as failed and let callers decide.
-        extraction = (
-            ExtractionStatus.failed if outcome.quarantined else ExtractionStatus.parsed
-        )
+        extraction = ExtractionStatus.failed if outcome.quarantined else ExtractionStatus.parsed
         parsed = ParsedDocument(
             id=self._ids.new_handle("par"),
             source_document_id=source.id,
@@ -203,9 +201,7 @@ class ProjectService:
             result.notes.append("source/raw length mismatch; nothing parsed")
             return result
         for source, raw in zip(sources, raw_contents, strict=True):
-            parsed, canonical = await self.ingest_and_parse(
-                project=project, source=source, raw=raw
-            )
+            parsed, canonical = await self.ingest_and_parse(project=project, source=source, raw=raw)
             result.parsed.append(parsed)
             chunks, spans = self.chunk_document(parsed=parsed, canonical=canonical)
             for c in chunks:
@@ -323,7 +319,7 @@ class ProjectService:
                 readme=_default_readme(project, examples),
             )
             result.release_bundle_bytes = bundle.to_zip()
-            result.release_sha256 = bundle.sha256()
+            result.release_sha256 = bundle.detached_sha256()
         return result
 
     async def _validate(
@@ -476,9 +472,7 @@ def _verify_metadata(assessment: Any) -> dict[str, Any]:
         "critical_unverified": [
             c for c in assessment.reason_codes if c.startswith("critical_unverified")
         ],
-        "critical_failed": [
-            c for c in assessment.reason_codes if c.startswith("critical_failed")
-        ],
+        "critical_failed": [c for c in assessment.reason_codes if c.startswith("critical_failed")],
     }
 
 

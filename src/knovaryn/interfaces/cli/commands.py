@@ -170,6 +170,60 @@ def _exclude_pycache(info: tarfile.TarInfo) -> tarfile.TarInfo | None:
     return info
 
 
+def restore(*, archive: Path, json_plain: bool = False) -> int:
+    """Restore a ``knovaryn backup`` archive into the configured state dir.
+
+    Extracts the tarball, then verifies the restored SQLite DB with an
+    ``integrity_check`` and enumerates restored top-level entries. Refuses to
+    overwrite an existing state directory unless it is empty (or a prior
+    ``backup`` exists to preserve recovery integrity).
+    """
+    state = _state_dir()
+    if not archive.exists():
+        console.print(f"[red]Archive not found: {archive}[/red]")
+        return 1
+    if state.exists() and any(state.iterdir()):
+        console.print(
+            f"[red]Refusing to restore over a non-empty state dir: {state}[/red] "
+            "(back it up first or move it away)"
+        )
+        return 1
+    state.mkdir(parents=True, exist_ok=True)
+    try:
+        with tarfile.open(archive, "r:gz") as tar:
+            tar.extractall(state, filter="data")
+    except Exception as exc:  # noqa: BLE001
+        console.print(f"[red]Restore failed:[/red] {exc}")
+        return 1
+
+    cfg = load_config()
+    db_path = _db_file(cfg)
+    problems: list[str] = []
+    if db_path:
+        ok, detail = _check_db(db_path)
+        if ok:
+            console.print(f"[green]Restored DB integrity OK:[/green] {detail}")
+        else:
+            problems.append(detail)
+            console.print(f"[red]Restored DB integrity check failed:[/red] {detail}")
+            return 1
+    # surface the restored top-level entries for confirmation
+    entries = sorted(p.name for p in state.iterdir())
+    console.print(f"[green]Restored to {state}:[/green] {', '.join(entries) or '(empty)'}")
+    if json_plain:
+        console.print_json(
+            __import__("json").dumps(
+                {
+                    "archive": str(archive),
+                    "state": str(state),
+                    "entries": entries,
+                    "problems": problems,
+                }
+            )
+        )
+    return 0
+
+
 def repair(*, json_plain: bool = False) -> int:
     """Verify DB integrity and reconcile missing artifact blobs against the index."""
     cfg = load_config()
@@ -235,14 +289,37 @@ def repair(*, json_plain: bool = False) -> int:
     return 0
 
 
+def verify_release(*, path: str) -> int:
+    """Verify a release bundle's detached checksum + per-file manifest (I5).
+
+    Exit 0 on success (fully verifiable), nonzero otherwise. Never reports a
+    bundle as OK unless the detached checksum, every per-file sha256, the
+    content-root hash, and the manifest schema all verify (contract rules 6/13).
+    """
+    from ...pipeline.export.verify_release import run_verify_release
+
+    return run_verify_release(path)
+
+
 def server(*, host: str | None = None, port: int | None = None, reload: bool = False) -> int:
-    """Launch the offline REST API + web console (bearer-token aware)."""
+    """Launch the offline REST API + web console (bearer-token aware).
+
+    Enforces J4 safe binding: refusing a non-loopback bind when no API token is
+    configured unless the operator explicitly overrides it.
+    """
     from ...infrastructure.auth.bearer import server_bind
     from ...infrastructure.telemetry.logging import get_logger
 
     bind_host, bind_port = server_bind()
     host = host or bind_host
     port = port or bind_port
+    try:
+        from ...interfaces.rest.security import server_bind_checked
+
+        host, port = server_bind_checked(host=host, port=port)
+    except Exception as exc:  # noqa: BLE001 - ConfigurationError -> refuse to start
+        console.print(f"[red]{exc}[/red]")
+        return 1
     log = get_logger("knovaryn.server")
     log.info("starting knovaryn server", host=host, port=port)
     console.print(f"[green]Knovaryn server[/green] → http://{host}:{port}  (web console at /)")

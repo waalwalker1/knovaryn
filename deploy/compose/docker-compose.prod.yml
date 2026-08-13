@@ -1,0 +1,134 @@
+# Knovaryn production Compose (spec WP K2).
+#
+# Multi-worker topology with durable shared state:
+#
+#   api      - REST API + web console (one N replicas for HTTP scale-out)
+#   worker   - durable background pipeline workers (one N replicas)
+#   postgres - PostgreSQL shared database (multi-worker-safe queue/state)
+#   minio    - S3-compatible object store (content-addressed artifacts)
+#   proxy    - Caddy reverse proxy (TLS termination, path routing)
+#
+# Unlike the local quickstart (single SQLite service), this topology uses
+# PostgreSQL + S3 so that multiple API/worker replicas share one consistent
+# database without the local single-writer SQLite limitations. SQLite is NOT a
+# safe multi-worker enterprise queue (spec K1).
+#
+# Bootstrapping:
+#   1. docker compose -f deploy/compose/docker-compose.prod.yml up -d postgres minio
+#   2. docker compose -f deploy/compose/docker-compose.prod.yml run --rm api \
+#        knovaryn doctor
+#   3. docker compose -f deploy/compose/docker-compose.prod.yml up -d
+#
+# Secrets come from the environment / .env (never committed). Generate an API
+# token before enabling auth:
+#   python -c "import secrets;print(secrets.token_urlsafe(32))"
+# then set KNOVARYN_API_TOKEN in .env.
+
+name: knovaryn-prod
+
+x-knovaryn-common: &knovaryn-common
+  image: ghcr.io/knovaryn/knovaryn:0.1.0   # PINNED TAG — never `latest` (K3)
+  pull_policy: always
+  environment: &common-env
+    # Shared state: PostgreSQL instead of SQLite (K1 multi-worker safety)
+    KNOVARYN_STORAGE_DATABASE_URL: "postgresql+asyncpg://knovaryn:${POSTGRES_PASSWORD:?set in .env}@postgres:5432/knovaryn"
+    KNOVARYN_STORAGE_ARTIFACT_BACKEND: "s3"
+    KNOVARYN_STORAGE_BUCKET: "knovaryn-artifacts"
+    KNOVARYN_STORAGE_ENDPOINT_URL: "http://minio:9000"
+    KNOVARYN_STORAGE_REGION: "us-east-1"
+    KNOVARYN_STORAGE_ACCESS_KEY_ID: "${MINIO_ROOT_USER:?set in .env}"
+    KNOVARYN_STORAGE_SECRET_ACCESS_KEY: "${MINIO_ROOT_PASSWORD:?set in .env}"
+    KNOVARYN_API_TOKEN: "${KNOVARYN_API_TOKEN:-}"
+    # Redaction is always on; explicit toggle never logs source/PII by default
+    KNOVARYN_TELEMETRY_CONTENT_IN_LOGS: "false"
+  depends_on:
+    postgres:
+      condition: service_healthy
+    minio:
+      condition: service_healthy
+  restart: unless-stopped
+
+services:
+  postgres:
+    image: postgres:16-alpine   # pinned major+minor for reproducibility
+    environment:
+      POSTGRES_USER: knovaryn
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?set in .env}"
+      POSTGRES_DB: knovaryn
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U knovaryn -d knovaryn"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  minio:
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z   # pinned
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: "${MINIO_ROOT_USER:?set in .env}"
+      MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD:?set in .env}"
+    volumes:
+      - miniodata:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  # create the bucket once (idempotent)
+  minio-init:
+    image: minio/mc:RELEASE.2025-04-16T18-13-26Z   # pinned
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "mc alias set local http://minio:9000 '$${MINIO_ROOT_USER}' '$${MINIO_ROOT_PASSWORD}' &&
+      mc mb --ignore-existing local/knovaryn-artifacts &&
+      echo 'bucket ready'"
+    environment:
+      MINIO_ROOT_USER: "${MINIO_ROOT_USER:?set in .env}"
+      MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD:?set in .env}"
+    restart: "no"
+
+  api:
+    <<: *knovaryn-common
+    command: ["knovaryn", "server", "--host", "0.0.0.0", "--port", "8000"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8000/v1/health',timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    # HTTP replicas are stateless against the shared postgres/minio; scale out
+    # horizontally with:
+    #   docker compose -f deploy/compose/docker-compose.prod.yml up -d --scale api=4
+
+  worker:
+    <<: *knovaryn-common
+    command: ["knovaryn", "worker", "--id", "worker-1", "--lease", "300"]
+    # Scale workers with:
+    #   docker compose -f deploy/compose/docker-compose.prod.yml up -d --scale worker=4
+    # Each worker runs its own durable claim loop against the shared DB, so the
+    # local single-writer SQLite queue would be unsafe here — Postgres is required.
+
+  proxy:
+    image: caddy:2.8-alpine   # pinned
+    ports:
+      - "8080:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      KNOVARYN_API_TOKEN: "${KNOVARYN_API_TOKEN:-}"
+    volumes:
+      # reverse proxy forwards /api (REST) and / (console + static)
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  miniodata:

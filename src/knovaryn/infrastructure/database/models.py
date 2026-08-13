@@ -188,6 +188,44 @@ class QualityAssessmentDB(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
+class ExampleRevisionDB(Base):
+    """Immutable per-example revision snapshot (WP H1). One row per revision."""
+
+    __tablename__ = "example_revisions"
+    __table_args__ = (
+        Index("ix_revision_example", "example_logical_id"),
+        Index("ix_revision_example_rev", "example_logical_id", "revision_id"),
+    )
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    example_logical_id: Mapped[str] = mapped_column(String(64), index=True)
+    revision_id: Mapped[int] = mapped_column(Integer)
+    parent_revision_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    content_hash: Mapped[str] = mapped_column(String(64))
+    snapshot: Mapped[dict] = mapped_column(JSON, default=dict)
+    review_state: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    concurrency_token: Mapped[str] = mapped_column(String(64), index=True)
+    created_by: Mapped[str] = mapped_column(String(255), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class ReviewDecisionDB(Base):
+    """Persisted review decision on a specific base revision (WP H2)."""
+
+    __tablename__ = "review_decisions"
+    __table_args__ = (Index("ix_review_example", "example_id"),)
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    example_id: Mapped[str] = mapped_column(String(64), index=True)
+    revision_id: Mapped[int] = mapped_column(Integer)
+    reviewer_principal: Mapped[str] = mapped_column(String(255))
+    decision: Mapped[str] = mapped_column(String(32))
+    note: Mapped[str] = mapped_column(Text, default="")
+    policy_version: Mapped[str] = mapped_column(String(64), default="")
+    concurrency_token: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 class GenerationCandidateDB(Base):
     __tablename__ = "generation_candidates"
     __table_args__ = (Index("ix_cand_fingerprint", "call_fingerprint"),)
@@ -251,6 +289,7 @@ class DatasetVersionDB(Base):
     project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), index=True)
     semantic_version: Mapped[str] = mapped_column(String(32))
     parent_version_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    member_example_ids: Mapped[list] = mapped_column(JSON, default=list)
     manifest_artifact_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     quality_report_artifact_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     dataset_card_artifact_id: Mapped[str | None] = mapped_column(String(64), nullable=True)

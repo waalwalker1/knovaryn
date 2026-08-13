@@ -1,25 +1,61 @@
-# Builds the wheel/sdist and publishes it to PyPI once a maintainer publishes
-# a GitHub Release. Nothing publishes automatically on plain `main` commits —
-# publishing is an explicit, release-gated action.
+# Builds + verifies the wheel/sdist (L7) and publishes it to PyPI via **OIDC
+# trusted publishing** (L8) once a maintainer publishes a GitHub Release.
+# Nothing publishes automatically on plain `main` commits — publishing is an
+# explicit, release-gated action (contract rule 22).
 #
-# Setup (one-time, by a maintainer):
-#   1. Create a PyPI account (https://pypi.org/account/register/) and, in
-#      account settings, add a token scoped to the "knovaryn" project.
-#   2. Add that token as a repository secret named `PYPI_API_TOKEN`
-#      (Settings > Secrets and variables > Actions).
-#   3. Tag a commit and publish a GitHub Release, e.g.
-#      `git tag v0.1.0 && git push origin v0.1.0` then create a GitHub Release
-#      from the tag. Publishing the Release triggers the PyPI upload.
-
+# L9 release safeguards, in one pipeline:
+#   - only a `release` event triggers publish (manual Release gate)
+#   - the `package-ci` job runs scripts/package_ci.py (build, twine check,
+#     metadata, secret-scan, clean-env install, CLI/MCP/REST smoke) and must
+#     pass before anything is uploaded
+#   - the tag must be a clean `vX.Y.Z` semver and match the package version
+#   - any secret-like content in the wheel fails the job (fail closed)
+#   - publish uses OIDC (id-token: write) — no stored password/token secret
 name: Publish to PyPI
+
 on:
   release:
     types: [published]
 
+permissions:
+  contents: read
+
 jobs:
+  package-ci:
+    name: Package CI (L7 — build + verify release candidate)
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.11"
+      - name: Install dev + mcp extras
+        run: uv sync --extra dev --extra mcp
+      - name: Build + verify + smoke (wheel/sdist/twine/meta/secrets/CLI/MCP/REST)
+        run: uv run python scripts/package_ci.py
+
+  tag-version-consistency:
+    name: Release tag matches package version (L9)
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.11"
+      - name: Check tag == project version
+        run: |
+          VERSION="$(uv run python -c 'import tomllib;print(tomllib.load(open("pyproject.toml","rb"))["project"]["version"])')"
+          REF="${GITHUB_REF#refs/tags/v}"
+          echo "tag=v${REF}  project=${VERSION}"
+          test "$REF" = "$VERSION" || { echo "tag does not match project version"; exit 1; }
+
   build:
     name: Build wheel & sdist
+    needs: [package-ci, tag-version-consistency]
     runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
@@ -27,29 +63,19 @@ jobs:
           python-version: "3.11"
       - name: Build distributions
         run: uv build
-      - name: Verify metadata
-        run: |
-          uv run python - <<'PY'
-          import glob, zipfile
-          wheel = glob.glob("dist/*.whl")[0]
-          z = zipfile.ZipFile(wheel)
-          meta = [n for n in z.namelist() if n.endswith(".dist-info/METADATA")][0]
-          text = z.read(meta).decode()
-          assert "knovaryn" in text, "metadata missing name"
-          print("OK:", wheel)
-          PY
       - uses: actions/upload-artifact@v4
         with:
           name: dist
           path: dist/
 
   publish:
-    name: Publish to PyPI
+    name: Publish to PyPI (OIDC trusted publishing)
     needs: build
     runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
     environment: pypi
     permissions:
-      id-token: write   # trusted publishing when the project enables it
+      id-token: write   # OIDC trusted publishing — NO stored token/password
       contents: read
     steps:
       - uses: actions/download-artifact@v4
@@ -60,5 +86,6 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           verify-metadata: true
-          # Password via OIDC trusted publishing, or this repo secret.
-          password: ${{ secrets.PYPI_API_TOKEN }}
+          # OIDC trusted publishing: the `environment: pypi` deployment must be
+          # mapped to the `knovaryn` PyPI project in PyPI's trusted publishers
+          # settings. No PYPI_API_TOKEN secret is stored or referenced.

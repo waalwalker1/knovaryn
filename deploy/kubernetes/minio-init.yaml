@@ -1,0 +1,43 @@
+# One-shot Job that creates the artifact bucket in MinIO (idempotent).
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: minio-init
+  namespace: knovaryn
+spec:
+  template:
+    spec:
+      restartPolicy: OnFailure
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: mc
+          image: minio/mc:RELEASE.2025-04-16T18-13-26Z   # pinned
+          command:
+            - /bin/sh
+            - -c
+            - |
+              mc alias set local http://minio:9000 "$$S3_ACCESS" "$$S3_SECRET" &&
+              mc mb --ignore-existing local/knovaryn-artifacts &&
+              echo "artifact bucket ready"
+          env:
+            - name: S3_ACCESS
+              valueFrom:
+                secretKeyRef:
+                  name: knovaryn-secrets
+                  key: s3_access_key
+            - name: S3_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: knovaryn-secrets
+                  key: s3_secret_key
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi

@@ -78,9 +78,7 @@ def schema_hash_for(topology: str) -> str:
     share a hash (audit + dedupe), and any change to the schema changes it.
     """
     schema = generation_output_schema(topology)
-    raw = json.dumps(
-        schema, sort_keys=True, separators=(",", ":"), default=str
-    ).encode("utf-8")
+    raw = json.dumps(schema, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
     return "schema:" + hashlib.sha256(raw).hexdigest()[:16]
 
 

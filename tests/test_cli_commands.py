@@ -180,6 +180,4 @@ def test_mcp_cmd_delegates_to_mcp_entry_point(monkeypatch) -> None:
         app, ["mcp", "--transport", "stdio", "--database-url", "sqlite+aiosqlite:///t.db"]
     )
     assert result.exit_code == 7  # the MCP entry point's return value
-    assert captured == [
-        ["--transport=stdio", "--database-url=sqlite+aiosqlite:///t.db"]
-    ]
+    assert captured == [["--transport=stdio", "--database-url=sqlite+aiosqlite:///t.db"]]

@@ -66,8 +66,7 @@ _DIFFICULTY_TEMPERATURE = {"basic": 0.1, "intermediate": 0.3, "advanced": 0.5}
 # directives because this is synthetic generation, not an interactive QA turn.
 _SLOTS = {
     "question": (
-        "(generate a single, self-contained question fully answerable "
-        "from the source material)"
+        "(generate a single, self-contained question fully answerable from the source material)"
     ),
     "candidate_a": "(the more accurate, faithful candidate answer you generate)",
     "candidate_b": "(a subtly inferior candidate answer you generate)",
@@ -135,6 +134,9 @@ class Generator:
         seed_base: int = 1,
     ) -> GenerationOutcome:
         """Run every spec in the plan across available chunks (round-robin)."""
+        from ..application.abuse import begin_generation_run
+
+        begin_generation_run()
         src_text = source_text_for or (lambda c: getattr(c, "main_text", ""))
         spids = span_ids_for or (lambda c: getattr(c, "source_span_ids", []) or [])
 
@@ -163,6 +165,12 @@ class Generator:
                         seed=seed_base * 1000 + idx,
                     )
                 except ProviderError as exc:
+                    from ..infrastructure.telemetry.metrics import get_registry
+
+                    get_registry().inc(
+                        "knovaryn_provider_errors_total",
+                        labels={"topology": spec.topology, "task_family": spec.task_family},
+                    )
                     outcome.errors.append(f"{spec.topology}/{spec.task_family}: {exc}")
                     continue
                 outcome.batches.append(batch)
@@ -208,6 +216,10 @@ class Generator:
         # correction, then quarantine (raise) rather than silently default-fill.
         for attempt in range(self._max_repair_attempts + 1):
             call_kwargs["seed"] = seed + attempt
+            # J7: a configured per-run provider-call cap (abuse control).
+            from ..application.abuse import enforce_provider_call
+
+            enforce_provider_call()
             outcome = await self._gateway.generate(**call_kwargs)
             body = outcome.get("content") or {}
             codes = validate_generation_output(spec.topology, body)

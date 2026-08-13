@@ -128,3 +128,13 @@ class ExportError(KnovarynError):
 
 class CorruptedArtifactError(KnovarynError):
     code = "corrupted_artifact"
+
+
+class RateLimitError(KnovarynError):
+    """A configured abuse-control budget was exceeded (HTTP 429).
+
+    Raised when a per-principal request budget, concurrent-job cap, provider-call
+    cap, or publication-attempt cap is exhausted (spec §17.4, WP J7).
+    """
+
+    code = "rate_limited"

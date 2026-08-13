@@ -43,9 +43,7 @@ def _ex(messages, *, id="ex_1", span_ids=None, topo="sft"):
     return TrainingExample(
         id=id,
         project_id="proj_y",
-        prompt_messages=[
-            CanonicalMessage(role=r, content=c) for r, c in messages if r == "user"
-        ],
+        prompt_messages=[CanonicalMessage(role=r, content=c) for r, c in messages if r == "user"],
         chosen_messages=[
             CanonicalMessage(role=r, content=c) for r, c in messages if r == "assistant"
         ],
@@ -56,8 +54,10 @@ def _ex(messages, *, id="ex_1", span_ids=None, topo="sft"):
 
 def test_cross_document_contamination_is_rejected():
     """An example citing only Alpha, answering 'amber', must FAIL grounding."""
-    ex = _ex([("user", "What does Alpha use?"), ("assistant", "The answer is amber.")],
-             span_ids=["span_alpha"])
+    ex = _ex(
+        [("user", "What does Alpha use?"), ("assistant", "The answer is amber.")],
+        span_ids=["span_alpha"],
+    )
     ctx = ValidatorContext(source_texts={"span_alpha": ALPHA, "span_beta": BETA})
     grounding = _await(GroundingValidator().assess(ex, ctx))
     assert grounding.status != QualityStatus.accepted, (
@@ -67,8 +67,10 @@ def test_cross_document_contamination_is_rejected():
 
 def test_cited_only_evidence_scope():
     """Grounding must be evaluated against ONLY the cited Alpha span, not Beta."""
-    ex = _ex([("user", "What does Alpha use?"), ("assistant", "The answer is amber.")],
-             span_ids=["span_alpha"])
+    ex = _ex(
+        [("user", "What does Alpha use?"), ("assistant", "The answer is amber.")],
+        span_ids=["span_alpha"],
+    )
     ctx = ValidatorContext(source_texts={"span_alpha": ALPHA, "span_beta": BETA})
     grounding = _await(GroundingValidator().assess(ex, ctx))
     assert grounding.score < 0.6  # with only Alpha cited, amber is ungrounded
@@ -179,9 +181,7 @@ def test_assemble_decision_three_state_c4():
     # adding schema + answerability but with schema failed -> rejected
     schema = _await(SchemaValidator().assess(ex, ValidatorContext(source_texts={})))
     ans = _await(AnswerabilityValidator().assess(ex, ctx))
-    overall2 = assemble_decision(
-        [grounding, schema, ans], example_id=ex.id, is_preference=False
-    )
+    overall2 = assemble_decision([grounding, schema, ans], example_id=ex.id, is_preference=False)
     assert overall2.status == QualityStatus.rejected
     assert any("critical_failed" in c for c in overall2.reason_codes)
 
@@ -213,19 +213,33 @@ def test_pipeline_persists_durable_verify_metadata():
     proj = Project(id="proj_w", slug="w", display_name="W", owner_principal="t")
     srcs = [
         SourceDocument(
-            id="s1", project_id="proj_w", original_name="a.md",
-            media_type="text/markdown", byte_size=1, sha256="h1", group_key="g1",
+            id="s1",
+            project_id="proj_w",
+            original_name="a.md",
+            media_type="text/markdown",
+            byte_size=1,
+            sha256="h1",
+            group_key="g1",
         ),
         SourceDocument(
-            id="s2", project_id="proj_w", original_name="b.md",
-            media_type="text/markdown", byte_size=1, sha256="h2", group_key="g2",
+            id="s2",
+            project_id="proj_w",
+            original_name="b.md",
+            media_type="text/markdown",
+            byte_size=1,
+            sha256="h2",
+            group_key="g2",
         ),
     ]
-    contents = ["Alpha protocol uses cobalt keys. Repeated material.",
-                "Beta protocol uses amber keys. Different material."]
+    contents = [
+        "Alpha protocol uses cobalt keys. Repeated material.",
+        "Beta protocol uses amber keys. Different material.",
+    ]
     r = _await(
         ProjectService().run_pipeline(
-            project=proj, sources=srcs, contents=contents,
+            project=proj,
+            sources=srcs,
+            contents=contents,
             plan=DatasetPlan(task_family_proportions={"factual_explanation": 1.0}),
         )
     )
@@ -240,5 +254,3 @@ def test_pipeline_persists_durable_verify_metadata():
             assert per_dim.get(dim) == "verified", (
                 f"accepted example must have {dim} verified, got {per_dim.get(dim)}"
             )
-
-

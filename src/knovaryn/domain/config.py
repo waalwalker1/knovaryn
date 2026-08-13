@@ -194,6 +194,23 @@ _DEFAULTS: dict[str, Any] = {
         "host": "127.0.0.1",
         "port": 8000,
         "api_token": "",  # empty = local mode (REST offline demo); set to enforce auth
+        # WP J3: granted scopes for a configured token. Omit to use the safe
+        # default set (all except nothing); supply a subset for least-privilege.
+        "scopes": [],
+        # principals exempt from owner-tenant isolation (cross-tenant admin)
+        "admin_principals": [],
+        # J4: refuse non-loopback bind without a token unless explicitly true
+        "allow_insecure_nonloopback": False,
+        # J5: strict-Transport / CSP are emitted by middleware; CORS origins
+        "cors_origins": [],
+        # J7: per-principal rate limits
+        "rate_limit": {
+            "requests_per_minute": 600,
+            "max_upload_bytes": 25 * 1024 * 1024,
+            "max_concurrent_jobs": 4,
+            "max_provider_calls_per_run": 0,  # 0 = unlimited
+            "max_publish_attempts_per_hour": 10,
+        },
     },
 }
 

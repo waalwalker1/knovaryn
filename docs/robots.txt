@@ -1,0 +1,8 @@
+# Knovaryn docs — robots.txt (WP M7)
+# Allow public documentation indexing. The docs sitemap is at /sitemap.xml.
+User-agent: *
+Allow: /
+Disallow: /assets/
+Disallow: /search/
+
+Sitemap: https://knovaryn.github.io/sitemap.xml

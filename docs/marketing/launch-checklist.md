@@ -40,6 +40,35 @@
 - [ ] Logo/trademark clearance or documented deferral.
 - [ ] If shipping a sample public dataset: source redistribution rights verified and documented.
 
+### A.5 Discoverability & SEO (owner actions; WP M4/M5/M7)
+
+*These are owner actions on the live GitHub repo / hosting — they cannot be
+committed. The repo-side metadata (pyproject URLs/keywords/classifiers,
+`CITATION.cff`, `codemeta.json`, `docs/llms.txt`, `docs/robots.txt`, sitemap,
+OpenGraph + schema.org head injection) is already in-tree; the items below are
+what you must do in the UI/hosting.*
+
+**GitHub topics (M4)** — add, within GitHub's topic limit, the relevant subset:
+```text
+llm  synthetic-data  training-data  fine-tuning  sft  dpo  rlhf  kto
+mcp  model-context-protocol  docling  dataset-provenance  data-lineage
+dataset-curation  llmops  mlops  huggingface  data-quality  ai-agents  open-source-ai
+```
+- [ ] Add the GitHub repository topics above (no unrelated popular topics).
+- [ ] Confirm the repo has a `description` that matches the M1 positioning
+      statement (shows on the repo listing + search).
+- [ ] Publish the docs site at the stable URLs in `[project.urls]`
+      (`https://knovaryn.dev`) and `site_url`/`repo_url` in `mkdocs.yml`.
+- [ ] Enable **GitHub Pages** (or the configured host) so `/sitemap.xml`,
+      `/robots.txt`, `/llms.txt`, and the OpenGraph/schema.org head tags resolve.
+- [ ] Verify `llms.txt` and `sitemap.xml` are reachable and list the new
+      guides/concepts/comparisons pages.
+- [ ] Confirm `CITATION.cff` (`CITATION.cff`) and `codemeta.json` (`codemeta.json`)
+      are valid and referenced (e.g., pinned in the sidebar/gallery).
+- [ ] Register the PyPI project's **trusted publisher** for the `pypi`
+      environment (OIDC) — no token secret.
+- [ ] Re-check every README/docs external link resolves before announcing.
+
 ---
 
 ## B. Launch week

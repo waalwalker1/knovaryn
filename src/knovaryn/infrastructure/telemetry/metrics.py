@@ -55,6 +55,10 @@ class MetricsRegistry:
         for key, gauge in sorted(self.gauges.items()):
             lines.append(f"# TYPE {key} gauge")
             lines.append(f"{key} {gauge}")
+        for key, values in sorted(self.histograms.items()):
+            lines.append(f"# TYPE {key} histogram")
+            lines.append(f"{key}_count {len(values)}")
+            lines.append(f"{key}_sum {round(sum(values), 4)}")
         return "\n".join(lines) + "\n"
 
 
