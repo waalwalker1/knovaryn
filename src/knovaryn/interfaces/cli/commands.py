@@ -33,16 +33,22 @@ def _state_dir() -> Path:
 
 
 def doctor(*, json_plain: bool = False) -> int:
-    """Run environment + storage checks. Returns exit code (0 ok, 1 critical)."""
-    checks: list[tuple[str, bool, str]] = []
+    """Run environment + storage checks. Returns exit code (0 ok, 1 critical).
 
-    # 1. core import
+    Optional/opt-in extras (docling, docetl, HF publish) are informational: a
+    minimal install without them is a supported, valid configuration, so their
+    absence must NOT flip the exit code to failure. Only critical components
+    (core import, config, storage reachability) drive the non-zero exit.
+    """
+    checks: list[tuple[str, bool, str, bool]] = []  # (name, ok, detail, optional)
+
+    # 1. core import (critical)
     try:
         from ...infrastructure.models.fake_provider import FakeProvider  # noqa: F401
 
-        checks.append(("Core import", True, "ok"))
+        checks.append(("Core import", True, "ok", False))
     except Exception as exc:  # noqa: BLE001
-        checks.append(("Core import", False, f"failed: {exc}"))
+        checks.append(("Core import", False, f"failed: {exc}", False))
 
     # 2. optional extras
     from ...infrastructure.docetl.adapter import docetl_available
@@ -55,6 +61,7 @@ def doctor(*, json_plain: bool = False) -> int:
             "Docling (opt-in)",
             docling_available(),
             "available" if docling_available() else "not installed (safe fallback)",
+            True,
         )
     )
     checks.append(
@@ -62,6 +69,7 @@ def doctor(*, json_plain: bool = False) -> int:
             "DocETL (opt-in)",
             docetl_available(),
             "available" if docetl_available() else "not installed",
+            True,
         )
     )
     checks.append(
@@ -69,24 +77,25 @@ def doctor(*, json_plain: bool = False) -> int:
             "HF publish (opt-in)",
             hub_available(),
             "available" if hub_available() else "not installed",
+            True,
         )
     )
-    checks.append(("Fake provider (offline)", True, "ok"))
+    checks.append(("Fake provider (offline)", True, "ok", True))
 
     # 3. resource profile (accelerator detection)
     from ...infrastructure.resources import detect_resource_profile
 
     profile = detect_resource_profile()
-    checks.append(("Accelerator", True, f"{profile.accelerator} ({profile.note})"))
+    checks.append(("Accelerator", True, f"{profile.accelerator} ({profile.note})", False))
 
     # 4. config validity + secret safety
     cfg = load_config()
-    checks.append(("Configuration", True, "loaded OK"))
+    checks.append(("Configuration", True, "loaded OK", False))
 
     # 5. storage reachability
     db_path = _db_file(cfg)
     db_ok, db_detail = _check_db(db_path)
-    checks.append(("Database", db_ok, db_detail))
+    checks.append(("Database", db_ok, db_detail, False))
 
     # 6. artifact store reachability
     art_root = Path(cfg.get("storage", {}).get("artifact_root") or ".knovaryn/artifacts")
@@ -95,23 +104,27 @@ def doctor(*, json_plain: bool = False) -> int:
         probe = art_root / ".knovaryn_probe"
         probe.write_text("ok")
         probe.unlink()
-        checks.append(("Artifact store", True, f"writable at {art_root}"))
+        checks.append(("Artifact store", True, f"writable at {art_root}", False))
     except Exception as exc:  # noqa: BLE001
-        checks.append(("Artifact store", False, f"not writable: {exc}"))
+        checks.append(("Artifact store", False, f"not writable: {exc}", False))
 
     table = Table(title="Knovaryn doctor — environment check")
     table.add_column("Component")
     table.add_column("Status")
     table.add_column("Detail")
-    for name, ok, detail in checks:
+    for name, ok, detail, _optional in checks:
         table.add_row(name, "[green]OK[/green]" if ok else "[red]FAIL[/red]", detail)
     console.print(table)
 
     if json_plain:
         console.print_json(
-            __import__("json").dumps([{"component": n, "ok": o, "detail": d} for n, o, d in checks])
+            __import__("json").dumps(
+                [{"component": n, "ok": o, "detail": d, "optional": p} for n, o, d, p in checks]
+            )
         )
-    return 0 if all(ok for _, ok, _ in checks) else 1
+    # Optional/opt-in extras that are simply not installed are informational and
+    # must not fail the exit code; only critical checks can make doctor non-zero.
+    return 0 if all(ok for _, ok, _, optional in checks if not optional) else 1
 
 
 def _db_file(cfg: Any) -> str | None:
