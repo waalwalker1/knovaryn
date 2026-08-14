@@ -139,12 +139,12 @@ def test_doctor_json_absent_extras(isolated_config, monkeypatch, capsys) -> None
     code = cli_commands.doctor(json_plain=True)
     captured = capsys.readouterr().out
     assert code == 0
-    json_part = captured[captured.find('"component"'):]
+    json_part = captured[captured.find('"component"') :]
     for extra in ("Docling (opt-in)", "DocETL (opt-in)", "HF publish (opt-in)"):
-        row = json_part[json_part.find(extra):]
+        row = json_part[json_part.find(extra) :]
         end = row.find('"ok"')
-        assert '"ok": false' in row[:end + 60], f"{extra} not marked not-ok in JSON"
-        assert '"optional": true' in row[end:end + 120], f"{extra} not marked optional"
+        assert '"ok": false' in row[: end + 60], f"{extra} not marked not-ok in JSON"
+        assert '"optional": true' in row[end : end + 120], f"{extra} not marked optional"
 
 
 def test_backup_missing_state_dir_returns_one(tmp_path, monkeypatch) -> None:
