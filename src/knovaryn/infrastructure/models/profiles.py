@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from .gateway import ModelGateway
 
+from ...domain.errors import ConfigurationError
 from ...identity import ENV_PREFIX
 from .cost import PriceProfile
 
@@ -223,17 +224,48 @@ _LIVE_NAMES = {
 }
 
 
+def _require_live_credentials(profile_name: str) -> None:
+    """Refuse to wire a live profile without any credential signal (defect 4.9).
+
+    A live profile selected with no credentials anywhere in the environment
+    almost always means a misconfiguration. v0.1 wired such selections to the
+    fake gateway anyway — the worst kind of silent fake fallback (the operator
+    believes they paid for real generation). We fail loudly instead; the
+    ModelGateway itself still refuses per-call fake fallback (WP D5) as the
+    second line of defence.
+    """
+    signals = (
+        _env("DEEPSEEK_API_KEY"),
+        _env("API_KEY"),
+        _env("BASE_URL"),
+        _env("DEEPSEEK_BASE_URL"),
+    )
+    if not any(signals):
+        raise ConfigurationError(
+            f"runtime profile {profile_name!r} is a live profile but no provider "
+            f"credentials are configured (set one of KNOVARYN_DEEPSEEK_API_KEY, "
+            f"KNOVARYN_API_KEY, KNOVARYN_BASE_URL, KNOVARYN_DEEPSEEK_BASE_URL). "
+            f"Refusing to wire profile {profile_name!r}: never silently falling "
+            f"back to the fake provider — choose an offline profile "
+            f"({', '.join(sorted(OFFICIAL_RUNTIME_PROFILES - _LIVE_NAMES))}) for "
+            f"deterministic offline operation."
+        )
+
+
 def build_gateway(profile: str | None = None, **overrides: Any) -> ModelGateway:
     """Build a :class:`ModelGateway` for a runtime profile.
 
     Offline profiles yield a fake-only gateway with no credentials. Live
     profiles yield a real-provider-capable gateway wired from operator
-    environment, carrying a dated price profile.
+    environment, carrying a dated price profile — and raise
+    :class:`ConfigurationError` when no credential signal exists (never a
+    silent fake fallback).
     """
     from .gateway import ModelGateway
 
     name = profile or DEFAULT_RUNTIME_PROFILE
     if name in ("deepseek_flash_budget", "deepseek-budget"):
+        _require_live_credentials(name)
         prof = DeepSeekFlashBudget()
         from .litellm_provider import LiteLLMProvider
 
@@ -242,6 +274,7 @@ def build_gateway(profile: str | None = None, **overrides: Any) -> ModelGateway:
         kwargs.update(overrides)
         return ModelGateway(real_provider=provider, profile=name, **kwargs)
     if name in _LIVE_NAMES:
+        _require_live_credentials(name)
         lprof: LiveProviderProfile = _live_profile(name)
         from .litellm_provider import LiteLLMProvider
 

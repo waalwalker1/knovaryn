@@ -49,7 +49,7 @@ markdown_extensions:
 
 nav:
   - Home: index.md
-  - OmniTrain MCP (umbrella): omnitrain-mcp.md
+  - Knovaryn MCP (umbrella): knovaryn-mcp.md
   - Concepts:
       - Overview: concepts/overview.md
       - Dataset provenance: concepts/dataset-provenance.md

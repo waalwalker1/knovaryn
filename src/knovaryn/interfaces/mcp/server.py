@@ -18,7 +18,9 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any, cast
 
+from ...domain.config import load_config
 from ...domain.errors import ConfigurationError, NotFoundError
+from ...infrastructure.models.profiles import DEFAULT_RUNTIME_PROFILE
 
 if TYPE_CHECKING:
     from mcp.server.fastmcp import Context
@@ -58,6 +60,95 @@ def _get_workspace(ctx: Context) -> Workspace:
 def _denied(msg: str = "resource not found or not accessible") -> dict[str, Any]:
     """Authorization/not-found denial shape (WP F5: enforce on every handle)."""
     return {"status": "error", "error": msg, "authorized": False}
+
+
+# ------------------------------------------------------------------ config
+def _server_config() -> dict[str, Any]:
+    cfg = load_config()
+    server_cfg = cfg.get("server", {}) if isinstance(cfg.get("server"), dict) else {}
+    return server_cfg
+
+
+def _configured_runtime_profile() -> str:
+    """The configured runtime profile (defect 4.9: report truth, not "fake")."""
+    cfg = load_config()
+    models_cfg = cfg.get("models", {}) if isinstance(cfg.get("models"), dict) else {}
+    return str(models_cfg.get("profile") or cfg.get("profile") or DEFAULT_RUNTIME_PROFILE)
+
+
+# ------------------------------------------------------------ HTTP safety
+def bearer_guard(inner: Any, *, token: str) -> Any:
+    """Wrap an ASGI app with bearer-token enforcement (defect 4.9/MCP-J2).
+
+    With ``token`` configured, requests without ``Authorization: Bearer <token>``
+    are refused with ``401`` before reaching the MCP app — fail closed. With an
+    empty token (local mode) the guard is a pass-through: loopback bind safety
+    (``mcp_bind_checked``) is what protects that mode.
+    """
+
+    async def _respond_401(send: Any) -> None:
+        body = b'{"error": "unauthorized: missing or invalid bearer token"}'
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 401,
+                "headers": [
+                    (b"content-type", b"application/json"),
+                    (b"www-authenticate", b"Bearer"),
+                    (b"content-length", str(len(body)).encode()),
+                ],
+            }
+        )
+        await send({"type": "http.response.body", "body": body})
+
+    async def guarded(scope: Any, receive: Any, send: Any) -> None:
+        if token and scope.get("type") == "http":
+            auth = ""
+            for name, value in scope.get("headers") or []:
+                if name == b"authorization":
+                    auth = value.decode("latin-1")
+                    break
+            expected = f"Bearer {token}"
+            if auth != expected:
+                await _respond_401(send)
+                return
+        await inner(scope, receive, send)
+
+    return guarded
+
+
+def build_authenticated_http_app(server: Any) -> Any:
+    """The streamable-http MCP app behind the configured bearer guard.
+
+    Reads ``server.api_token`` from configuration; an empty token keeps the
+    app unguarded (local mode — protected by the non-loopback bind refusal).
+    """
+    token = str(_server_config().get("api_token") or "")
+    return bearer_guard(server.streamable_http_app(), token=token)
+
+
+def mcp_bind_checked(host: str | None = None, port: int | None = None) -> tuple[str, int]:
+    """Return (host, port), refusing an unauthenticated non-loopback MCP bind.
+
+    Mirrors the REST J4 policy (defect 4.9: v0.1 happily served the operator's
+    full workspace on 0.0.0.0 with no authentication). A non-loopback bind
+    requires ``server.api_token``, unless ``server.allow_insecure_nonloopback``
+    is explicitly true.
+    """
+    server_cfg = _server_config()
+    host = host or str(server_cfg.get("host") or "127.0.0.1")
+    port = int(port or server_cfg.get("port") or 8000)
+    token = str(server_cfg.get("api_token") or "")
+    allow = bool(server_cfg.get("allow_insecure_nonloopback", False))
+    loopback = host in ("127.0.0.1", "::1", "localhost")
+    if not loopback and not token and not allow:
+        raise ConfigurationError(
+            f"refusing to bind MCP server to non-loopback interface {host!r} without "
+            "an API token (production safety). Set server.api_token, bind to 127.0.0.1, "
+            "or explicitly set server.allow_insecure_nonloopback=true for a deliberately "
+            "exposed local dev server."
+        )
+    return host, port
 
 
 def build_server(database_url: str | None = None) -> Any:
@@ -143,10 +234,22 @@ def build_server(database_url: str | None = None) -> Any:
             )
         except Exception as exc:  # noqa: BLE001
             return {"status": "error", "error": str(exc)}
+        configured = _configured_runtime_profile()
+        offline = configured in (
+            "fake",
+            "offline-demo",
+            "fast-local",
+            "balanced",
+            "air-gapped",
+        )
         return {
             "project_id": project.id,
             "slug": project.slug,
-            "default_profile": {"runtime": "fake", "offline": True, "requires_credentials": False},
+            "default_profile": {
+                "runtime": configured,
+                "offline": offline,
+                "requires_credentials": not offline,
+            },
             "next_actions": ["knovaryn_add_source", "knovaryn_start_pipeline"],
         }
 
@@ -237,7 +340,17 @@ def build_server(database_url: str | None = None) -> Any:
         srcs = sources.get("sources", [])
         total_bytes = sum(s.get("byte_size", 0) for s in srcs)
         tokens = approximate_tokens("x" * total_bytes)
-        # offline fake profile: no paid calls, deterministic cost
+        # report the CONFIGURED runtime profile (defect 4.9: never claim "fake"
+        # when a live profile is selected — that is how operators get surprised
+        # by real provider bills).
+        configured = _configured_runtime_profile()
+        offline = configured in (
+            "fake",
+            "offline-demo",
+            "fast-local",
+            "balanced",
+            "air-gapped",
+        )
         return {
             "project_id": project_id,
             "topology": topology,
@@ -246,9 +359,13 @@ def build_server(database_url: str | None = None) -> Any:
             "est_input_tokens": tokens,
             "est_output_tokens": tokens // 4,
             "target_count": target_count,
-            "runtime_profile": "fake",
-            "paid_calls": 0,
-            "note": "offline fake profile — no provider calls, no cost",
+            "runtime_profile": configured,
+            "paid_calls": 0 if offline else None,
+            "note": (
+                "offline fake profile — no provider calls, no cost"
+                if offline
+                else f"live profile {configured!r} — runs make real paid provider calls"
+            ),
         }
 
     @mcp.tool()

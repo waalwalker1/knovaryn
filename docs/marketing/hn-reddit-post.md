@@ -8,7 +8,7 @@
 
 I've been building fine-tuning datasets from documents by hand, and the painful part was never the model calls — it's the bookkeeping. Every row needs to point at the source it came from, weak examples need to be caught instead of shipped, and a generation job that dies at minute 35 shouldn't make me pay for those 35 minutes again.
 
-So I built **Knovaryn** — open source, Apache-2.0, Python ≥ 3.11. It's a document-to-dataset pipeline that's MCP-native, meaning an MCP-capable agent (Claude Code or any MCP client) can drive the whole thing in natural language. The CLI exposes the same pipeline if you'd rather not use an agent.
+So I built **Knovaryn** — open source, Apache-2.0, Python ≥ 3.11. It's a document-to-dataset pipeline that's MCP-native, meaning an MCP-capable agent (Claude Desktop, Cursor, or any MCP client) can drive the whole thing in natural language. The CLI exposes the same pipeline if you'd rather not use an agent.
 
 **The pipeline:** project → add a permissively-licensed document → parse (Docling) → structure-aware chunking (tables and lists stay together) → plan with a dry-run cost estimate → durable run → validation → human review → split/version → export.
 

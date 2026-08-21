@@ -5,8 +5,10 @@
     # replace `:80` with your FQDN (e.g. `knovaryn.example.com`) and Caddy
     # will obtain certificates automatically.
 
-    # REST + JSON surface
-    handle /api/* {
+    # REST + JSON surface — `handle_path` strips the /api prefix so
+    # /api/v1/projects reaches the API as /v1/projects (defect 4.11: plain
+    # `handle /api/*` forwarded the prefix and 404'd every REST route).
+    handle_path /api/* {
         reverse_proxy api:8000
     }
 

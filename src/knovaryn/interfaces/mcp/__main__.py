@@ -8,9 +8,10 @@ Transports (WP F3):
 * ``stdio`` (default) — the canonical MCP host transport.
 * ``streamable-http`` — for remote/SSE-free HTTP hosting.
 
-For streamable-http the server is exposed as a Starlette app
-(``streamable_http_app``) and hosted with uvicorn on the requested host/port;
-this is what makes ``--transport streamable-http`` a real network service.
+For streamable-http the server is exposed as a Starlette app behind a
+bearer-token guard (``build_authenticated_http_app``) and hosted with uvicorn on
+the requested host/port; a non-loopback bind without a configured API token is
+refused before anything is served (``mcp_bind_checked`` — the REST J4 policy).
 """
 
 from __future__ import annotations
@@ -48,18 +49,19 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    from .server import build_server
+    from .server import build_authenticated_http_app, build_server, mcp_bind_checked
 
     server = build_server(database_url=args.database_url)
 
     if args.transport == "streamable-http":
-        # FastMCP ships the server as a Starlette app; host it with uvicorn so
-        # the host/port flags are honored (FastMCP.run() accepts no host/port).
+        # Bind-safety first (J4 policy): refuse an unauthenticated non-loopback
+        # bind BEFORE anything is served. The hosted app is the bearer-guarded
+        # wrapper, so a configured token is enforced on every request.
+        host, port = mcp_bind_checked(args.host, args.port)
+        app = build_authenticated_http_app(server)
         import uvicorn
 
-        host = args.host or "127.0.0.1"
-        port = args.port or 8000
-        uvicorn.run(server.streamable_http_app(), host=host, port=port, log_level="info")
+        uvicorn.run(app, host=host, port=port, log_level="info")
         return 0
 
     # stdio is the default and simplest: no host/port needed.

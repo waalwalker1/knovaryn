@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable
+from contextlib import suppress
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any, Protocol
@@ -119,6 +120,28 @@ class StageContext:
     def cancellation_requested(self) -> bool:
         return self.job.cancellation_requested_at is not None
 
+    async def refresh_cancellation(self) -> bool:
+        """Re-read the durable cancel flag from the job row (spec §7.2).
+
+        External cancels (REST ``POST /jobs/{id}/cancel``, MCP) stamp
+        ``cancellation_requested_at`` on the DATABASE row — this in-memory job
+        object never sees them unless we reload. Long-running cooperative
+        stages call this in their poll loops; the engine calls it at every
+        stage boundary. Returns True when cancellation has been requested.
+        """
+        getter = getattr(self.checkpoint_store, "get", None)
+        if getter is None:
+            return self.cancellation_requested()
+        try:
+            current = await getter(self.job.id)
+        except Exception:  # noqa: BLE001 - a transient read failure must not kill the job
+            return self.cancellation_requested()
+        if current is not None and current.cancellation_requested_at is not None:
+            if self.job.cancellation_requested_at is None:
+                self.job.cancellation_requested_at = current.cancellation_requested_at
+            return True
+        return self.cancellation_requested()
+
 
 class JobEngine:
     """Executes a list of stages with durability, budgets, and cancellation."""
@@ -131,7 +154,13 @@ class JobEngine:
         self._retry_policy = retry_policy or RetryPolicy()
 
     async def run(
-        self, job: Job, stages: list[tuple[str, StageFn]], *, services: dict[str, Any] | None = None
+        self,
+        job: Job,
+        stages: list[tuple[str, StageFn]],
+        *,
+        services: dict[str, Any] | None = None,
+        heartbeat: Callable[[], Awaitable[None]] | None = None,
+        heartbeat_interval_s: float = 10.0,
     ) -> Job:
         sm = StateMachine(job.state)
         stashed = job.input or {}
@@ -146,6 +175,9 @@ class JobEngine:
             stage_version=stashed.get("stage_version", "1"),
             services=services or {},
         )
+        hb_task: asyncio.Task[None] | None = None
+        if heartbeat is not None:
+            hb_task = asyncio.create_task(_heartbeat_loop(heartbeat, heartbeat_interval_s))
         try:
             sm.transition(JobState.running)
             job.state = JobState.running
@@ -158,7 +190,7 @@ class JobEngine:
             ctx.extras["completed_stages"] = set(await self._repo.completed_checkpoints(job.id))
 
             for idx, (name, fn) in enumerate(stages):
-                if ctx.cancellation_requested():
+                if await ctx.refresh_cancellation():
                     break
                 if (
                     ctx.extras.get("completed_stages", set())
@@ -186,7 +218,7 @@ class JobEngine:
                     )
                     ctx.extras["completed_stages"].add(name)
 
-            if job.cancellation_requested_at is not None:
+            if await ctx.refresh_cancellation():
                 job.state = JobState.cancelled
             else:
                 sm.transition(JobState.succeeded)
@@ -196,6 +228,15 @@ class JobEngine:
             await self._repo.save(job)
             return job
         except asyncio.CancelledError:
+            if job.cancellation_requested_at is not None:
+                # a cooperative stage observed the EXTERNAL cancel request and
+                # raised — the request is already durable, so land on the
+                # terminal state instead of stranding the job in `cancelling`.
+                job.state = JobState.cancelled
+                job.finished_at = datetime.now(UTC)
+                job.actual_cost = budget.spent_cost_usd
+                await self._repo.save(job)
+                return job
             job.state = JobState.cancelling
             job.cancellation_requested_at = datetime.now(UTC)
             await self._repo.save(job)
@@ -221,6 +262,11 @@ class JobEngine:
             job.finished_at = datetime.now(UTC)
             await self._repo.save(job)
             return job
+        finally:
+            if hb_task is not None:
+                hb_task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await hb_task
 
     async def _execute_with_retry(self, ctx: StageContext, name: str, fn: StageFn) -> Any:
         attempt = 0
@@ -253,6 +299,20 @@ class JobEngine:
                     if ctx.cancellation_requested():
                         raise asyncio.CancelledError() from None
                     await asyncio.sleep(0.1)
+
+
+async def _heartbeat_loop(heartbeat: Callable[[], Awaitable[None]], interval_s: float) -> None:
+    """Renew the lease every ``interval_s`` while stages run (spec §7.3).
+
+    Without this, a single stage that outlives the lease expires mid-run and a
+    replacement worker reclaims the job → the same paid pipeline executes twice
+    concurrently. Best-effort: a transient renewal failure never kills the job;
+    the next tick retries, and a genuinely lost lease surfaces as a reclaim.
+    """
+    while True:
+        await asyncio.sleep(interval_s)
+        with suppress(Exception):
+            await heartbeat()
 
 
 def _budget_from_config(cfg: dict[str, Any]) -> BudgetState:

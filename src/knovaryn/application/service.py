@@ -136,9 +136,13 @@ class ProjectService:
         spans: list[SourceSpan] = []
         for i, res in enumerate(results):
             span_ids: list[str] = []
-            # one real, persisted span per chunk (character-located, quoted text)
+            # one real, persisted span per chunk (character-located, quoted text).
+            # Identity is CONTENT-ADDRESSED (source id + ordinal + quoted text),
+            # not random: a job that crashes and resumes must reproduce the same
+            # span ids so provider results restored from the durable call cache
+            # still cite evidence that exists in the resumed run (spec §11.5).
             span = SourceSpan(
-                id=self._ids.new_handle("sp"),
+                id=self._content_handle("sp", parsed.source_document_id, i, res.main_text),
                 parsed_document_id=parsed.id,
                 page_number=None,
                 section_path="/".join(res.heading_path),
@@ -152,7 +156,7 @@ class ProjectService:
             span_ids.append(span.id)
             chunks.append(
                 Chunk(
-                    id=self._ids.new_handle("ck"),
+                    id=self._content_handle("ck", parsed.source_document_id, i, res.main_text),
                     parsed_document_id=parsed.id,
                     source_document_id=parsed.source_document_id,
                     source_group_id=None,
@@ -172,6 +176,16 @@ class ProjectService:
             )
         return chunks, spans
 
+    def _content_handle(self, prefix: str, *parts: Any) -> str:
+        """A deterministic content-addressed handle (``<prefix>_<sha256[:24]>``).
+
+        Random UUIDv7 handles are right for rows created once (projects, jobs);
+        chunk/span identity must be reproducible across crash-resume so cached
+        provider results and provenance references stay valid (spec §11.5).
+        """
+        payload = "\x1f".join(str(p) for p in parts)
+        return f"{prefix}_{ContentHasher.sha256_text(payload)[:24]}"
+
     # -- full pipeline -------------------------------------------------------
     async def run_pipeline(
         self,
@@ -181,6 +195,7 @@ class ProjectService:
         contents: list[str] | None = None,
         raw_contents: list[bytes] | None = None,
         plan: DatasetPlan | None = None,
+        target_examples: int | None = None,
     ) -> PipelineResult:
         plan = plan or DatasetPlan(
             task_family_proportions={
@@ -230,8 +245,11 @@ class ProjectService:
         # build span_texts from REAL persisted spans (cited-only evidence, C2)
         span_texts: dict[str, str] = {sp.id: sp.quoted_text for sp in result.spans}
 
-        # plan + generate candidates
-        plan_result = plan_dataset(plan, chunk_count=len(result.chunks))
+        # plan + generate candidates (defect 4.9: a request-level
+        # ``target_examples`` reaches the planner instead of being dropped)
+        plan_result = plan_dataset(
+            plan, chunk_count=len(result.chunks), target_examples=target_examples
+        )
         gen = Generator(gateway=self._gateway)
         gen_outcome = await gen.generate_for_plan(
             chunks=result.chunks,

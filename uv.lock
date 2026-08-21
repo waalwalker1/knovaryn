@@ -2437,7 +2437,7 @@ wheels = [
 
 [[package]]
 name = "knovaryn"
-version = "0.1.0"
+version = "0.1.1"
 source = { editable = "." }
 dependencies = [
     { name = "aiofiles" },
@@ -2489,6 +2489,9 @@ hub = [
 litellm = [
     { name = "litellm" },
 ]
+mcp = [
+    { name = "mcp" },
+]
 ml = [
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
     { name = "numpy", version = "2.5.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
@@ -2518,7 +2521,8 @@ requires-dist = [
     { name = "hypothesis", marker = "extra == 'dev'", specifier = ">=6.100" },
     { name = "jinja2", specifier = ">=3.1" },
     { name = "litellm", marker = "extra == 'litellm'", specifier = ">=1.45" },
-    { name = "mcp", marker = "extra == 'dev'", specifier = ">=1.0" },
+    { name = "mcp", marker = "extra == 'dev'", specifier = ">=1.0,<2" },
+    { name = "mcp", marker = "extra == 'mcp'", specifier = ">=1.0,<2" },
     { name = "mkdocs", marker = "extra == 'dev'", specifier = ">=1.6" },
     { name = "mkdocs-material", marker = "extra == 'dev'", specifier = ">=9.5" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.10" },
@@ -2544,7 +2548,7 @@ requires-dist = [
     { name = "uuid6", specifier = ">=2024.7.10" },
     { name = "uvicorn", specifier = ">=0.29" },
 ]
-provides-extras = ["docling", "docetl", "litellm", "s3", "parquet", "hub", "ml", "dev"]
+provides-extras = ["docling", "docetl", "litellm", "s3", "parquet", "hub", "mcp", "ml", "dev"]
 
 [[package]]
 name = "latex2mathml"

@@ -56,7 +56,7 @@ Notes:
   find the tool. Alternatively install Knovaryn into the active environment and
   use `command: "knovaryn_mcp"` directly.
 
-## Claude Code / Claude Desktop config
+## Claude Desktop config
 
 Claude-style clients use a top-level `mcpServers` object. Example for a local,
 offline install (stdio transport):

@@ -52,6 +52,14 @@ class ResourceScope(StrEnum):
     DATASETS_PUBLISH = "datasets:publish"
 
 
+# The canonical registry every scope configuration is validated against
+# (defect 4.10): ``admin`` is the cross-tenant bypass scope, deliberately
+# outside the §23.2 resource vocabulary and never granted by default to a
+# remote token.
+ADMIN_SCOPE = "admin"
+VALID_SCOPE_NAMES = frozenset({s.value for s in ResourceScope} | {ADMIN_SCOPE})
+
+
 def resource_urn(project_id: str, path: str) -> str:
     """Build a ``knovaryn://`` resource URI."""
     return f"{URI_SCHEME}://projects/{project_id}/{path}"

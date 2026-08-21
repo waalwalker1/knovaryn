@@ -22,36 +22,41 @@ from fastapi.security import HTTPAuthorizationCredentials
 
 from ...domain.config import load_config
 from ...domain.errors import ConfigurationError
+from ...identity import ADMIN_SCOPE, VALID_SCOPE_NAMES, ResourceScope
 from ...infrastructure.auth.bearer import authorize
 from .authguard import bearer_credentials  # re-exported dependency
 
 # ---------------------------------------------------------------- scopes
-SCOPE = {
-    "project:read": "read workspace + project metadata",
-    "project:write": "create / modify projects",
-    "source:write": "add / manage sources",
-    "job:run": "start / run / cancel pipeline jobs",
-    "review:write": "apply review decisions",
-    "export:read": "validate / version / export datasets",
-    "publish:write": "publish datasets (requires explicit confirm)",
-    "admin": "bypass ownership for cross-tenant admin operations",
+# Canonical vocabulary (spec §23.2 ``ResourceScope``) — the same names the
+# config validator enforces, so operator configuration has exactly one
+# vocabulary. ``admin`` is the cross-tenant bypass scope (defect 4.10).
+SCOPE: dict[str, str] = {
+    ResourceScope.PROJECTS_READ.value: "read workspace + project metadata",
+    ResourceScope.PROJECTS_WRITE.value: "create / modify projects",
+    ResourceScope.SOURCES_READ.value: "list / read sources",
+    ResourceScope.SOURCES_WRITE.value: "add / manage sources",
+    ResourceScope.RUNS_EXECUTE.value: "start / run / cancel pipeline jobs",
+    ResourceScope.RUNS_READ.value: "read job status and events",
+    ResourceScope.REVIEW_WRITE.value: "apply review decisions",
+    ResourceScope.DATASETS_READ.value: "read dataset versions",
+    ResourceScope.DATASETS_WRITE.value: "create dataset versions",
+    ResourceScope.DATASETS_EXPORT.value: "validate / version / export datasets",
+    ResourceScope.DATASETS_PUBLISH.value: "publish datasets (requires explicit confirm)",
+    ADMIN_SCOPE: "bypass ownership for cross-tenant admin operations",
 }
-# Scopes granted by default when a token is configured (operator controls the
-# full local-first surface). ``admin`` (which relaxes tenancy) and
-# ``publish:write`` remain explicit so an operator who wants least-privilege can
-# configure a narrower set rather than getting everything by default.
-DEFAULT_GRANTED_SCOPES = frozenset(
-    {
-        "project:read",
-        "project:write",
-        "source:write",
-        "job:run",
-        "review:write",
-        "export:read",
-        "publish:write",
-        "admin",
-    }
-)
+
+# Full surface — the loopback operator principal (``local``/``system``), which
+# is the person running the process. Includes publish and the admin bypass.
+DEFAULT_GRANTED_SCOPES = frozenset(VALID_SCOPE_NAMES)
+
+# Default remote surface — a configured token whose ``server.scopes`` key is
+# omitted gets everything EXCEPT ``datasets:publish`` and the ``admin``
+# bypass (defect 4.10: a leaked remote token must not be a full-admin
+# credential; both are explicit opt-in).
+DEFAULT_TOKEN_SCOPES = frozenset(DEFAULT_GRANTED_SCOPES) - {
+    ResourceScope.DATASETS_PUBLISH.value,
+    ADMIN_SCOPE,
+}
 
 
 @dataclass
@@ -65,21 +70,28 @@ class Principal:
 def _configured_scopes(name: str) -> set[str]:
     """Resolve the principal's granted scopes from config.
 
-    ``local`` (no token configured — loopback trust boundary) gets the full
-    surface; a configured token gets the configured scope set or the safe
-    default. Unknown scope names are ignored so a config typo never grants
-    more than intended (fail toward the default set, never toward admin).
+    ``local``/``system`` (no token configured — loopback trust boundary) get
+    the full surface. A configured token gets the explicitly configured set —
+    or the safe remote default when the key is omitted. Unknown scope names
+    are a :class:`ConfigurationError` (fail closed): v0.1 silently filtered
+    them and granted the full set when nothing valid remained, so a typo
+    escalated to admin.
     """
     if name in ("local", "system"):
         return set(DEFAULT_GRANTED_SCOPES)
     cfg = load_config()
-    scopes = cfg.get("server", {}).get("scopes")
-    if scopes:
-        known = {str(s) for s in scopes} & set(DEFAULT_GRANTED_SCOPES)
-        if "admin" not in scopes and "admin" in known:
-            known.discard("admin")
-        return known or set(DEFAULT_GRANTED_SCOPES)
-    return set(DEFAULT_GRANTED_SCOPES)
+    server = cfg.get("server", {}) if isinstance(cfg.get("server"), dict) else {}
+    configured = server.get("scopes")
+    if configured is None:
+        return set(DEFAULT_TOKEN_SCOPES)
+    requested = {str(s) for s in configured}
+    unknown = sorted(requested - VALID_SCOPE_NAMES)
+    if unknown:
+        raise ConfigurationError(
+            f"unknown scope names in server.scopes: {unknown}; "
+            f"valid scopes: {sorted(VALID_SCOPE_NAMES)}"
+        )
+    return requested  # explicit empty list = no privileges (least privilege)
 
 
 def resolve_principal(token: str | None) -> Principal:
@@ -95,7 +107,7 @@ def resolve_principal(token: str | None) -> Principal:
 def require_scope(scope: str) -> Callable[..., Principal]:
     """FastAPI dependency factory: return the :class:`Principal` if it holds ``scope``.
 
-    Usage: ``principal: Principal = Depends(require_scope("project:read"))``.
+    Usage: ``principal: Principal = Depends(require_scope("projects:read"))``.
     Unknown/denied scopes produce ``403`` (never a silent pass — rule 6).
     """
 
@@ -105,6 +117,12 @@ def require_scope(scope: str) -> Callable[..., Principal]:
         raw = creds.credentials if creds is not None else None
         try:
             principal = resolve_principal(raw)
+        except ConfigurationError as exc:
+            # A misconfigured scope registry is a server fault, not an
+            # authentication failure (defect 4.10: never launder it into 401).
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)
+            ) from exc
         except Exception as exc:  # AuthorizationError -> 401
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
         if scope not in principal.scopes:

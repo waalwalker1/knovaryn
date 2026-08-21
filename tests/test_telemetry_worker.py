@@ -7,6 +7,7 @@ heartbeat/tick loop with a fake repository, and retry classification/backoff.
 from __future__ import annotations
 
 import asyncio
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
 from knovaryn.domain.errors import BudgetExceededError, PolicyBlockError, ProviderError
@@ -248,6 +249,7 @@ class FakeRepo:
         self.jobs: dict[str, SimpleNamespace] = {}
         self.claim_result = None
         self.saved: list[SimpleNamespace] = []
+        self.renewed: list[str] = []
 
     async def claim_eligible(self, *, worker: str, lease_seconds: int) -> SimpleNamespace | None:
         return self.claim_result
@@ -258,6 +260,19 @@ class FakeRepo:
     async def save(self, job) -> None:
         self.saved.append(job)
 
+    async def renew_lease(self, job_id: str, *, worker: str, lease_seconds: int) -> bool:
+        """Ownership-guarded renewal, mirroring JobRepository.renew_lease."""
+        job = self.jobs.get(job_id)
+        if job is None or getattr(job, "lease_owner", None) != worker:
+            return False
+        if job.state not in (JobState.leased, JobState.running):
+            return False
+        now = datetime.now(UTC)
+        job.heartbeat_at = now
+        job.lease_expires_at = now + timedelta(seconds=lease_seconds)
+        self.renewed.append(job_id)
+        return True
+
 
 class FakeEngine:
     def __init__(self, result=None, exc: Exception | None = None) -> None:
@@ -265,7 +280,7 @@ class FakeEngine:
         self._exc = exc
         self.runs = 0
 
-    async def run(self, job, stages, services=None):
+    async def run(self, job, stages, services=None, **kwargs):
         self.runs += 1
         if self._exc:
             raise self._exc
@@ -365,8 +380,10 @@ def test_worker_heartbeat_saves_when_owned() -> None:
     repo.jobs["j1"] = job
     w._running.add("j1")
     asyncio.run(w._heartbeat("j1"))
-    assert job in repo.saved
+    assert repo.renewed == ["j1"]
     assert job.heartbeat_at is not None
+    assert job.lease_expires_at is not None
+    assert "j1" in w._running
 
 
 def test_worker_heartbeat_missing_job_discards() -> None:

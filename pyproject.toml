@@ -127,6 +127,13 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/knovaryn"]
 
+[tool.hatch.build.targets.sdist]
+# Dot-directories are tool state or private material, never package content.
+# Hatchling's VCS filter honors .gitignore but not local-only excludes
+# (.git/info/exclude), so working-tree dot-dirs would otherwise ride into the
+# sdist. Cut them generically — this file names no private path.
+exclude = [".*", ".gitignore"]
+
 [tool.ruff]
 line-length = 100
 target-version = "py311"
@@ -182,6 +189,7 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 minversion = "7.0"
 testpaths = ["tests"]
+pythonpath = ["."]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 addopts = "-ra --strict-markers"
@@ -198,6 +206,7 @@ markers = [
     "live: opt-in tests requiring external credentials (skip by default)",
     "live-provider: opt-in live model-provider contract tests (skip by default)",
     "chaos: crash/kill/lease recovery tests",
+    "deployment: boots the real compose stack (opt-in via KNOVARYN_E2E_COMPOSE=1)",
     "release: wheel/clean-install/release-integrity tests",
 ]
 

@@ -11,6 +11,7 @@ Each exporter implements:
 ```python
 class DatasetExporter(Protocol):
     name: str
+
     async def export(self, version, *, writer, options): ...
 ```
 

@@ -68,7 +68,11 @@ def test_wrong_token_returns_401(monkeypatch, client):
 
 
 def test_full_scope_can_create_and_list(monkeypatch, client):
-    _patch_auth(monkeypatch, token=TOKEN, scopes=[])
+    # defect 4.10: an explicitly configured FULL canonical scope list grants
+    # everything (an empty list now means NO privileges — never "full").
+    import knovaryn.interfaces.rest.security as sec
+
+    _patch_auth(monkeypatch, token=TOKEN, scopes=sorted(sec.DEFAULT_GRANTED_SCOPES))
     h = {"Authorization": f"Bearer {TOKEN}"}
     r = client.post("/v1/projects", json={"slug": "adm", "display_name": "Adm"}, headers=h)
     assert r.status_code == 201, r.text
@@ -78,9 +82,9 @@ def test_full_scope_can_create_and_list(monkeypatch, client):
 
 
 def test_limited_scope_writes_denied(monkeypatch, client):
-    # read-only token cannot create a project (project:write denied) -> 403,
+    # read-only token cannot create a project (projects:write denied) -> 403,
     # but can list -> 200. Never a silent pass on a denied scope (rule 6).
-    _patch_auth(monkeypatch, token=TOKEN, scopes=["project:read"])
+    _patch_auth(monkeypatch, token=TOKEN, scopes=["projects:read"])
     h = {"Authorization": f"Bearer {TOKEN}"}
     r = client.post("/v1/projects", json={"slug": "lim", "display_name": "Lim"}, headers=h)
     assert r.status_code == 403
@@ -89,7 +93,7 @@ def test_limited_scope_writes_denied(monkeypatch, client):
 
 
 def test_publish_requires_publish_scope(monkeypatch, client):
-    _patch_auth(monkeypatch, token=TOKEN, scopes=["project:read", "project:write"])
+    _patch_auth(monkeypatch, token=TOKEN, scopes=["projects:read", "projects:write"])
     h = {"Authorization": f"Bearer {TOKEN}"}
     proj = client.post("/v1/projects", json={"slug": "pp", "display_name": "PP"}, headers=h).json()
     r = client.post(

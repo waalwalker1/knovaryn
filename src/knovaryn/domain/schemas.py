@@ -245,6 +245,10 @@ class GeneratedBatch(BaseModel):
 
 
 class DatasetPlan(BaseModel):
+    # Unsupported/unknown plan fields must raise a validation error (defect 4.4)
+    # rather than being silently ignored — arbitrary extras belong in `metadata`.
+    model_config = ConfigDict(extra="forbid")
+
     target_audience: str = "domain practitioners"
     languages: list[str] = ["en"]
     task_family_proportions: dict[str, float] = Field(default_factory=dict)

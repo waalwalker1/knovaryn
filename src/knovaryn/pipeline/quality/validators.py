@@ -11,7 +11,7 @@ from __future__ import annotations
 import abc
 from dataclasses import dataclass, field
 
-from ...domain.policies import AcceptancePolicy
+from ...domain.policies import AcceptancePolicy, preference_is_trivially_separable
 from ...domain.schemas import (
     QualityAssessment,
     QualityStatus,
@@ -310,6 +310,92 @@ class AnswerabilityValidator(BaseValidator):
         )
 
 
+class PreferenceValidator(BaseValidator):
+    """C1/D5: preference-pair quality — a genuine, non-fabricated signal.
+
+    Produces the ``preference_signal`` dimension for preference-topology
+    examples. Rejects:
+    - identical / near-duplicate chosen and rejected (no signal);
+    - pairs trivially separable only by superficial style (verbosity/length);
+    - pairs where the chosen lacks minimum absolute quality.
+    Fail-closed: returns a low score (review/reject) rather than inventing a
+    preference where none exists.
+    """
+
+    name = "preference"
+    version = "1"
+
+    async def assess(self, example: TrainingExample, ctx: ValidatorContext) -> QualityAssessment:
+        from .preference import (
+            PreferenceVerdict,
+            check_absolute_quality,
+            check_preference_signal,
+        )
+
+        if example.topology != Topology.preference:
+            return QualityAssessment(
+                id="",
+                example_id=example.id,
+                validator_name=self.name,
+                validator_version=self.version,
+                policy_version=ctx.policy_version,
+                status=QualityStatus.review,
+                verify_state=Verification.unverified,
+                score=0.0,
+                reason_codes=["not_preference_topology"],
+                concise_rationale="Preference validator only applies to preference topology",
+            )
+
+        chosen = "".join(m.content for m in example.chosen_messages if m.role == "assistant")
+        rejected = "".join(m.content for m in example.rejected_messages if m.role == "assistant")
+        cited = [ctx.source_texts[s] for s in example.source_span_ids if s in ctx.source_texts]
+        evidence_text = " ".join(cited)
+
+        reasons: list[str] = []
+
+        # 1. genuine non-duplicate preference signal
+        pair = check_preference_signal(chosen, rejected, evidence_text)
+        if pair.verdict == PreferenceVerdict.invalid:
+            reasons.extend(pair.reason_codes)
+            reasons.append("no_preference_signal")
+        elif pair.verdict == PreferenceVerdict.review:
+            reasons.extend(pair.reason_codes)
+
+        # 2. absolute quality of the chosen
+        absq = check_absolute_quality(chosen)
+        if absq.verdict == PreferenceVerdict.invalid:
+            reasons.extend(absq.reason_codes)
+
+        # 3. superficial style separation must not be the only signal
+        if chosen and rejected:
+            trivial, _ = preference_is_trivially_separable(chosen, rejected)
+            if trivial:
+                reasons.append("trivial_style_separation")
+
+        has_fatal = bool(reasons)
+        score = 0.0 if has_fatal else 1.0
+        if pair.verdict == PreferenceVerdict.review and not has_fatal:
+            # marginal signals lower the score to review band but not to reject
+            score = 0.6
+
+        return QualityAssessment(
+            id="",
+            example_id=example.id,
+            validator_name=self.name,
+            validator_version=self.version,
+            policy_version=ctx.policy_version,
+            status=_status(score),
+            verify_state=_verify_state(score, 0.8),
+            score=score,
+            reason_codes=reasons or ["preference_signal_ok"],
+            concise_rationale=(
+                f"preference signal score {score:.2f}: {', '.join(reasons)}"
+                if reasons
+                else "genuine preference signal present"
+            ),
+        )
+
+
 def assemble_decision(
     assessments: list[QualityAssessment],
     *,
@@ -340,8 +426,14 @@ def assemble_decision(
         dims["instruction_fulfillment"] = dims["completeness"]
         verify["instruction_fulfillment"] = verify.get("completeness", Verification.unverified)
     if is_preference and "preference_signal" not in dims:
-        dims["preference_signal"] = 1.0
-        verify.setdefault("preference_signal", Verification.verified)
+        # Defect 4.2 FIX: missing preference signal must result in UNVERIFIED,
+        # never fabricated as 1.0/verified. The correct behavior is to let the
+        # preference validator produce its own dimension, or leave it unverified
+        # so the caller can quarantine/review. Rather than fabricate, add
+        # "preference_signal" with 0.0 and unverified to signal that preference
+        # evaluation was never performed.
+        dims["preference_signal"] = 0.0
+        verify["preference_signal"] = Verification.unverified
 
     # C4 critical dimensions that must be verified to accept. ``present`` is the
     # set of dimension keys actually certified (after the completeness ->

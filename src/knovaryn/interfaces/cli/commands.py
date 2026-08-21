@@ -24,6 +24,45 @@ from ...domain.config import load_config
 console = Console()
 
 
+def build_pipeline_gateway(cfg: Any, *, db: Any, ids: Any, job: Any) -> Any:
+    """Build the durable worker's gateway for ``job`` (defect 4.9).
+
+    Profile resolution follows spec §20 precedence: request (the job input's
+    ``pipeline.profile``) > config (``models.profile``, then top-level
+    ``profile``) > the offline default. The crash-safe CallCache and the
+    ``model_calls`` ledger stay wired on every profile so a resumed job is
+    served from cache/ledger instead of re-paying provider calls (§11.5/E5).
+    """
+    from ...infrastructure.artifacts.__factory import build_artifact_store
+    from ...infrastructure.models.call_cache import CallCache
+    from ...infrastructure.models.profiles import DEFAULT_RUNTIME_PROFILE, build_gateway
+    from ...pipeline.jobs.worker import ModelCallLedgerRepository
+
+    job_input = job.input or {}
+    pipeline_cfg = job_input.get("pipeline", {}) or {}
+    models_cfg = cfg.get("models", {}) if isinstance(cfg.get("models"), dict) else {}
+    profile = (
+        pipeline_cfg.get("profile")
+        or models_cfg.get("profile")
+        or cfg.get("profile")
+        or DEFAULT_RUNTIME_PROFILE
+    )
+    storage = cfg.get("storage", {}) if isinstance(cfg.get("storage"), dict) else {}
+    return build_gateway(
+        str(profile),
+        call_cache=CallCache(
+            store=build_artifact_store(
+                backend=storage.get("artifact_backend", "local"),
+                config=storage,
+            )
+        ),
+        model_call_repo=ModelCallLedgerRepository(db, ids),
+        project_id=job.project_id,
+        job_id=job.id,
+        stage="pipeline",
+    )
+
+
 def _state_dir() -> Path:
     cfg = load_config()
     root = cfg.get("storage", {}).get("artifact_root") or ".knovaryn/artifacts"
@@ -428,7 +467,12 @@ async def worker_async(
                 task_family_proportions=pipeline_cfg.get("task_family_proportions")
                 or {"factual_explanation": 0.5, "procedure": 0.3, "comparison": 0.2}
             )
-            svc = ProjectService(ids=ids)
+            # crash-safe generation (spec §11.5, §12/E5): the profile-aware
+            # factory keeps the CallCache + model_calls ledger wired on every
+            # profile — a resumed job is served from cache/ledger instead of
+            # re-paying the call.
+            gateway = build_pipeline_gateway(cfg, db=db, ids=ids, job=job)
+            svc = ProjectService(ids=ids, gateway=gateway)
             result = await svc.run_pipeline(
                 project=project, sources=sources, contents=contents, plan=plan
             )

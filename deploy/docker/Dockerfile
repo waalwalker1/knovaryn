@@ -13,13 +13,23 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /opt/knovaryn
 
-# ---- build stage: install the wheel with uv ----
+# ---- build stage: install locked deps (with runtime extras) via uv ----
 FROM base AS builder
 RUN pip install --no-cache-dir "uv>=0.4"
 COPY pyproject.toml uv.lock README.md LICENSE ./
 COPY src ./src
-RUN uv pip install --system --no-cache --lockfile uv.lock . \
-    || uv pip install --system --no-cache .
+# Locked install INCLUDING the extras the shipped compose topology needs:
+# s3 (aioboto3 artifact store), parquet (exports), mcp (MCP server entry).
+# `uv export --frozen` projects the lockfile resolution (extras included)
+# into a requirements file; installing THAT keeps every pin from uv.lock.
+# (An earlier attempt used a nonexistent `--lockfile` flag and silently fell
+# back to an UNLOCKED `pip install .`, defeating the pinning promised here;
+# the compose E2E then caught the missing s3 extra as a 400 on upload.)
+RUN uv export --frozen --no-dev \
+        --extra s3 --extra parquet --extra mcp \
+        -o /tmp/requirements.lock \
+    && uv pip install --system --no-cache -r /tmp/requirements.lock \
+    && uv pip install --system --no-cache --no-deps .
 
 # ---- run stage ----
 FROM base AS runtime
@@ -40,6 +50,11 @@ RUN find /usr/local/lib/python3.11 /usr/lib/python3.11 \
 
 # Non-root operator by default (defense in depth).
 RUN useradd --create-home --uid 10001 knovaryn
+# Writable scratch for the intake quarantine dir (compose/K8s mount a named
+# volume here). Creating it owned by the runtime user means a FRESH named
+# volume inherits that ownership on first mount — otherwise the mount lands
+# root-owned and uploads fail with EACCES (caught by the compose E2E).
+RUN mkdir -p /data && chown knovaryn:knovaryn /data
 USER knovaryn
 
 # Default: serve the REST API (offline demo + web console).
