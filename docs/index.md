@@ -82,7 +82,7 @@ came from.
 - It does **not** guarantee that a generated dataset improves any model.
 - License handling is a safety rail that gates blocked/unknown sources on the
   public path — it is **not** legal clearance.
-- This is an alpha (`0.1.1`); APIs are not yet stabilized.
+- This is an alpha (`0.2.0`); APIs are not yet stabilized.
 
 ## License
 

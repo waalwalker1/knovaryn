@@ -38,7 +38,7 @@ spec:
             limits: {cpu: 100m, memory: 128Mi}
       containers:
         - name: migrate
-          image: ghcr.io/knovaryn/knovaryn:0.1.1   # PINNED tag (K3)
+          image: ghcr.io/knovaryn/knovaryn:0.2.0   # PINNED tag (K3)
           imagePullPolicy: IfNotPresent
           command: ["python", "-c"]
           securityContext:
