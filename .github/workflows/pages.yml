@@ -35,7 +35,7 @@ jobs:
       - name: Install mkdocs + material (dev extras)
         run: uv sync --extra dev
       - name: Configure Pages (uploads artifact with proper metadata)
-        uses: actions/configure-pages@v5
+        uses: actions/configure-pages@v6
       - name: Build site (strict) into ./site
         run: uv run mkdocs build --strict -d ./site
       - name: Upload Pages artifact
