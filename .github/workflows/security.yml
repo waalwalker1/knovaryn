@@ -88,7 +88,7 @@ jobs:
       - name: Generate SBOM from uv.lock
         run: |
           uv export --format requirements-txt --no-hashes -o requirements.txt
-          uv run --with cyclonedx-bom cyclonedx-py -i requirements.txt -o sbom.cdx.json --format json || true
+          uv run --with cyclonedx-bom cyclonedx-py requirements --pyproject pyproject.toml --of JSON -o sbom.cdx.json requirements.txt
       - uses: anchore/sbom-action@v0
         with:
           path: ./
