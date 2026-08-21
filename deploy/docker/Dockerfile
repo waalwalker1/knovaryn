@@ -36,6 +36,18 @@ FROM base AS runtime
 COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
 
+# Patch OS packages the slim base ships vulnerable. First caught in CI: the
+# util-linux family baked into python:3.11-slim (2.41-5, debian 13.6) carried
+# 36 HIGH findings from one disclosure cluster (CVE-2026-53612..53615 — TOCTOU
+# in mount(8), SUID bypass, integer overflow in libblkid), fixed upstream in
+# 2.41.5-0+deb13u1. Upgrade ALL installed OS packages rather than pinning the
+# currently-flagged family: the Trivy gate (--severity CRITICAL,HIGH
+# --ignore-unfixed), not this layer, decides what counts as clean, and the
+# next disclosure batch should be answered by a rebuild, not an edit here.
+RUN apt-get update \
+    && apt-get upgrade -y \
+    && rm -rf /var/lib/apt/lists/*
+
 # Strip the pip build/install toolchain packages that Trivy flags as HIGH in the
 # base image (wheel CVE-2026-24049, jaraco.context CVE-2026-23949). The runtime
 # only executes the pre-built `knovaryn` console script and never installs

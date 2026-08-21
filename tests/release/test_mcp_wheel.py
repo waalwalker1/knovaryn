@@ -97,8 +97,9 @@ def _install_and_run_mcp(tmp_path: Path, database_url: str) -> None:
 
     # 2. the packaged server answers a real stdio client (F6 acceptance)
     import anyio
-    from mcp import ClientSession, StdioServerParameters
     from mcp.client.stdio import stdio_client
+
+    from mcp import ClientSession, StdioServerParameters
 
     params = StdioServerParameters(
         command=str(bin_script),
