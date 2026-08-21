@@ -12,7 +12,7 @@
 - [ ] **Domains:** check `knovaryn.com` / `.dev` / `.io` / `.org` / `.ai` availability or ownership; decide what to register.
 - [ ] **Trademarks:** search USPTO/EUIPO + a broader web search for existing "Knovaryn" or phonetically similar marks (e.g., anything like "Kno-vary-n", "Novaryn", "Knovar"). Record results with dates.
 - [ ] **Phonetic similarity:** test how customers hear it in noisy/voice contexts ("Knovaryn" ← "Know-varyn", "Knowledge," "Knox", "Novarin", "Novar"). Document near-misses and decide whether the name is safe.
-- [ ] **Legacy identifiers:** confirm no `OmniTrain`/`omnitrain`/`OMNITRAIN` strings leak into public product surfaces (the repo's identity test enforces this). Resolve any stragglers in URL slugs, migrated docs, or old domains.
+- [ ] **Legacy identifiers:** confirm no legacy-brand strings leak into public product surfaces (the repo's identity and branding tests enforce this). Resolve any stragglers in URL slugs, migrated docs, or old domains.
 - [ ] **Social handles:** check `@knovaryn` on X, LinkedIn, GitHub org, npm-style ecosystems if relevant.
 - [ ] **Record the clearance evidence** in `BUILD_LEDGER.md` / DECISION_LOG so it's auditable.
 

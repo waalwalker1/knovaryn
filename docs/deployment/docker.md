@@ -59,26 +59,45 @@ services:
     volumes: ["miniodata:/data"]
 
   knovaryn:
-    build: { context: ., dockerfile: deploy/Dockerfile }
+    build: { context: ., dockerfile: deploy/docker/Dockerfile }
     depends_on: [db, minio]
     environment:
       KNOVARYN_PROFILE: enterprise
       KNOVARYN_STORAGE_DATABASE_URL: postgresql+asyncpg://knovaryn:${KNOVARYN_DB_PASSWORD}@db:5432/knovaryn
       KNOVARYN_STORAGE_ARTIFACT_BACKEND: s3
-      KNOVARYN_S3_ENDPOINT: http://minio:9000
-      KNOVARYN_S3_BUCKET: knovaryn-artifacts
-      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER}
-      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}
+      # S3/MinIO artifact store — these flat storage.* keys are what
+      # build_artifact_store reads (see deploy/compose/docker-compose.prod.yml
+      # for the full working topology, proven by tests/deployment/).
+      KNOVARYN_STORAGE_ENDPOINT_URL: http://minio:9000
+      KNOVARYN_STORAGE_BUCKET: knovaryn-artifacts
+      KNOVARYN_STORAGE_REGION: us-east-1
+      KNOVARYN_STORAGE_ACCESS_KEY_ID: ${MINIO_ROOT_USER}
+      KNOVARYN_STORAGE_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}
+      # writable scratch for the intake quarantine dir (mounted volume; the
+      # image runs as non-root uid 10001)
+      KNOVARYN_STORAGE_ARTIFACT_ROOT: /data/artifacts
+      KNOVARYN_API_TOKEN: ${KNOVARYN_API_TOKEN:?set a strong token}
       KNOVARYN_DEEPSEEK_BASE_URL: ${KNOVARYN_DEEPSEEK_BASE_URL:?set a provider base URL}
-    ports: ["127.0.0.1:8765:8765"]
+    volumes: ["artifacts:/data"]
+    ports: ["127.0.0.1:8765:8000"]
 
 volumes:
   pgdata: {}
   miniodata: {}
+  artifacts: {}
 ```
 
 Use `docker compose up -d` (adjust service/file names to your `deploy/` shape).
 Secrets come from your environment / a vault, **not** the Compose file.
+
+Environment variables map onto config paths by longest-match against the
+config tree (`KNOVARYN_STORAGE_DATABASE_URL` -> `storage.database_url`);
+compound leaf names that cannot be recovered by splitting are explicit
+aliases in `knovaryn/domain/config.py`. `true`/`false` values coerce to
+booleans. A regression suite for this mapping lives in
+`tests/security/test_env_config_mapping.py`, and the deployed topology above
+is exercised end to end by `tests/deployment/test_compose_e2e.py`
+(opt-in: `KNOVARYN_E2E_COMPOSE=1`).
 
 ## Running multiple workers
 

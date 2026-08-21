@@ -180,3 +180,89 @@ def _kfold_groups(groups: dict[str, list[SourceDocument]], *, k: int, seed: int)
     keys = sorted(groups.keys())
     rng.shuffle(keys)
     return {key: i % k for i, key in enumerate(keys)}
+
+
+# ---------------------------------------------------------------------------
+# Split release gate and small-corpus policy (defect 4.5)
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class SplitReleaseGate:
+    """Verdict on whether a split configuration is releasable.
+
+    A "normal" training release requires a non-empty train split
+    (train_count > 0). Small corpora are governed by an explicit policy that
+    may permit train-only *experimental* releases.
+    """
+
+    ok: bool
+    reason: str = ""
+    gate: str = ""  # "train_required" | "small_corpus_policy" | "ok"
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"ok": self.ok, "reason": self.reason, "gate": self.gate}
+
+
+def evaluate_split_release(
+    *,
+    train_count: int,
+    validation_count: int = 0,
+    test_count: int = 0,
+    source_group_count: int = 0,
+    small_corpus_allowance: bool = False,
+) -> SplitReleaseGate:
+    """Decide whether a split set may be released (defect 4.5).
+
+    Rules:
+    - A normal release requires ``train_count > 0``. An empty train split is a
+      hard block: releasing a "training" dataset with no training rows is a
+      contradiction (blocked with gate ``train_required``).
+    - Small-corpus policy: when the corpus is tiny (few source groups), a
+      train-only *experimental* release is permitted only if the caller
+      explicitly opts in (``small_corpus_allowance=True``). Without the
+      explicit allowance, a train-only split on a tiny corpus is still blocked
+      so the policy is never silently assumed.
+    """
+    if train_count <= 0:
+        return SplitReleaseGate(
+            ok=False,
+            reason=(
+                "train split is empty (train_count=0); a training release requires training rows"
+            ),
+            gate="train_required",
+        )
+
+    # Train-only on a small corpus is explicit-experimental only.
+    if validation_count <= 0 and test_count <= 0 and source_group_count > 0:
+        # 1 group -> train-only; per policy this needs an explicit allowance.
+        if source_group_count == 1 and not small_corpus_allowance:
+            return SplitReleaseGate(
+                ok=False,
+                reason=(
+                    "single-source-group train-only release requires "
+                    "explicit small_corpus_allowance"
+                ),
+                gate="small_corpus_policy",
+            )
+        return SplitReleaseGate(
+            ok=True,
+            reason="train-only split accepted (experimental / explicit small-corpus policy)",
+            gate="small_corpus_policy",
+        )
+
+    return SplitReleaseGate(ok=True, reason="split set is releasable", gate="ok")
+
+
+def plan_small_corpus_splits(source_group_count: int) -> dict[str, int]:
+    """Return the canonical split set for a given small-corpus size (defect 4.5).
+
+    - 1 source group   -> train only (experimental)
+    - 2 source groups  -> train + validation, no test
+    - 3+ source groups -> train + validation + test
+    """
+    if source_group_count <= 1:
+        return {"train": 1}
+    if source_group_count == 2:
+        return {"train": 1, "validation": 1}
+    return {"train": 1, "validation": 1, "test": 1}

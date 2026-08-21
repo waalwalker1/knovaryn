@@ -83,8 +83,23 @@ def _run_coverage() -> list[str]:
     cmd += ["--cov-branch", "--cov-report=term-missing"]
     proc = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True)
     out = proc.stdout + proc.stderr
-    if proc.returncode not in (0, 1):
-        raise SystemExit(f"pytest failed to run: {proc.returncode}\n{out}")
+    if proc.returncode != 0:
+        # A coverage number measured over a failing or interrupted suite is not
+        # evidence (L3). Exit code 1 was tolerated before, which could hide a
+        # red suite behind a green-looking table — the CI run of 2026-08-21
+        # measured semantic.py at its pre-fix coverage while the identical
+        # unfiltered suite passed, and nothing in the log could say why. The
+        # suite must be green for the gate's numbers to count, and the summary
+        # must be visible so CI logs show what actually ran.
+        print(out[-4000:], file=sys.stderr)
+        raise SystemExit(
+            f"offline suite did not pass cleanly (pytest rc={proc.returncode}); "
+            "coverage numbers from a red suite are not evidence"
+        )
+    # Always show the pytest summary so CI logs record what ran (passed /
+    # skipped / deselected counts) — the gate's own table alone cannot.
+    tail = [ln for ln in out.splitlines() if ln.strip()][-15:]
+    print("\n".join(tail) + "\n")
     return [ln for ln in out.splitlines() if "%" in ln]
 
 
@@ -156,6 +171,15 @@ def main() -> int:
         print("Coverage gate FAILED:")
         for f in failures:
             print(f"  - {f}")
+        # Show the raw term-missing rows for failing modules: the exact
+        # unexecuted lines are the diagnostic (e.g. async test bodies that
+        # never ran on a given runner).
+        fail_names = {f.split(":")[0] for f in failures}
+        print("\nRaw coverage rows (Name ... Cover Missing) for failing modules:")
+        for ln in table:
+            parts = ln.split()
+            if parts and parts[0] in fail_names:
+                print(f"  {ln.strip()}")
         return 1
     print("Coverage gate passed.")
     return 0

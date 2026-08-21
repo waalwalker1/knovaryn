@@ -25,7 +25,7 @@
 
 ## Status
 
-> **Alpha (`0.1.0`)** — the core pipeline, provenance, quality gates, durable
+> **Alpha (`0.1.1`)** — the core pipeline, provenance, quality gates, durable
 > jobs, MCP/REST/CLI/SDK interfaces, and release integrity are implemented and
 > tested (400+ offline tests). Public **beta** is pending owner acceptance; the
 > project is **not yet a stable release** and APIs may change. No change is

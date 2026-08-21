@@ -82,13 +82,14 @@ app.add_exception_handler(Exception, redacted_exception_handler)
 # scope yields 403 (never a silent pass — rule 6). The returned Principal is
 # threaded into the workspace so ownership/tenancy is enforced on the shared
 # application-service path.
-P_PROJECT_READ = require_scope("project:read")
-P_PROJECT_WRITE = require_scope("project:write")
-P_SOURCE_WRITE = require_scope("source:write")
-P_JOB_RUN = require_scope("job:run")
+# Canonical scope names (spec §23.2) — defect 4.10 unified vocabulary.
+P_PROJECT_READ = require_scope("projects:read")
+P_PROJECT_WRITE = require_scope("projects:write")
+P_SOURCE_WRITE = require_scope("sources:write")
+P_JOB_RUN = require_scope("runs:execute")
 P_REVIEW_WRITE = require_scope("review:write")
-P_EXPORT_READ = require_scope("export:read")
-P_PUBLISH_WRITE = require_scope("publish:write")
+P_EXPORT_READ = require_scope("datasets:export")
+P_PUBLISH_WRITE = require_scope("datasets:publish")
 P_ADMIN = require_scope("admin")
 
 
@@ -203,7 +204,7 @@ async def get_project(
 ) -> dict[str, Any]:
     try:
         await _ws().require_project_access(
-            project_id=project_id, principal=principal.name, scope="project:read"
+            project_id=project_id, principal=principal.name, scope="projects:read"
         )
         project = await _ws().get_project(project_id)
     except Exception as exc:  # noqa: BLE001
@@ -223,7 +224,7 @@ async def add_source(
 ) -> dict[str, Any]:
     try:
         await _ws().require_project_access(
-            project_id=project_id, principal=principal.name, scope="source:write"
+            project_id=project_id, principal=principal.name, scope="sources:write"
         )
         src = await _ws().add_source(
             project_id=project_id,
@@ -232,6 +233,7 @@ async def add_source(
             content=body.content or "",
             raw=body.raw,
             declared_license=body.declared_license,
+            privacy=body.privacy,
         )
     except Exception as exc:  # noqa: BLE001
         raise _err(exc) from exc
@@ -246,7 +248,7 @@ async def list_sources(
 ) -> dict[str, Any]:
     try:
         await _ws().require_project_access(
-            project_id=project_id, principal=principal.name, scope="project:read"
+            project_id=project_id, principal=principal.name, scope="projects:read"
         )
         return await _ws().list_sources(project_id=project_id, limit=limit)
     except Exception as exc:  # noqa: BLE001
@@ -261,7 +263,7 @@ async def inspect_source(
 ) -> dict[str, Any]:
     try:
         await _ws().require_project_access(
-            project_id=project_id, principal=principal.name, scope="project:read"
+            project_id=project_id, principal=principal.name, scope="projects:read"
         )
         data = await _ws().list_sources(project_id=project_id, limit=1000)
     except Exception as exc:  # noqa: BLE001
@@ -279,7 +281,7 @@ async def license_report(
     """Source license + privacy report and §15.6 publication-gate decision."""
     try:
         await _ws().require_project_access(
-            project_id=project_id, principal=principal.name, scope="project:read"
+            project_id=project_id, principal=principal.name, scope="projects:read"
         )
         return await _ws().license_report(project_id=project_id)
     except Exception as exc:  # noqa: BLE001
@@ -298,12 +300,15 @@ async def start_pipeline(
 ) -> dict[str, Any]:
     try:
         await _ws().require_project_access(
-            project_id=project_id, principal=principal.name, scope="job:run"
+            project_id=project_id, principal=principal.name, scope="runs:execute"
         )
         job = await _ws().start_pipeline(
             project_id=project_id,
             task_family_proportions=body.task_family_proportions,
             idempotency_key=body.idempotency_key,
+            profile=body.profile,
+            budget_max_usd=body.budget_max_usd,
+            target_examples=body.target_examples,
         )
     except Exception as exc:  # noqa: BLE001
         raise _err(exc) from exc
@@ -321,7 +326,7 @@ async def _job_project_guard(job_id: str, principal: Principal, scope: str) -> N
 @app.get("/v1/jobs/{job_id}")
 async def get_job(job_id: str, principal: Principal = Depends(P_JOB_RUN)) -> dict[str, Any]:
     try:
-        await _job_project_guard(job_id, principal, "job:run")
+        await _job_project_guard(job_id, principal, "runs:execute")
         summary = await _ws().get_job(job_id)
     except Exception as exc:  # noqa: BLE001
         raise _err(exc) from exc
@@ -331,7 +336,7 @@ async def get_job(job_id: str, principal: Principal = Depends(P_JOB_RUN)) -> dic
 @app.post("/v1/jobs/{job_id}/run")
 async def run_job(job_id: str, principal: Principal = Depends(P_JOB_RUN)) -> dict[str, Any]:
     try:
-        await _job_project_guard(job_id, principal, "job:run")
+        await _job_project_guard(job_id, principal, "runs:execute")
         return await _ws().run_job(job_id)
     except Exception as exc:  # noqa: BLE001
         raise _err(exc) from exc
@@ -340,7 +345,7 @@ async def run_job(job_id: str, principal: Principal = Depends(P_JOB_RUN)) -> dic
 @app.post("/v1/jobs/{job_id}/cancel")
 async def cancel_job(job_id: str, principal: Principal = Depends(P_JOB_RUN)) -> dict[str, Any]:
     try:
-        await _job_project_guard(job_id, principal, "job:run")
+        await _job_project_guard(job_id, principal, "runs:execute")
         job = await _ws().request_cancel(job_id)
     except Exception as exc:  # noqa: BLE001
         raise _err(exc) from exc
@@ -350,7 +355,7 @@ async def cancel_job(job_id: str, principal: Principal = Depends(P_JOB_RUN)) -> 
 @app.post("/v1/jobs/{job_id}/resume")
 async def resume_job(job_id: str, principal: Principal = Depends(P_JOB_RUN)) -> dict[str, Any]:
     try:
-        await _job_project_guard(job_id, principal, "job:run")
+        await _job_project_guard(job_id, principal, "runs:execute")
         summary = await _ws().get_job(job_id)
     except Exception as exc:  # noqa: BLE001
         raise _err(exc) from exc
@@ -372,7 +377,7 @@ async def list_jobs(
     try:
         if project_id:
             await _ws().require_project_access(
-                project_id=project_id, principal=principal.name, scope="job:run"
+                project_id=project_id, principal=principal.name, scope="runs:execute"
             )
         return await _ws().list_jobs(project_id=project_id, limit=limit)
     except Exception as exc:  # noqa: BLE001
@@ -389,7 +394,7 @@ async def list_examples(
 ) -> dict[str, Any]:
     try:
         await _ws().require_project_access(
-            project_id=project_id, principal=principal.name, scope="export:read"
+            project_id=project_id, principal=principal.name, scope="datasets:export"
         )
         return await _ws().list_examples(project_id=project_id, status=status, limit=limit)
     except Exception as exc:  # noqa: BLE001
@@ -436,7 +441,7 @@ async def validate_dataset(
 ) -> dict[str, Any]:
     try:
         await _ws().require_project_access(
-            project_id=project_id, principal=principal.name, scope="export:read"
+            project_id=project_id, principal=principal.name, scope="datasets:export"
         )
         return await _ws().validate_dataset(project_id=project_id)
     except Exception as exc:  # noqa: BLE001
@@ -454,7 +459,7 @@ async def create_version(
 ) -> dict[str, Any]:
     try:
         await _ws().require_project_access(
-            project_id=project_id, principal=principal.name, scope="export:read"
+            project_id=project_id, principal=principal.name, scope="datasets:export"
         )
         version = await _ws().create_version(
             project_id=project_id, semantic_version=body.semantic_version
@@ -472,7 +477,7 @@ async def export_dataset(
 ) -> dict[str, Any]:
     try:
         await _ws().require_project_access(
-            project_id=project_id, principal=principal.name, scope="export:read"
+            project_id=project_id, principal=principal.name, scope="datasets:export"
         )
         result = await _ws().export_dataset(project_id=project_id, version_id=body.version_id)
         # K4: export count (only a resolvable artifact counts — rule 13).
@@ -493,7 +498,7 @@ async def publish_dataset(
 ) -> dict[str, Any]:
     try:
         await _ws().require_project_access(
-            project_id=project_id, principal=principal.name, scope="publish:write"
+            project_id=project_id, principal=principal.name, scope="datasets:publish"
         )
         if not body.confirm and not body.dry_run:
             raise HTTPException(

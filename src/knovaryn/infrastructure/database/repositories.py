@@ -230,15 +230,24 @@ class JobRepository:
         )
 
     async def claim_eligible(self, *, worker: str, lease_seconds: int = 300) -> schemas.Job | None:
-        """Atomically claim one eligible queued/retry_wait job (best-effort local)."""
+        """Atomically claim one eligible job (best-effort local).
+
+        Eligible means: ``queued``/``retry_wait`` (never leased), or a job
+        abandoned by a dead worker — ``leased``/``running`` whose lease has
+        expired (defect 4.8). Without the expired-lease arm, a worker that dies
+        mid-run orphans its job forever: no state transition ever fires and no
+        replacement worker can pick it up.
+        """
         from datetime import datetime, timedelta
 
         now = datetime.now(UTC)
         stmt = (
             select(m.JobDB)
             .where(
-                m.JobDB.state.in_(["queued", "retry_wait"]),
-                (m.JobDB.lease_expires_at.is_(None)) | (m.JobDB.lease_expires_at < now),
+                m.JobDB.state.in_(["queued", "retry_wait", "leased", "running"]),
+                m.JobDB.state.in_(["queued", "retry_wait"])
+                | (m.JobDB.lease_expires_at.is_(None))
+                | (m.JobDB.lease_expires_at < now),
             )
             .order_by(m.JobDB.created_at)
             .limit(1)
@@ -255,6 +264,28 @@ class JobRepository:
         row.attempt_count += 1
         await self._s.flush()
         return _job_from_row(row)
+
+    async def renew_lease(self, job_id: str, *, worker: str, lease_seconds: int = 300) -> bool:
+        """Renew a lease held by ``worker`` (heartbeat, spec §7.3).
+
+        Ownership-guarded: only the current lease owner on a live
+        ``leased``/``running`` job may extend it. Returns ``False`` when the
+        caller no longer owns the job (it was reclaimed) or the job is not in a
+        leasable state — the worker must then stop touching it.
+        """
+        from datetime import datetime, timedelta
+
+        res = await self._s.execute(select(m.JobDB).where(m.JobDB.id == job_id))
+        row = res.scalars().first()
+        if row is None or row.lease_owner != worker:
+            return False
+        if row.state not in ("leased", "running"):
+            return False
+        now = datetime.now(UTC)
+        row.heartbeat_at = now
+        row.lease_expires_at = now + timedelta(seconds=lease_seconds)
+        await self._s.flush()
+        return True
 
     async def list_(
         self, *, project_id: str | None = None, limit: int = 50, cursor: str | None = None
@@ -1216,6 +1247,7 @@ class ModelCallRepository:
                 latency_ms=call.get("latency_ms", 0),
                 retry_count=call.get("retry_count", 0),
                 result_artifact_id=call.get("result_artifact_id"),
+                result_payload=call.get("result_payload", {}),
                 status=call.get("status", "ok"),
             )
         )

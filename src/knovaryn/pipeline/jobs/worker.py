@@ -9,9 +9,8 @@ from __future__ import annotations
 import asyncio
 import logging
 import signal
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from contextlib import suppress
-from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from ...domain.ids import IdGenerator
@@ -82,7 +81,15 @@ class Worker:
             stages = self._stage_provider(job.job_type)
             tracker = CheckpointTracker(job)
             job.input["completed_stages"] = tracker.persisted()
-            result = await self._engine.run(job, stages, services={"job.input": job.input})
+            result = await self._engine.run(
+                job,
+                stages,
+                services={"job.input": job.input},
+                # renew the lease while stages execute — a single stage that
+                # outlives the lease must not be stolen by another worker
+                heartbeat=self.heartbeat_for(job.id),
+                heartbeat_interval_s=max(1.0, min(self._lease_seconds / 3.0, 30.0)),
+            )
             if result.state in (
                 JobState.succeeded,
                 JobState.failed,
@@ -97,18 +104,29 @@ class Worker:
             log.exception("worker job %s failed unexpectedly", job.id)
             self._running.discard(job.id)
 
+    def heartbeat_for(self, job_id: str) -> Callable[[], Awaitable[None]]:
+        """A renewal callback for the engine's heartbeat loop (spec §7.3).
+
+        Passed into ``JobEngine.run`` so the lease is re-extended concurrently
+        while a long stage executes, not only between worker ticks.
+        """
+
+        async def _renew() -> None:
+            renewed = await self._repo.renew_lease(
+                job_id, worker=self.worker_id, lease_seconds=self._lease_seconds
+            )
+            if not renewed:
+                # lost ownership or the job is no longer leasable — stop tracking
+                self._running.discard(job_id)
+
+        return _renew
+
     async def _heartbeat(self, job_id: str) -> None:
-        job = await self._repo.get(job_id)
-        if job is None or job.state not in (JobState.leased, JobState.running):
+        renewed = await self._repo.renew_lease(
+            job_id, worker=self.worker_id, lease_seconds=self._lease_seconds
+        )
+        if not renewed:
             self._running.discard(job_id)
-            return
-        now = datetime.now(UTC)
-        if job.lease_owner != self.worker_id:
-            self._running.discard(job_id)
-            return
-        job.heartbeat_at = now
-        job.lease_expires_at = now + timedelta(seconds=self._lease_seconds)
-        await self._repo.save(job)
 
 
 class WorkerRepository:
@@ -139,6 +157,10 @@ class WorkerRepository:
     async def claim_eligible(self, *, worker: str, lease_seconds: int = 300) -> Any:
         return await self._op("claim_eligible", worker=worker, lease_seconds=lease_seconds)
 
+    async def renew_lease(self, job_id: str, *, worker: str, lease_seconds: int = 300) -> bool:
+        result = await self._op("renew_lease", job_id, worker=worker, lease_seconds=lease_seconds)
+        return bool(result)
+
     async def get(self, job_id: str) -> Any:
         return await self._op("get", job_id)
 
@@ -161,4 +183,32 @@ class WorkerRepository:
         return await self._op("completed_checkpoints", job_id)  # type: ignore[no-any-return]
 
 
-__all__ = ["Worker", "WorkerRepository"]
+class ModelCallLedgerRepository:
+    """Per-op session adapter exposing the ``model_calls`` ledger to the gateway.
+
+    Durable provider-call dedup (spec §11.5): the gateway consults this ledger
+    on a call-cache miss, so a resumed job never re-invokes a paid call whose
+    fingerprint was already recorded — and never writes a duplicate cost event.
+    Same session discipline as :class:`WorkerRepository`: every record/lookup
+    commits independently and survives a crash.
+    """
+
+    def __init__(self, db: Any, ids: IdGenerator) -> None:
+        self._db = db
+        self._ids = ids
+
+    async def _op(self, method: str, *args: Any, **kwargs: Any) -> Any:
+        from ...infrastructure.database.repositories import ModelCallRepository
+
+        async with self._db.session() as session, session.begin():
+            repo = ModelCallRepository(session, self._ids)
+            return await getattr(repo, method)(*args, **kwargs)
+
+    async def record(self, call: dict[str, Any]) -> None:
+        await self._op("record", call)
+
+    async def get_by_fingerprint(self, job_id: str, fingerprint: str) -> Any:
+        return await self._op("get_by_fingerprint", job_id, fingerprint)
+
+
+__all__ = ["ModelCallLedgerRepository", "Worker", "WorkerRepository"]

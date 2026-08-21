@@ -1,9 +1,9 @@
-# OmniTrain MCP — ecosystem overview
+# Knovaryn MCP — ecosystem overview
 
 > **From unstructured documents to trainer-ready datasets — over the Model
 > Context Protocol.**
 
-OmniTrain MCP is the umbrella project that Knovaryn lives under. It's an open
+The Knovaryn MCP ecosystem is an open
 ecosystem for turning the raw PDFs, slides, HTML, and notes you're *permitted*
 to use into **traceable, quality-gated SFT &amp; preference datasets** any
 MCP-capable agent can build on demand.
@@ -39,7 +39,7 @@ A high-level view of the end-to-end architecture. Six fully annotated diagrams �
 ```mermaid
 flowchart LR
     subgraph AGENTS["Host agents"]
-        MCPAG["Claude · Cursor · Claude Code"]
+        MCPAG["Claude Desktop · Cursor · any MCP client"]
     end
     MCPAG --> M["knovaryn_mcp — 23 tools"]
     subgraph CORE["Knovaryn core"]
@@ -87,7 +87,7 @@ uv run knovaryn demo --examples 20 --json    # full offline pipeline on sample d
 uv run knovaryn server --host 127.0.0.1 --port 8000   # REST API + web console
 ```
 
-Connect any MCP-capable agent (Claude Desktop, Cursor, Claude Code) to the
+Connect any MCP-capable agent (Claude Desktop, Cursor, and other MCP clients) to the
 `knovaryn_mcp` server and let it build, review, validate, and export datasets on
 your behalf.
 

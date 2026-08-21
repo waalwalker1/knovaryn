@@ -471,8 +471,9 @@ def test_stdio_transport_subprocess_end_to_end(tmp_path: Path) -> None:
     so it owns its own event loop (via ``anyio.run``), like a standalone client.
     """
     import anyio
-    from mcp import ClientSession, StdioServerParameters
     from mcp.client.stdio import stdio_client
+
+    from mcp import ClientSession, StdioServerParameters
 
     db_url = f"sqlite+aiosqlite:///{tmp_path}/stdio.db"
     params = StdioServerParameters(
@@ -561,8 +562,9 @@ async def _shttp_drive(port: int) -> None:
     import socket
 
     import anyio
-    from mcp import ClientSession
     from mcp.client.streamable_http import streamablehttp_client
+
+    from mcp import ClientSession
 
     for _ in range(300):
         try:
@@ -589,8 +591,9 @@ async def _shttp_drive(port: int) -> None:
 def test_stdio_graceful_shutdown(tmp_path: Path) -> None:
     """The stdio server exits cleanly (loop ends) after the client disconnects."""
     import anyio
-    from mcp import ClientSession, StdioServerParameters
     from mcp.client.stdio import stdio_client
+
+    from mcp import ClientSession, StdioServerParameters
 
     db_url = f"sqlite+aiosqlite:///{tmp_path}/shutdown.db"
     params = StdioServerParameters(

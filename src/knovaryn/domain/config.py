@@ -194,9 +194,11 @@ _DEFAULTS: dict[str, Any] = {
         "host": "127.0.0.1",
         "port": 8000,
         "api_token": "",  # empty = local mode (REST offline demo); set to enforce auth
-        # WP J3: granted scopes for a configured token. Omit to use the safe
-        # default set (all except nothing); supply a subset for least-privilege.
-        "scopes": [],
+        # WP J3 / defect 4.10: granted scopes for a configured token. OMIT the
+        # key for the safe default remote set (everything except the publish
+        # and admin bypass scopes). An explicit list is validated against the
+        # canonical registry and grants exactly that set — an empty list means
+        # NO privileges. Unknown names are a configuration error (fail closed).
         # principals exempt from owner-tenant isolation (cross-tenant admin)
         "admin_principals": [],
         # J4: refuse non-loopback bind without a token unless explicitly true
@@ -289,7 +291,7 @@ def load_config(
         applied.append(("admin", "policy"))
 
     # 4. environment variables (lower than admin, higher than files)
-    env_map = _collect_env(env_prefix)
+    env_map = _collect_env(env_prefix, cfg.data)
     if env_map:
         cfg.data = _deep_merge(cfg.data, env_map)
         cfg.provenance.update({f"env:{k}": "env" for k in env_map})
@@ -305,17 +307,89 @@ def load_config(
     return cfg
 
 
-def _collect_env(prefix: str) -> dict[str, Any]:
+# Flat aliases for operator-facing variables whose natural name does not
+# round-trip through underscore-splitting: the token's section (``server``) is
+# implied by the variable name, and the S3/MinIO keys are FLAT ``storage.*``
+# leaves (``build_artifact_store`` reads them directly off the storage dict)
+# whose names contain underscores. Defect 4.11: KNOVARYN_API_TOKEN used to
+# resolve to a nonexistent ``api.token`` path, and KNOVARYN_STORAGE_ENDPOINT_URL
+# to ``storage.endpoint.url`` — a container started with the documented
+# variables still refused to bind / could not reach its artifact store.
+_ENV_ALIASES = {
+    "API_TOKEN": "server.api_token",
+    "STORAGE_BUCKET": "storage.bucket",
+    "STORAGE_ENDPOINT_URL": "storage.endpoint_url",
+    "STORAGE_REGION": "storage.region",
+    "STORAGE_ACCESS_KEY_ID": "storage.access_key_id",
+    "STORAGE_SECRET_ACCESS_KEY": "storage.secret_access_key",
+}
+
+
+def _env_path_for(tree: dict[str, Any], parts: list[str]) -> list[str]:
+    """Resolve env-name ``parts`` to a concrete config path (no mutation).
+
+    Compound leaf keys (``storage.database_url`` from
+    ``KNOVARYN_STORAGE_DATABASE_URL``) cannot be recovered by naive
+    underscore-splitting, so at each level the LONGEST joined remainder that
+    names an existing key in the current tree wins; genuinely new paths fall
+    back to plain per-part nesting.
+    """
+    path: list[str] = []
+    cur: dict[str, Any] = tree
+    i = 0
+    while i < len(parts):
+        remainder = parts[i:]
+        for j in range(len(remainder), 0, -1):
+            candidate = "_".join(remainder[:j])
+            if candidate not in cur:
+                continue
+            if j == len(remainder):
+                path.append(candidate)
+                return path
+            if isinstance(cur[candidate], dict):
+                path.append(candidate)
+                cur = cur[candidate]
+                i += j
+                break
+        else:
+            # no existing key matches any join: nest the rest per-part
+            path.extend(remainder)
+            return path
+    return path
+
+
+def _coerce_env_scalar(val: str) -> Any:
+    """Booleans arrive as strings via env; coerce the two spellings only.
+
+    Numbers stay strings on purpose (a numeric API token must not silently
+    become an int); callers already coerce numerics where they consume them.
+    """
+    lowered = val.strip().lower()
+    if lowered == "true":
+        return True
+    if lowered == "false":
+        return False
+    return val
+
+
+def _collect_env(prefix: str, current: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Collect ``KNOVARYN_*`` variables as a nested config fragment.
+
+    ``current`` (the merged defaults+files+admin tree) guides compound-key
+    resolution so documented variables land on real config leaves.
+    """
     out: dict[str, Any] = {}
     for key, val in os.environ.items():
         if not key.startswith(prefix):
             continue
-        rel = key[len(prefix) :].lower()
-        parts = rel.split("_")
-        cur: Any = out
-        for p in parts[:-1]:
-            cur = cur.setdefault(p, {})
-        cur[parts[-1]] = val
+        rel = key[len(prefix) :]
+        alias = _ENV_ALIASES.get(rel.upper())
+        parts = alias.split(".") if alias else _env_path_for(current or {}, rel.lower().split("_"))
+        frag: Any = _coerce_env_scalar(val)
+        for p in reversed(parts):
+            frag = {p: frag}
+        assert isinstance(frag, dict)
+        out = _deep_merge(out, frag)
     return out
 
 
@@ -327,3 +401,18 @@ def _validate(cfg: Configuration) -> None:
     if cfg.get("telemetry.content_in_logs") is True:
         # allowed but noted
         pass
+    # Defect 4.10 (fail closed): an unknown scope name is a configuration
+    # error, never a silent filter. v0.1 dropped unknown names and granted the
+    # full default set when nothing valid remained — a typo escalated to
+    # admin. The canonical registry is the spec §23.2 ResourceScope vocabulary
+    # plus the cross-tenant bypass scope.
+    from ..identity import VALID_SCOPE_NAMES as _VALID_SCOPE_NAMES
+
+    scopes = cfg.get("server", {}).get("scopes") if isinstance(cfg.get("server"), dict) else None
+    if scopes is not None:
+        unknown = sorted({str(s) for s in scopes} - _VALID_SCOPE_NAMES)
+        if unknown:
+            raise ConfigurationError(
+                f"unknown scope names in server.scopes: {unknown}; "
+                f"valid scopes: {sorted(_VALID_SCOPE_NAMES)}"
+            )

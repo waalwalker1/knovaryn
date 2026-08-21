@@ -62,6 +62,11 @@ class ModelGateway:
         self._job_id = job_id
         self._stage = stage
 
+    @property
+    def profile(self) -> str:
+        """The runtime profile this gateway was wired for (defect 4.9)."""
+        return self._profile
+
     # -- provider resolution -------------------------------------------------
     def _is_fake(self, model: str) -> bool:
         return model in ("fake", "") or model == "fake"
@@ -129,6 +134,19 @@ class ModelGateway:
         cached = await self._cache.get(fp)
         if cached is not None:
             return cast(dict[str, Any], cached)
+
+        # Durable dedup (spec §11.5): the in-memory cache is cold after a
+        # crash, but the model_calls ledger recorded the paid call and its
+        # result. Serve the fingerprint from the ledger instead of re-invoking
+        # the provider — a resumed job never pays twice for the same call.
+        if self._model_call_repo is not None and self._job_id:
+            with suppress(Exception):
+                prior = await self._model_call_repo.get_by_fingerprint(self._job_id, fp)
+                if prior is not None and prior.status == "ok" and prior.result_payload:
+                    restored = dict(prior.result_payload)
+                    restored.setdefault("_fingerprint", fp)
+                    await self._cache.put(fp, restored)
+                    return cast(dict[str, Any], restored)
 
         start = time.monotonic()
         if span == "fake":
@@ -215,6 +233,10 @@ class ModelGateway:
                         "latency_ms": latency,
                         "retry_count": 0,
                         "result_artifact_id": None,
+                        # the response payload makes the ledger the durable
+                        # resume source: a cold-cache restart is served from
+                        # this row instead of re-paying the call
+                        "result_payload": result,
                         "status": "ok",
                     }
                 )

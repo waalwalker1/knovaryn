@@ -76,7 +76,7 @@ From a separate terminal, start the server:
 knovaryn mcp --profile offline-demo
 ```
 
-Then, from an MCP client (e.g., Claude Code) issue natural language:
+Then, from any MCP-capable agent, issue natural language:
 
 > "Create project `launch-dataset`, add `./fixtures/maintenance-manual-2021.pdf` (CC0), and run the current plan with 500 SFT+preference examples on the balanced profile."
 

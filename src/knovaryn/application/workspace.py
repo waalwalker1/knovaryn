@@ -57,17 +57,13 @@ from ..infrastructure.database.repositories import (
     VersionRepository,
 )
 from ..infrastructure.database.session import Database
+from ..infrastructure.models.profiles import DEFAULT_RUNTIME_PROFILE, build_gateway
 from ..pipeline.jobs.engine import JobEngine
 from ..pipeline.quality.reports import build_quality_report
 from ..pipeline.quality.validators import (
-    AnswerabilityValidator,
-    CompletenessValidator,
-    FormatValidator,
-    GroundingValidator,
-    RefusalValidator,
-    SchemaValidator,
     ValidatorContext,
     assemble_decision,
+    default_validators,
 )
 from .service import ProjectService, _artifact_assessment, _split_bytes
 
@@ -126,7 +122,18 @@ class Workspace:
         await self._db.dispose()
 
     def default_project_service(self) -> ProjectService:
-        return ProjectService(ids=self._ids)
+        """Build the project service on the configured runtime profile.
+
+        Defect 4.9: v0.1 hard-wired the fake gateway here, so the official
+        profile registry was dead code from every surface. The configured
+        ``models.profile`` now decides — offline aliases get the deterministic
+        fake gateway, live profiles get the real provider (and fail loudly when
+        its credentials are absent; never a silent fake fallback, WP D5).
+        """
+        cfg = load_config()
+        profile = str(cfg.get("models.profile") or cfg.get("profile") or DEFAULT_RUNTIME_PROFILE)
+        gateway = build_gateway(profile)
+        return ProjectService(ids=self._ids, gateway=gateway)
 
     # -- projects ------------------------------------------------------------
     async def create_project(
@@ -267,6 +274,7 @@ class Workspace:
         content: str = "",
         raw: bytes | None = None,
         declared_license: str | None = None,
+        privacy: str | None = None,
         source_kind: SourceKind = SourceKind.upload,
         source_locator: str = "",
         group_key: str | None = None,
@@ -313,6 +321,7 @@ class Workspace:
                 source_kind=source_kind,
                 source_locator_redacted=ingested.source_locator_redacted,
                 declared_license=declared_license,
+                privacy_classification=privacy or "unknown",
                 license_status=ingested.license_status,
                 intake_status=ingested.intake_status,
                 artifact_id_original=ingested.artifact_id_original,
@@ -357,6 +366,9 @@ class Workspace:
         project_id: str,
         task_family_proportions: dict[str, float] | None = None,
         idempotency_key: str | None = None,
+        profile: str | None = None,
+        budget_max_usd: float | None = None,
+        target_examples: int | None = None,
     ) -> Job:
         async with self._db.session() as session, session.begin():
             proj_repo = ProjectRepository(session, self._ids)
@@ -378,6 +390,18 @@ class Workspace:
 
             running = await job_repo.count_in_progress(owner_principal=project.owner_principal)
             enforce_concurrent_jobs(running_count=running)
+            # Defect 4.9: request-level knobs (profile / budget / target) ride on
+            # the durable job input so every worker stage honours them — v0.1
+            # accepted these fields over REST and silently dropped them.
+            pipeline_input: dict[str, Any] = {
+                "task_family_proportions": task_family_proportions or {},
+            }
+            if profile is not None:
+                pipeline_input["profile"] = profile
+            if budget_max_usd is not None:
+                pipeline_input["budget_max_usd"] = budget_max_usd
+            if target_examples is not None:
+                pipeline_input["target_examples"] = target_examples
             job = Job(
                 id=self._ids.new_handle("job"),
                 project_id=project_id,
@@ -386,7 +410,7 @@ class Workspace:
                 state=JobState.queued,
                 idempotency_key=idempotency_key,
                 input={
-                    "pipeline": {"task_family_proportions": task_family_proportions or {}},
+                    "pipeline": pipeline_input,
                     "source_ids": [s.id for s in sources],
                 },
             )
@@ -623,15 +647,7 @@ class Workspace:
 
                 diag = diagnose_example(ex)
                 artifact = _artifact_assessment(ex, diag)
-                decisions = [
-                    await GroundingValidator().assess(ex, ctx),
-                    await CompletenessValidator().assess(ex, ctx),
-                    await FormatValidator().assess(ex, ctx),
-                    await RefusalValidator().assess(ex, ctx),
-                    await SchemaValidator().assess(ex, ctx),
-                    await AnswerabilityValidator().assess(ex, ctx),
-                    artifact,
-                ]
+                decisions = [await v.assess(ex, ctx) for v in default_validators()] + [artifact]
                 overall = assemble_decision(
                     decisions, example_id=ex.id, is_preference=(ex.topology.value == "preference")
                 )
@@ -1040,7 +1056,11 @@ def _make_pipeline_stage(
             or {"factual_explanation": 0.5, "procedure": 0.3, "comparison": 0.2}
         )
         result = await svc.run_pipeline(
-            project=project, sources=sources, raw_contents=raw_contents, plan=plan
+            project=project,
+            sources=sources,
+            raw_contents=raw_contents,
+            plan=plan,
+            target_examples=cfg.get("target_examples"),
         )
         stash = {
             "examples": [e.model_dump(mode="json") for e in result.examples],

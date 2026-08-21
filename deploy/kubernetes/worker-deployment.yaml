@@ -29,7 +29,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: worker
-          image: ghcr.io/knovaryn/knovaryn:0.1.0   # PINNED tag (K3)
+          image: ghcr.io/knovaryn/knovaryn:0.1.1   # PINNED tag (K3)
           imagePullPolicy: IfNotPresent
           command: ["knovaryn", "worker", "--id", "worker"]
           securityContext:

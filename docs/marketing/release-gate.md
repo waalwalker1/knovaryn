@@ -9,7 +9,7 @@
 ## 1. Name clearance
 - [ ] GitHub, PyPI, and chosen domain names confirmed available/owned; no confusingly similar prior occupant.
 - [ ] Trademark + phonetic-similarity clearance documented (see `launch-checklist.md` §A.1), with dates.
-- [ ] No legacy identifiers (`OmniTrain`, `omnitrain`, `OMNITRAIN`) in any public product surface (identity test passes).
+- [ ] No legacy-brand identifiers in any public product surface (the identity and branding tests pass).
 
 ## 2. Stable APIs
 - [ ] Public CLI flags, MCP tool names/inputs/outputs, and configuration schema are frozen; deprecation policy documented.
@@ -18,7 +18,7 @@
 
 ## 3. MCP compatibility tests
 - [ ] MCP server (`knovaryn_mcp`) passes the relevant MCP conformance/initialization handshake tests.
-- [ ] Interop verified against at least two independent MCP clients, including at least one named agent (e.g., Claude Code) for high-level tool calls.
+- [ ] Interop verified against at least two independent MCP clients, including at least one named agent (e.g., Claude Desktop) for high-level tool calls.
 - [ ] Idempotent tool calls (create/run/export) behave correctly on retry.
 
 ## 4. External reproduction

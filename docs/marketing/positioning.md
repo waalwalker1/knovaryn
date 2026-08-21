@@ -11,7 +11,7 @@ build, why is it useful, where does it stand, and what's the honest next move.*
 Knovaryn is an **open-source, MCP-native training-data foundry**. It turns the
 documents you're *permitted* to use (PDF, PPTX, HTML, Word) into **traceable,
 quality-gated SFT and preference datasets** that any MCP-capable agent
-(Claude Code, Cursor, etc.) can build on your behalf. The whole pipeline —
+(Cursor, Claude Desktop, etc.) can build on your behalf. The whole pipeline —
 intake → parse → split → plan → generate → validate → version → export →
 publish — runs on a **durable job engine** behind **four interfaces on one
 core**: CLI, the `knovaryn_mcp` MCP server, a REST + web console, and a Python
@@ -97,8 +97,8 @@ community-verification experiment, not as a "stable" release.**
   and the commands, but only you can create the account/token and the secret in
   CI.
 - **Name clearance:** confirm `knovaryn` is free on PyPI before publishing (it
-  is distinct from the legacy `OmniTrain`/`omnitrain` names — the package name
-  is already clean, which satisfies release-gate item 1's core intent).
+  is distinct from any legacy project name — the package name is already
+  clean, which satisfies release-gate item 1's core intent).
 - Keep the **lean core** (no heavy extras) as the base install exactly as
   configured, so `pip install knovaryn` works offline without docling/litellm.
 

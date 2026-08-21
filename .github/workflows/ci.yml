@@ -14,6 +14,12 @@ on:
   push:
     branches: [main]
   pull_request:
+  # workflow_dispatch + the weekly cron exist so the compose E2E (defect 4.11)
+  # runs on a schedule and on demand — it boots the real container topology
+  # and is too heavy for every PR push.
+  workflow_dispatch:
+  schedule:
+    - cron: "23 4 * * 1"
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -93,7 +99,12 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install
-        run: uv sync --extra dev
+        # Same extras as the offline test job: the gate must measure the SAME
+        # suite configuration that is required to pass, or a missing optional
+        # dependency here produces failures the test job never sees (caught
+        # 2026-08-21: dev-only install measured quality/semantic.py at its
+        # pre-fix coverage while the dev+mcp test job was green).
+        run: uv sync --extra dev --extra mcp
       - name: Run branch-coverage gate on core code
         run: uv run python scripts/coverage_gate.py
 
@@ -142,3 +153,24 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build image
         run: docker build -f deploy/docker/Dockerfile -t knovaryn:ci .
+
+  # Defect 4.11: boot the REAL production topology (postgres + minio + api +
+  # worker + caddy proxy) and exercise upload → job → worker → backup through
+  # the reverse proxy. Opt-in via KNOVARYN_E2E_COMPOSE=1; skipped on ordinary
+  # pushes (too heavy), run weekly and on dispatch so the topology cannot rot.
+  compose-e2e:
+    name: Compose E2E (deployed topology)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.11"
+      - name: Install
+        run: uv sync --extra dev --extra mcp
+      - name: Boot the stack and run the E2E suite
+        env:
+          KNOVARYN_E2E_COMPOSE: "1"
+        run: uv run pytest tests/deployment -q -p no:cacheprovider

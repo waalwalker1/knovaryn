@@ -10,6 +10,8 @@ display string:
   ``ParsedDocument`` points back at one of the example's source documents;
 * every ``generation_candidate_id`` resolves to an existing candidate in the
   same project;
+* provenance arrays are NON-EMPTY (defect 4.7) — an example with no cited
+  documents/spans/candidates is untraceable and must never export;
 * a recomputed ``content_hash`` matches the stored hash.
 
 Any failure raises ``ExportError`` and the export is BLOCKED (fail closed) —
@@ -24,6 +26,47 @@ from typing import Any
 from ...domain.errors import ExportError
 from ...domain.hashing import ContentHasher
 from ...domain.schemas import Topology, TrainingExample
+
+
+class LocationPrecision:
+    """Truthful location-precision levels for a source span (defect 4.6).
+
+    A span's precision is derived from what is ACTUALLY recorded — never
+    claimed higher than the data supports. Export manifests must report the
+    precision level each span genuinely achieves.
+    """
+
+    EXACT_BBOX = "exact_bbox"
+    EXACT_PAGE = "exact_page"
+    PAGE_RANGE = "page_range"
+    SECTION = "section"
+    CHUNK = "chunk"
+    UNKNOWN = "unknown"
+
+    _ORDER = {
+        EXACT_BBOX: 5,
+        EXACT_PAGE: 4,
+        PAGE_RANGE: 3,
+        SECTION: 2,
+        CHUNK: 1,
+        UNKNOWN: 0,
+    }
+
+    @classmethod
+    def of_span(cls, span: Any) -> str:
+        """Derive the truthful precision level of a SourceSpan from its data."""
+        if getattr(span, "bounding_boxes", None):
+            return cls.EXACT_BBOX
+        if getattr(span, "page_number", None) is not None:
+            return cls.EXACT_PAGE
+        if getattr(span, "character_start", None) is not None:
+            return cls.CHUNK
+        return cls.UNKNOWN
+
+    @classmethod
+    def at_least(cls, actual: str, claimed: str) -> bool:
+        """True when ``actual`` precision is at least as precise as ``claimed``."""
+        return cls._ORDER.get(actual, 0) >= cls._ORDER.get(claimed, 0)
 
 
 def recompute_content_hash(ex: TrainingExample) -> str:
@@ -61,6 +104,15 @@ async def verify_provenance_before_export(examples: list[TrainingExample], resol
                 f"example {ex.id} content_hash mismatch: stored "
                 f"{ex.content_hash[:16]}... does not match recomputed hash"
             )
+
+        # Defect 4.7: empty provenance arrays block export — an example with
+        # no lineage is untraceable and must never be released.
+        if not ex.source_document_ids:
+            raise ExportError(f"example {ex.id} has empty source_document_ids (untraceable)")
+        if not ex.source_span_ids:
+            raise ExportError(f"example {ex.id} has empty source_span_ids (untraceable)")
+        if not ex.generation_candidate_ids:
+            raise ExportError(f"example {ex.id} has empty generation_candidate_ids (untraceable)")
 
         for sid in ex.source_document_ids:
             doc = await resolver.sources.get(sid)

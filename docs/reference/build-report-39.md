@@ -37,11 +37,13 @@ Built in this revision (highest-value missing subsystems):
 
 ## 3. Architecture and dependency decisions
 
-- **Executor / compatible-API result:** Claude Code driving a DeepSeek-V4-Flash-compatible model
-  (`deepinfra/deepseek-v4-flash-0731`). Standard text and tool use worked; no reliance on MCP
-  plugins, image/document blocks, or other flagged DeepSeek compatibility gaps.
-- **Build-model fallback:** none used.
-- **API usage/cost:** provider did not expose sufficient usage data for a reliable figure; not reported.
+- **Executor / compatible-API result:** the report was produced by an automated
+  coding agent over a standard provider-compatible API. Text and tool use worked
+  throughout; no reliance on MCP plugins, image/document blocks, or other flagged
+  provider compatibility gaps.
+- **Executor fallback:** none used.
+- **API usage/cost:** the provider did not expose sufficient usage data for a
+  reliable figure; not reported.
 - **MCP/FastMCP:** FastMCP adapter isolated behind `interfaces/mcp/`; stdio stream not executed in
   this environment (mcp extra not installed in the CI venv).
 - **Docling:** optional; `docling/adapter.py` + `guard.py` follow current APIs (§2.4, §2.5); not core.
@@ -99,7 +101,7 @@ Built in this revision (highest-value missing subsystems):
 - **Dependency/secret scan:** not run in this session (no credentials available).
 - **SBOM/signing readiness:** not yet configured.
 - **Name-clearance:** canonical identity `knovaryn` / server id `knovaryn_mcp` enforced via `identity.py`
-  (`tests/test_identity.py`); no OmniTrain-branded product surface (see §39.1).
+  (`tests/test_identity.py`); no legacy-branded product surface (see §39.1).
 
 ## 7. Exact quickstart
 

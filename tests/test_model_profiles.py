@@ -75,10 +75,27 @@ def test_build_gateway_fake_no_credentials() -> None:
     assert gw is not None
 
 
-def test_build_gateway_deepseek_real_path() -> None:
+def test_build_gateway_deepseek_real_path(monkeypatch) -> None:
+    # defect 4.9: a live profile WITHOUT credentials fails loudly at wiring
+    # time (never a silent fake fallback); with a credential signal it builds
+    # a real-provider gateway carrying the budget profile.
+    from knovaryn.domain.errors import ConfigurationError
+
+    for var in (
+        "KNOVARYN_DEEPSEEK_API_KEY",
+        "KNOVARYN_API_KEY",
+        "KNOVARYN_BASE_URL",
+        "KNOVARYN_DEEPSEEK_BASE_URL",
+    ):
+        monkeypatch.delenv(var, raising=False)
+    with pytest.raises(ConfigurationError):
+        build_gateway("deepseek_flash_budget")
+
+    monkeypatch.setenv("KNOVARYN_DEEPSEEK_API_KEY", "test-key-not-real")
     gw = build_gateway("deepseek_flash_budget")
-    # real-provider path builds a gateway carrying the budget profile
     assert gw is not None
+    assert gw.profile == "deepseek_flash_budget"
+    assert gw._real is not None
 
 
 # ---------------------------------------------------------------------------

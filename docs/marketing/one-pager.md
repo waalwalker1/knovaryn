@@ -11,7 +11,7 @@
 
 Knovaryn is an open-source **training-data foundry** for small language-model teams that need to go from a stack of permitted documents to a defensible supervised fine-tuning (SFT) or preference (DPO/KTO) dataset — without hand-waving about *where the examples came from* or *whether they're any good*.
 
-It is **MCP-native**: the whole pipeline — intake, planning, estimation, generation, validation, review, export, publication — is exposed as Model Context Protocol tools that any MCP-capable agent (Claude Code, or any MCP client) can drive. You use natural language to build a dataset; Knovaryn turns it into a traceable, reproducible job.
+It is **MCP-native**: the whole pipeline — intake, planning, estimation, generation, validation, review, export, publication — is exposed as Model Context Protocol tools that any MCP-capable agent (Claude Desktop, Cursor, or any MCP client) can drive. You use natural language to build a dataset; Knovaryn turns it into a traceable, reproducible job.
 
 ## The problem
 

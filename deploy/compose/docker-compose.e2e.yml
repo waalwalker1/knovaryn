@@ -1,0 +1,153 @@
+# Knovaryn Compose E2E harness (defect 4.11).
+#
+# Same production topology as docker-compose.prod.yml (postgres + minio + api +
+# worker + caddy proxy) but:
+#
+#   * the knovaryn image is BUILT LOCALLY from deploy/docker/Dockerfile (the
+#     prod file pins a registry tag — this harness proves the image recipe and
+#     the topology, not a published tag);
+#   * a one-shot `migrate` service bootstraps the schema exactly like the
+#     Kubernetes migration Job (Database.create_all) before api/worker start;
+#   * the proxy is published on a fixed test port (18080) and every request in
+#     the E2E suite goes THROUGH the proxy, so the routing config itself is
+#     under test.
+#
+# Secrets are interpolated from the environment / --env-file (never committed):
+#   POSTGRES_PASSWORD, MINIO_ROOT_USER, MINIO_ROOT_PASSWORD, KNOVARYN_API_TOKEN
+#
+# Run (also what tests/deployment/test_compose_e2e.py drives):
+#   docker compose -f deploy/compose/docker-compose.e2e.yml \
+#     --env-file <generated .env> up -d --build --wait
+
+name: knovaryn-e2e
+
+x-knovaryn-build: &knovaryn-build
+  context: ../..
+  dockerfile: deploy/docker/Dockerfile
+
+x-knovaryn-common: &knovaryn-common
+  image: knovaryn:e2e-local
+  build: *knovaryn-build
+  environment: &common-env
+    KNOVARYN_STORAGE_DATABASE_URL: "postgresql+asyncpg://knovaryn:${POSTGRES_PASSWORD:?set in env-file}@postgres:5432/knovaryn"
+    KNOVARYN_STORAGE_ARTIFACT_BACKEND: "s3"
+    # Writable mount for the intake quarantine dir (derived from this path's
+    # parent) — the image runs as non-root uid 10001, and the relative default
+    # would land in the read-only WORKDIR (caught by the compose E2E).
+    KNOVARYN_STORAGE_ARTIFACT_ROOT: "/data/artifacts"
+    KNOVARYN_STORAGE_BUCKET: "knovaryn-artifacts"
+    KNOVARYN_STORAGE_ENDPOINT_URL: "http://minio:9000"
+    KNOVARYN_STORAGE_REGION: "us-east-1"
+    KNOVARYN_STORAGE_ACCESS_KEY_ID: "${MINIO_ROOT_USER:?set in env-file}"
+    KNOVARYN_STORAGE_SECRET_ACCESS_KEY: "${MINIO_ROOT_PASSWORD:?set in env-file}"
+    KNOVARYN_API_TOKEN: "${KNOVARYN_API_TOKEN:?set in env-file}"
+    KNOVARYN_TELEMETRY_CONTENT_IN_LOGS: "false"
+  depends_on:
+    postgres:
+      condition: service_healthy
+    minio:
+      condition: service_healthy
+    minio-init:
+      condition: service_completed_successfully
+    migrate:
+      condition: service_completed_successfully
+  restart: unless-stopped
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: knovaryn
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?set in env-file}"
+      POSTGRES_DB: knovaryn
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U knovaryn -d knovaryn"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  minio:
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: "${MINIO_ROOT_USER:?set in env-file}"
+      MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD:?set in env-file}"
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  minio-init:
+    image: minio/mc:RELEASE.2025-04-16T18-13-26Z
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "mc alias set local http://minio:9000 "$${MINIO_ROOT_USER}" "$${MINIO_ROOT_PASSWORD}" &&
+      mc mb --ignore-existing local/knovaryn-artifacts &&
+      echo 'bucket ready'"
+    environment:
+      MINIO_ROOT_USER: "${MINIO_ROOT_USER:?set in env-file}"
+      MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD:?set in env-file}"
+    restart: "no"
+
+  # One-shot schema bootstrap — mirrors deploy/kubernetes/migration-job.yaml
+  # (Database.create_all is the shipped bootstrap mechanism; alembic remains
+  # the upgrade path).
+  migrate:
+    image: knovaryn:e2e-local
+    build: *knovaryn-build
+    depends_on:
+      postgres:
+        condition: service_healthy
+    entrypoint: ["python", "-c"]
+    command:
+      - |
+        import asyncio, os
+        from knovaryn.infrastructure.database.session import Database
+        async def run():
+            db = Database(os.environ["KNOVARYN_STORAGE_DATABASE_URL"])
+            try:
+                await db.create_all()
+                print("create_all complete")
+            finally:
+                await db.dispose()
+        asyncio.run(run())
+    environment:
+      KNOVARYN_STORAGE_DATABASE_URL: "postgresql+asyncpg://knovaryn:${POSTGRES_PASSWORD:?set in env-file}@postgres:5432/knovaryn"
+    restart: "no"
+
+  api:
+    <<: *knovaryn-common
+    volumes:
+      - artifacts:/data
+    command: ["knovaryn", "server", "--host", "0.0.0.0", "--port", "8000"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8000/v1/health',timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+
+  worker:
+    <<: *knovaryn-common
+    volumes:
+      - artifacts:/data
+    command: ["knovaryn", "worker", "--id", "worker-e2e", "--lease", "300", "--poll", "1.0"]
+
+  proxy:
+    image: caddy:2.8-alpine
+    ports:
+      - "18080:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+    restart: unless-stopped
+
+volumes:
+  artifacts:

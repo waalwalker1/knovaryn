@@ -51,9 +51,30 @@ jobs:
           echo "tag=v${REF}  project=${VERSION}"
           test "$REF" = "$VERSION" || { echo "tag does not match project version"; exit 1; }
 
+  # Defect 4.12: the release SHA must have PASSED CI before anything is built
+  # or uploaded. This gate resolves the tag's commit and demands every job in
+  # ci.yml concluded SUCCESS on exactly that SHA (fails closed on failed,
+  # missing, or still-running checks).
+  ci-gate:
+    name: Release SHA passed CI (L9)
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: read
+      checks: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.11"
+      - name: Verify all required CI checks passed on the release SHA
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: uv run --with pyyaml python scripts/release_governance.py "${{ github.sha }}" --repo "${{ github.repository }}"
+
   build:
     name: Build wheel & sdist
-    needs: [package-ci, tag-version-consistency]
+    needs: [package-ci, tag-version-consistency, ci-gate]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
     steps:
@@ -67,6 +88,41 @@ jobs:
         with:
           name: dist
           path: dist/
+
+  # Defect 4.13 family: a release carries MORE than the PyPI upload —
+  # detached checksums and an SBOM are attached to the GitHub Release itself,
+  # so consumers can verify what they downloaded without trusting PyPI.
+  # (Provenance attestations for the wheel/sdist are produced by the PyPI
+  # trusted-publishing step below; PyPI stores and serves them.)
+  release-assets:
+    name: Attach checksums + SBOM to the release
+    needs: [build, ci-gate]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write   # upload files to the release
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.11"
+      - name: Generate detached SHA256SUMS
+        run: |
+          cd dist
+          sha256sum -- *.whl *.tar.gz > SHA256SUMS
+          sha256sum --check --strict SHA256SUMS
+      - name: Generate SBOM from the locked resolution
+        run: |
+          uv export --format requirements-txt --no-hashes --no-dev -o requirements.txt
+          uv run --with cyclonedx-bom cyclonedx-py -i requirements.txt -o sbom.cdx.json --format json
+      - name: Attach SHA256SUMS + SBOM to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${GITHUB_REF_NAME}" dist/SHA256SUMS sbom.cdx.json --clobber
 
   publish:
     name: Publish to PyPI (OIDC trusted publishing)

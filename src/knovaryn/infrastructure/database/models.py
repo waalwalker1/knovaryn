@@ -277,6 +277,10 @@ class ModelCallDB(Base):
     latency_ms: Mapped[int] = mapped_column(Integer, default=0)
     retry_count: Mapped[int] = mapped_column(Integer, default=0)
     result_artifact_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Durable dedup (spec §11.5): the recorded provider response for this
+    # fingerprint, so a resumed job after a crash is served from the ledger
+    # instead of re-invoking the paid call. Empty when the call failed.
+    result_payload: Mapped[dict] = mapped_column(JSON, default=dict)
     status: Mapped[str] = mapped_column(String(32), default="ok")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 

@@ -56,7 +56,7 @@ def test_metrics_endpoint_admin_scoped_with_token(monkeypatch, client):
     import knovaryn.infrastructure.auth.bearer as bearer
     import knovaryn.interfaces.rest.security as sec
 
-    server = {"server": {"api_token": "sek", "scopes": ["project:read"], "admin_principals": []}}
+    server = {"server": {"api_token": "sek", "scopes": ["projects:read"], "admin_principals": []}}
     monkeypatch.setattr(bearer, "load_config", lambda: server)
     monkeypatch.setattr(sec, "load_config", lambda: server)
     assert client.get("/v1/metrics").status_code == 401  # no token supplied

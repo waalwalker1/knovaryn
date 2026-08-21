@@ -27,12 +27,16 @@
 name: knovaryn-prod
 
 x-knovaryn-common: &knovaryn-common
-  image: ghcr.io/knovaryn/knovaryn:0.1.0   # PINNED TAG — never `latest` (K3)
+  image: ghcr.io/knovaryn/knovaryn:0.1.1   # PINNED TAG — never `latest` (K3)
   pull_policy: always
   environment: &common-env
     # Shared state: PostgreSQL instead of SQLite (K1 multi-worker safety)
     KNOVARYN_STORAGE_DATABASE_URL: "postgresql+asyncpg://knovaryn:${POSTGRES_PASSWORD:?set in .env}@postgres:5432/knovaryn"
     KNOVARYN_STORAGE_ARTIFACT_BACKEND: "s3"
+    # Writable mount for the intake quarantine dir (derived from this path's
+    # parent) — the image runs as non-root uid 10001, and the relative default
+    # would land in the read-only WORKDIR (caught by the compose E2E).
+    KNOVARYN_STORAGE_ARTIFACT_ROOT: "/data/artifacts"
     KNOVARYN_STORAGE_BUCKET: "knovaryn-artifacts"
     KNOVARYN_STORAGE_ENDPOINT_URL: "http://minio:9000"
     KNOVARYN_STORAGE_REGION: "us-east-1"
@@ -46,6 +50,10 @@ x-knovaryn-common: &knovaryn-common
       condition: service_healthy
     minio:
       condition: service_healthy
+    minio-init:
+      condition: service_completed_successfully
+    migrate:
+      condition: service_completed_successfully
   restart: unless-stopped
 
 services:
@@ -94,8 +102,35 @@ services:
       MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD:?set in .env}"
     restart: "no"
 
+  # One-shot schema bootstrap (defect 4.11): mirrors the Kubernetes migration
+  # Job — Database.create_all is the shipped bootstrap mechanism (alembic
+  # remains the upgrade path). api/worker start only after it succeeds.
+  migrate:
+    image: ghcr.io/knovaryn/knovaryn:0.1.1   # PINNED TAG — same as api/worker
+    depends_on:
+      postgres:
+        condition: service_healthy
+    entrypoint: ["python", "-c"]
+    command:
+      - |
+        import asyncio, os
+        from knovaryn.infrastructure.database.session import Database
+        async def run():
+            db = Database(os.environ["KNOVARYN_STORAGE_DATABASE_URL"])
+            try:
+                await db.create_all()
+                print("create_all complete")
+            finally:
+                await db.dispose()
+        asyncio.run(run())
+    environment:
+      KNOVARYN_STORAGE_DATABASE_URL: "postgresql+asyncpg://knovaryn:${POSTGRES_PASSWORD:?set in .env}@postgres:5432/knovaryn"
+    restart: "no"
+
   api:
     <<: *knovaryn-common
+    volumes:
+      - artifacts:/data
     command: ["knovaryn", "server", "--host", "0.0.0.0", "--port", "8000"]
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8000/v1/health',timeout=3)"]
@@ -109,6 +144,8 @@ services:
 
   worker:
     <<: *knovaryn-common
+    volumes:
+      - artifacts:/data
     command: ["knovaryn", "worker", "--id", "worker-1", "--lease", "300"]
     # Scale workers with:
     #   docker compose -f deploy/compose/docker-compose.prod.yml up -d --scale worker=4
@@ -132,3 +169,4 @@ services:
 volumes:
   pgdata:
   miniodata:
+  artifacts:
