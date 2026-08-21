@@ -118,7 +118,7 @@ jobs:
       - name: Generate SBOM from the locked resolution
         run: |
           uv export --format requirements-txt --no-hashes --no-dev -o requirements.txt
-          uv run --with cyclonedx-bom cyclonedx-py -i requirements.txt -o sbom.cdx.json --format json
+          uv run --with cyclonedx-bom cyclonedx-py requirements --pyproject pyproject.toml --of JSON -o sbom.cdx.json requirements.txt
       - name: Attach SHA256SUMS + SBOM to the release
         env:
           GH_TOKEN: ${{ github.token }}
