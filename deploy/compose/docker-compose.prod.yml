@@ -27,7 +27,7 @@
 name: knovaryn-prod
 
 x-knovaryn-common: &knovaryn-common
-  image: ghcr.io/knovaryn/knovaryn:0.1.1   # PINNED TAG — never `latest` (K3)
+  image: ghcr.io/knovaryn/knovaryn:0.2.0   # PINNED TAG — never `latest` (K3)
   pull_policy: always
   environment: &common-env
     # Shared state: PostgreSQL instead of SQLite (K1 multi-worker safety)
@@ -106,7 +106,7 @@ services:
   # Job — Database.create_all is the shipped bootstrap mechanism (alembic
   # remains the upgrade path). api/worker start only after it succeeds.
   migrate:
-    image: ghcr.io/knovaryn/knovaryn:0.1.1   # PINNED TAG — same as api/worker
+    image: ghcr.io/knovaryn/knovaryn:0.2.0   # PINNED TAG — same as api/worker
     depends_on:
       postgres:
         condition: service_healthy

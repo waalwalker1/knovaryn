@@ -1,6 +1,6 @@
 [project]
 name = "knovaryn"
-version = "0.1.1"
+version = "0.2.0"
 description = "Open, MCP-native training-data foundry: turn permitted documents into traceable, quality-gated SFT and preference datasets."
 readme = "README.md"
 requires-python = ">=3.11"

@@ -27,7 +27,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: api
-          image: ghcr.io/knovaryn/knovaryn:0.1.1   # PINNED tag (K3)
+          image: ghcr.io/knovaryn/knovaryn:0.2.0   # PINNED tag (K3)
           imagePullPolicy: IfNotPresent
           command: ["knovaryn", "server", "--host", "0.0.0.0", "--port", "8000"]
           securityContext:
