@@ -26,6 +26,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 from collections.abc import Callable
 from pathlib import Path
@@ -73,6 +74,81 @@ def _github_fetch_json(url: str, *, token: str | None = None) -> dict[str, Any]:
         return dict(json.loads(resp.read().decode("utf-8")))
 
 
+_MATRIX_REF = re.compile(r"\$\{\{\s*matrix\.([A-Za-z0-9_]+)\s*\}\}")
+
+
+def _matrix_combos(matrix_cfg: Any) -> list[dict[str, str]]:
+    """Expand a workflow ``strategy.matrix`` into value combinations.
+
+    Handles the shapes ci.yml uses — scalar product keys (``key: [v1, v2]``
+    or a scalar), ``include:`` entries merged onto matching combos, and
+    ``exclude:`` removals. Values are stringified the way GitHub interpolates
+    them into a job's ``name:``.
+    """
+    if not isinstance(matrix_cfg, dict):
+        return [{}]
+    plain: dict[str, list[str]] = {}
+    for key, values in matrix_cfg.items():
+        if key in ("include", "exclude"):
+            continue
+        plain[str(key)] = [str(v) for v in values] if isinstance(values, list) else [str(values)]
+    combos: list[dict[str, str]] = [{}]
+    for key, values in plain.items():
+        combos = [{**combo, key: value} for combo in combos for value in values]
+    includes = matrix_cfg.get("include")
+    if isinstance(includes, list):
+        for entry in includes:
+            if not isinstance(entry, dict):
+                continue
+            item = {str(k): str(v) for k, v in entry.items()}
+            merged = False
+            # Snapshot: appending during iteration would revisit the new
+            # combos, which match their own keys forever.
+            for combo in list(combos):
+                if all(combo[k] == v for k, v in item.items() if k in combo):
+                    combos.append({**combo, **item})
+                    merged = True
+            if not merged and not plain:
+                combos.append(item)
+    excludes = matrix_cfg.get("exclude")
+    if isinstance(excludes, list):
+        for entry in excludes:
+            if isinstance(entry, dict):
+                item = {str(k): str(v) for k, v in entry.items()}
+                combos = [c for c in combos if not all(c.get(k) == v for k, v in item.items())]
+    return combos or [{}]
+
+
+def _job_check_names(job_id: str, job: dict[str, Any]) -> tuple[set[str], str]:
+    """Return (exact check-run names, fallback prefix) for one CI job.
+
+    GitHub names each matrix leg's check run after the job ``name:`` with
+    ``${{ matrix.* }}`` interpolated — so comparing against the raw template
+    string never matches ("Tests (offline) — py${{ matrix.python }}" vs the
+    actual "Tests (offline) — py3.13"). The gate therefore expands the matrix
+    itself. The accepted set is the union of the interpolated leg names, the
+    raw display name, and the job id (non-matrix jobs are named after their
+    display name or id; the literal template cannot occur on a real run, but
+    accepting it keeps the historical contract honest). The prefix (literal
+    text before the first expression) is the fallback matcher for legs the
+    expansion could not predict; an empty prefix disables it.
+    """
+    name = str(job.get("name") or job_id)
+    refs = set(_MATRIX_REF.findall(name))
+    if not refs:
+        return {name, job_id}, ""
+    combos = _matrix_combos((job.get("strategy") or {}).get("matrix"))
+    names: set[str] = {name, job_id}
+    for combo in combos:
+        resolved = name
+        for token, value in combo.items():
+            resolved = re.sub(rf"\$\{{\{{\s*matrix\.{re.escape(token)}\s*\}}\}}", value, resolved)
+        if not _MATRIX_REF.search(resolved):
+            names.add(resolved)
+    prefix = _MATRIX_REF.split(name)[0]
+    return names, prefix
+
+
 def verify_release_sha(
     repo: str,
     sha: str,
@@ -83,53 +159,94 @@ def verify_release_sha(
 ) -> dict[str, Any]:
     """Verify every CI job passed on ``sha``; raise ConfigurationError if not.
 
-    Fails closed on: unknown commit, a required job that failed, a required
-    job with no check run (CI never ran), and a job still in progress.
-    Check runs are matched against job ids OR the job's display ``name:``
-    (GitHub names Actions check runs after the display name when set).
+    Fails closed on: unknown commit, a required job (or any matrix leg of
+    one) that failed, has no check run (CI never ran), or is still running.
+    Check runs are matched by expanded job ``name:`` (matrix-aware), falling
+    back to the literal prefix for unpredicted legs and to the job id when
+    no ``name:`` is set.
     """
     import urllib.error
 
     fetch = fetch_json or _github_fetch_json
     required = ci_job_ids(workflow_path)
 
-    # job id -> display name (either may name the check run)
     path = Path(workflow_path) if workflow_path else DEFAULT_WORKFLOW
     data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-    display: dict[str, str] = {}
-    for job_id, job in (data.get("jobs") or {}).items():
-        name = (job or {}).get("name") if isinstance(job, dict) else None
-        if name:
-            display[str(job_id)] = str(name)
+    jobs_cfg = data.get("jobs") or {}
 
     url = f"https://api.github.com/repos/{repo}/commits/{sha}/check-runs"
-    try:
-        payload = fetch(url, token=token) if token else fetch(url)
-    except FileNotFoundError as exc:
-        raise ConfigurationError(
-            f"release governance: commit {sha[:12]} not found on {repo} "
-            f"({exc}); refusing to release an unknown SHA"
-        ) from exc
-    except urllib.error.HTTPError as exc:  # pragma: no cover - network
-        raise ConfigurationError(
-            f"release governance: GitHub API error {exc.code} for {url}"
-        ) from exc
+    # Paginate (default page size is 30 — a SHA with several CI runs exceeds
+    # it, which previously produced phantom "no check run" verdicts) and keep
+    # the LATEST check run per leg name. A commit can carry many runs of the
+    # same job (push + dispatch + re-runs); picking an arbitrary duplicate
+    # let a stale `skipped` opt-in run mask a fresh `success`.
+    all_runs: list[dict[str, Any]] = []
+    page = 1
+    while True:
+        paged = f"{url}?per_page=100&page={page}"
+        try:
+            payload = fetch(paged, token=token) if token else fetch(paged)
+        except FileNotFoundError as exc:
+            raise ConfigurationError(
+                f"release governance: commit {sha[:12]} not found on {repo} "
+                f"({exc}); refusing to release an unknown SHA"
+            ) from exc
+        except urllib.error.HTTPError as exc:  # pragma: no cover - network
+            raise ConfigurationError(
+                f"release governance: GitHub API error {exc.code} for {url}"
+            ) from exc
+        batch = list(payload.get("check_runs", []))
+        all_runs.extend(batch)
+        if len(batch) < 100:
+            break
+        page += 1
 
-    by_name: dict[str, dict[str, Any]] = {
-        str(run.get("name")): run for run in payload.get("check_runs", [])
-    }
+    def _recency(run: dict[str, Any]) -> tuple[int, str]:
+        # Check-run ids are monotonic, so id order is creation order. Ranking
+        # by completed_at instead would let an in-progress re-run (empty
+        # completed_at) lose to an old success and hide behind it.
+        return (int(run.get("id") or 0), str(run.get("completed_at") or ""))
+
+    by_name: dict[str, dict[str, Any]] = {}
+    for run in all_runs:
+        name = str(run.get("name"))
+        if name not in by_name or _recency(run) > _recency(by_name[name]):
+            by_name[name] = run
+
+    matchers: dict[str, tuple[set[str], str]] = {}
+    for job_id in sorted(required):
+        job = jobs_cfg.get(job_id)
+        matchers[job_id] = _job_check_names(job_id, job if isinstance(job, dict) else {})
+
     verified: set[str] = set()
     violations: list[str] = []
     for job_id in sorted(required):
-        run = by_name.get(job_id) or by_name.get(display.get(job_id, ""))
-        if run is None:
+        exact, prefix = matchers[job_id]
+        leg_names = sorted(n for n in by_name if n in exact)
+        if not leg_names and prefix:
+            # Prefix fallback only when unambiguous: another required job
+            # whose exact names or longer prefix also claims these runs
+            # voids the claim (fail closed rather than guess).
+            contested = any(
+                any(n.startswith(prefix) for n in other_exact)
+                or bool(other_prefix and other_prefix.startswith(prefix))
+                for other_id, (other_exact, other_prefix) in matchers.items()
+                if other_id != job_id
+            )
+            if not contested:
+                leg_names = sorted(n for n in by_name if n.startswith(prefix))
+        if not leg_names:
             violations.append(f"'{job_id}' (no check run — CI did not run on this SHA)")
             continue
-        if run.get("status") != "completed":
-            violations.append(f"'{job_id}' (still {run.get('status')})")
-            continue
-        if run.get("conclusion") != "success":
-            violations.append(f"'{job_id}' (conclusion: {run.get('conclusion')})")
+        bad = []
+        for leg in leg_names:
+            run = by_name[leg]
+            if run.get("status") != "completed":
+                bad.append(f"{leg}: still {run.get('status')}")
+            elif run.get("conclusion") != "success":
+                bad.append(f"{leg}: conclusion {run.get('conclusion')}")
+        if bad:
+            violations.append(f"'{job_id}' (" + "; ".join(bad) + ")")
             continue
         verified.add(job_id)
 
