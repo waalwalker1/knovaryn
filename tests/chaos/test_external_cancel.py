@@ -231,3 +231,104 @@ class TestExternalCancel:
         completed = await _EngineRepo(workspace, ids).completed_checkpoints(job.id)
         assert "one" in completed and "two" in completed
         assert "three" not in completed
+
+    async def test_stale_worker_save_cannot_erase_cancel_flag(self, workspace: Workspace) -> None:
+        """Storage invariant (defect 10.8): the cancel flag is monotonic.
+
+        A worker saving its stale in-memory copy (flag=None) must never erase
+        a control-plane cancel stamped on the row after that copy was loaded.
+        This lost update is what let the CI flake end `succeeded`: the stage
+        completed without observing the flag, the checkpoint save wiped it,
+        and the boundary refresh then read NULL.
+        """
+        ids = IdGenerator()
+        proj = await workspace.create_project(slug="cancel-monotonic", display_name="Monotonic")
+        await workspace.add_source(
+            project_id=proj.id,
+            original_name="doc.md",
+            media_type="text/markdown",
+            content=_SAMPLE,
+        )
+        job = await workspace.start_pipeline(project_id=proj.id, task_family_proportions={})
+
+        stamped = datetime.now(UTC)
+
+        async with workspace._db.session() as session, session.begin():
+            from knovaryn.infrastructure.database.repositories import JobRepository
+
+            repo = JobRepository(session, ids)
+            current = await repo.get(job.id)
+            assert current is not None
+            current.cancellation_requested_at = stamped
+            await repo.save(current)
+
+        stale = await _EngineRepo(workspace, ids).get(job.id)
+        assert stale is not None and stale.cancellation_requested_at is not None
+        stale.cancellation_requested_at = None  # the worker never refreshed
+        await _EngineRepo(workspace, ids).save(stale)
+
+        reread = await _EngineRepo(workspace, ids).get(job.id)
+        assert reread is not None
+        assert reread.cancellation_requested_at is not None, (
+            "a stale worker save erased the durable cancel flag"
+        )
+
+    async def test_unobserved_midstage_cancel_still_lands_cancelled(
+        self, workspace: Workspace
+    ) -> None:
+        """Deterministic repro of the CI flake (defect 10.8).
+
+        The stage NEVER polls refresh_cancellation; the external cancel lands
+        mid-stage anyway. The old code wiped the flag with the checkpoint
+        save's stale in-memory copy before the boundary refresh, so the job
+        ended `succeeded`. With the monotonic flag the boundary refresh must
+        see the stamp and land TERMINAL cancelled.
+        """
+        ids = IdGenerator()
+        proj = await workspace.create_project(slug="cancel-nopoll", display_name="NoPoll")
+        await workspace.add_source(
+            project_id=proj.id,
+            original_name="doc.md",
+            media_type="text/markdown",
+            content=_SAMPLE,
+        )
+        job = await workspace.start_pipeline(project_id=proj.id, task_family_proportions={})
+
+        ran: list[str] = []
+
+        async def blind_generate(ctx: Any) -> dict[str, int]:
+            """No refresh_cancellation calls at all — the flag goes unobserved."""
+            ran.append("generate")
+            await asyncio.sleep(0.3)  # window for the external stamp to land
+            return {"examples": 1}
+
+        async def export(ctx: Any) -> dict[str, int]:
+            ran.append("export")
+            return {"exported": 1}
+
+        async def external_cancel() -> None:
+            await asyncio.sleep(0.1)
+            async with workspace._db.session() as session, session.begin():
+                from knovaryn.infrastructure.database.repositories import JobRepository
+
+                repo = JobRepository(session, ids)
+                current = await repo.get(job.id)
+                assert current is not None
+                current.cancellation_requested_at = datetime.now(UTC)
+                await repo.save(current)
+
+        engine = JobEngine(ids=ids, repo=_EngineRepo(workspace, ids), retry_policy=RetryPolicy())
+        repo = _EngineRepo(workspace, ids)
+        claimed = await repo.claim_eligible(worker="worker-a", lease_seconds=300)
+        assert claimed is not None and claimed.id == job.id
+
+        cancel_task = asyncio.create_task(external_cancel())
+        result = await engine.run(
+            claimed, [("generate", blind_generate), ("export", export)], services={}
+        )
+        await cancel_task
+
+        assert result.state == JobState.cancelled, (
+            f"unobserved mid-stage cancel must still end cancelled, got {result.state}"
+        )
+        assert "export" not in ran, "stages after the cancel point must never run"

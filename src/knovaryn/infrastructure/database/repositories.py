@@ -207,6 +207,14 @@ class JobRepository:
         return _job_from_row(row) if row else None
 
     async def save(self, job: schemas.Job) -> None:
+        # The external-cancel flag is MONOTONIC at the storage layer: once
+        # stamped on the row, only a writer that carries the stamp may move it.
+        # A worker saving its stale in-memory copy (cancellation_requested_at
+        # is None — it never refreshed) must not erase a control-plane cancel
+        # that landed mid-stage; that lost update let a job finish `succeeded`
+        # after cancellation was requested (chaos flake, 2026-08-21). Every
+        # flow treats the flag as write-once, so COALESCE cannot regress any
+        # legitimate transition.
         await self._s.execute(
             update(m.JobDB)
             .where(m.JobDB.id == job.id)
@@ -219,7 +227,9 @@ class JobRepository:
                 lease_expires_at=job.lease_expires_at,
                 heartbeat_at=job.heartbeat_at,
                 attempt_count=job.attempt_count,
-                cancellation_requested_at=job.cancellation_requested_at,
+                cancellation_requested_at=func.coalesce(
+                    m.JobDB.cancellation_requested_at, job.cancellation_requested_at
+                ),
                 estimated_cost=job.estimated_cost,
                 actual_cost=job.actual_cost,
                 started_at=job.started_at,
