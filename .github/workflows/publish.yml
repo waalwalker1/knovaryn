@@ -26,8 +26,8 @@ jobs:
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.11"
       - name: Install dev + mcp extras
@@ -40,8 +40,8 @@ jobs:
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.11"
       - name: Check tag == project version
@@ -63,8 +63,8 @@ jobs:
       contents: read
       checks: read
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.11"
       - name: Verify all required CI checks passed on the release SHA
@@ -78,13 +78,13 @@ jobs:
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.11"
       - name: Build distributions
         run: uv build
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: dist
           path: dist/
@@ -102,12 +102,12 @@ jobs:
     permissions:
       contents: write   # upload files to the release
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
         with:
           name: dist
           path: dist/
-      - uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.11"
       - name: Generate detached SHA256SUMS
@@ -118,7 +118,7 @@ jobs:
       - name: Generate SBOM from the locked resolution
         run: |
           uv export --format requirements-txt --no-hashes --no-dev -o requirements.txt
-          uv run --with cyclonedx-bom cyclonedx-py -i requirements.txt -o sbom.cdx.json --format json
+          uv run --with cyclonedx-bom cyclonedx-py requirements --pyproject pyproject.toml --of JSON -o sbom.cdx.json requirements.txt
       - name: Attach SHA256SUMS + SBOM to the release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -134,7 +134,7 @@ jobs:
       id-token: write   # OIDC trusted publishing — NO stored token/password
       contents: read
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: dist
           path: dist/

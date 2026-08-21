@@ -28,11 +28,11 @@ jobs:
     name: Secret scan (gitleaks)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: Gitleaks
-        uses: gitleaks/gitleaks-action@v2
+        uses: gitleaks/gitleaks-action@v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -40,8 +40,8 @@ jobs:
     name: Dependency + static scan
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.13"
       - name: Install deps
@@ -58,7 +58,7 @@ jobs:
     name: Container + IaC (Trivy)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Build image
         run: docker build -f deploy/docker/Dockerfile -t knovaryn:scan .
       # The upstream `aquasecurity/trivy-action` internally references the
@@ -81,19 +81,19 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.11"
       - name: Generate SBOM from uv.lock
         run: |
           uv export --format requirements-txt --no-hashes -o requirements.txt
-          uv run --with cyclonedx-bom cyclonedx-py -i requirements.txt -o sbom.cdx.json --format json || true
+          uv run --with cyclonedx-bom cyclonedx-py requirements --pyproject pyproject.toml --of JSON -o sbom.cdx.json requirements.txt
       - uses: anchore/sbom-action@v0
         with:
           path: ./
       - name: Upload SBOM artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: sbom
           path: sbom.cdx.json
