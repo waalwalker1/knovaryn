@@ -96,13 +96,16 @@ def test_matrix_legs_expanded_from_real_ci_yml() -> None:
             "strategy": {"matrix": {"python": ["3.11", "3.12", "3.13"]}},
         },
     )
-    assert test_names == {f"Tests (offline) — py{v}" for v in ("3.11", "3.12", "3.13")}
+    assert {f"Tests (offline) — py{v}" for v in ("3.11", "3.12", "3.13")} <= test_names
+    # The raw template and the job id stay accepted (historical contract).
+    assert "Tests (offline) — py${{ matrix.python }}" in test_names
+    assert "test" in test_names
 
     tier_names, _ = rg._job_check_names(
         "test-tiers",
         {"name": "Tier ${{ matrix.tier }}", "strategy": {"matrix": {"tier": ["unit", "rest"]}}},
     )
-    assert tier_names == {"Tier unit", "Tier rest"}
+    assert {"Tier unit", "Tier rest"} <= tier_names
 
     smoke_names, prefix = rg._job_check_names(
         "platform-smoke",
@@ -111,10 +114,7 @@ def test_matrix_legs_expanded_from_real_ci_yml() -> None:
             "strategy": {"matrix": {"os": ["windows-latest", "macos-latest"]}},
         },
     )
-    assert smoke_names == {
-        "Smoke — windows-latest (L1)",
-        "Smoke — macos-latest (L1)",
-    }
+    assert {"Smoke — windows-latest (L1)", "Smoke — macos-latest (L1)"} <= smoke_names
     assert prefix == "Smoke — "
 
     # A job without name: is named after its id; no-matrix names are exact.

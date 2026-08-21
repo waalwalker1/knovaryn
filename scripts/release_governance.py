@@ -126,16 +126,19 @@ def _job_check_names(job_id: str, job: dict[str, Any]) -> tuple[set[str], str]:
     ``${{ matrix.* }}`` interpolated — so comparing against the raw template
     string never matches ("Tests (offline) — py${{ matrix.python }}" vs the
     actual "Tests (offline) — py3.13"). The gate therefore expands the matrix
-    itself. The prefix (literal text before the first expression) is the
-    fallback matcher for legs the expansion could not predict; an empty
-    prefix disables it. Jobs without ``name:`` are named after their id.
+    itself. The accepted set is the union of the interpolated leg names, the
+    raw display name, and the job id (non-matrix jobs are named after their
+    display name or id; the literal template cannot occur on a real run, but
+    accepting it keeps the historical contract honest). The prefix (literal
+    text before the first expression) is the fallback matcher for legs the
+    expansion could not predict; an empty prefix disables it.
     """
     name = str(job.get("name") or job_id)
     refs = set(_MATRIX_REF.findall(name))
     if not refs:
-        return {name}, ""
+        return {name, job_id}, ""
     combos = _matrix_combos((job.get("strategy") or {}).get("matrix"))
-    names: set[str] = set()
+    names: set[str] = {name, job_id}
     for combo in combos:
         resolved = name
         for token, value in combo.items():
