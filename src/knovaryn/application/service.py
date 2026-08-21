@@ -38,14 +38,9 @@ from ..pipeline.planner import plan as plan_dataset
 from ..pipeline.quality.artifact import diagnose_example
 from ..pipeline.quality.reports import build_quality_report
 from ..pipeline.quality.validators import (
-    AnswerabilityValidator,
-    CompletenessValidator,
-    FormatValidator,
-    GroundingValidator,
-    RefusalValidator,
-    SchemaValidator,
     ValidatorContext,
     assemble_decision,
+    default_validators,
 )
 from ..pipeline.split import assign_splits, check_split_integrity
 
@@ -343,16 +338,11 @@ class ProjectService:
     async def _validate(
         self, ex: TrainingExample, ctx: ValidatorContext, *, is_preference: bool
     ) -> Any:
-        grounding = await GroundingValidator().assess(ex, ctx)
-        complete = await CompletenessValidator().assess(ex, ctx)
-        fmt = await FormatValidator().assess(ex, ctx)
-        refusal = await RefusalValidator().assess(ex, ctx)
-        schema = await SchemaValidator().assess(ex, ctx)
-        answerability = await AnswerabilityValidator().assess(ex, ctx)
+        decisions = [await v.assess(ex, ctx) for v in default_validators()]
         diag = diagnose_example(ex)
         artifact = _artifact_assessment(ex, diag)
         overall = assemble_decision(
-            [grounding, complete, fmt, refusal, schema, answerability, artifact],
+            [*decisions, artifact],
             example_id=ex.id,
             is_preference=is_preference,
         )

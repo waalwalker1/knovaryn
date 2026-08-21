@@ -577,18 +577,143 @@ def check_unit_mismatch(claim_text: str, evidence_text: str) -> list[str]:
     return reasons
 
 
+#: Words capitalized by grammar or position, never proper nouns. Without this
+#: stoplist the entity check flagged sentence openers ("According to the
+#: material: ...") as fabricated entities and contradicted faithful answers —
+#: caught the moment the check was wired into the acceptance path and run
+#: against the offline provider corpus.
+_DISCOURSE_WORDS: frozenset[str] = frozenset(
+    [
+        "a",
+        "according",
+        "additionally",
+        "all",
+        "also",
+        "an",
+        "any",
+        "as",
+        "at",
+        "above",
+        "after",
+        "before",
+        "because",
+        "below",
+        "both",
+        "but",
+        "by",
+        "during",
+        "each",
+        "every",
+        "finally",
+        "first",
+        "following",
+        "for",
+        "from",
+        "further",
+        "furthermore",
+        "given",
+        "hence",
+        "here",
+        "he",
+        "her",
+        "hers",
+        "him",
+        "his",
+        "how",
+        "i",
+        "if",
+        "in",
+        "into",
+        "it",
+        "its",
+        "let",
+        "lets",
+        "may",
+        "might",
+        "moreover",
+        "next",
+        "no",
+        "not",
+        "note",
+        "of",
+        "on",
+        "once",
+        "one",
+        "only",
+        "or",
+        "other",
+        "our",
+        "out",
+        "over",
+        "per",
+        "second",
+        "she",
+        "should",
+        "since",
+        "so",
+        "some",
+        "such",
+        "than",
+        "that",
+        "the",
+        "their",
+        "them",
+        "then",
+        "there",
+        "these",
+        "they",
+        "third",
+        "this",
+        "those",
+        "thus",
+        "to",
+        "therefore",
+        "under",
+        "until",
+        "up",
+        "upon",
+        "us",
+        "using",
+        "we",
+        "were",
+        "what",
+        "when",
+        "where",
+        "whether",
+        "which",
+        "while",
+        "who",
+        "whom",
+        "whose",
+        "why",
+        "will",
+        "with",
+        "within",
+        "without",
+        "you",
+        "your",
+    ]
+)
+
+
 def check_unsupported_entities(claim_text: str, evidence_text: str) -> list[str]:
     """Check for named entities in claim that don't appear in evidence.
+
+    Candidate entities are capitalized tokens (Title Case, ALLCAPS, or
+    PascalCase) whose lowercase form is not a discourse word — sentence
+    position alone does not exempt a token, so a fabricated sentence-initial
+    name ("Bob approved Carol") is still caught, while grammatical capitals
+    ("According", "The") never are.
 
     Returns list of unsupported entity names.
     """
     unsupported: list[str] = []
     evidence_lower = evidence_text.lower()
 
-    # Extract capitalized words (potential proper nouns) — words containing
-    # uppercase letters (camelCase, PascalCase, ALLCAPS, or Title Case)
     for match in re.finditer(r"\b[A-Z][A-Za-z0-9]*\b", claim_text):
         entity = match.group(0)
+        if entity.lower() in _DISCOURSE_WORDS:
+            continue
         if entity.lower() not in evidence_lower:
             unsupported.append(entity)
 

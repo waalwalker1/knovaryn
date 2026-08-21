@@ -61,14 +61,9 @@ from ..infrastructure.models.profiles import DEFAULT_RUNTIME_PROFILE, build_gate
 from ..pipeline.jobs.engine import JobEngine
 from ..pipeline.quality.reports import build_quality_report
 from ..pipeline.quality.validators import (
-    AnswerabilityValidator,
-    CompletenessValidator,
-    FormatValidator,
-    GroundingValidator,
-    RefusalValidator,
-    SchemaValidator,
     ValidatorContext,
     assemble_decision,
+    default_validators,
 )
 from .service import ProjectService, _artifact_assessment, _split_bytes
 
@@ -652,15 +647,7 @@ class Workspace:
 
                 diag = diagnose_example(ex)
                 artifact = _artifact_assessment(ex, diag)
-                decisions = [
-                    await GroundingValidator().assess(ex, ctx),
-                    await CompletenessValidator().assess(ex, ctx),
-                    await FormatValidator().assess(ex, ctx),
-                    await RefusalValidator().assess(ex, ctx),
-                    await SchemaValidator().assess(ex, ctx),
-                    await AnswerabilityValidator().assess(ex, ctx),
-                    artifact,
-                ]
+                decisions = [await v.assess(ex, ctx) for v in default_validators()] + [artifact]
                 overall = assemble_decision(
                     decisions, example_id=ex.id, is_preference=(ex.topology.value == "preference")
                 )

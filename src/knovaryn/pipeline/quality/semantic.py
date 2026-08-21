@@ -201,7 +201,10 @@ def extract_atomic_claims(text: str) -> list[AtomicClaim]:
         claim_type = "proposition"
         if any(m in sentence.lower() for m in ["causes", "cause", "result"]) and subj and rel:
             claim_type = "causal"
-        elif any(m in sentence.lower() for m in _COMPARISON_MARKERS):
+        # Use the WIDE marker set so extraction agrees with determine_claim_type:
+        # the narrow set missed "higher/lower/smaller than", typing those claims
+        # entity_role despite carrying a comparison relation.
+        elif any(m in sentence.lower() for m in _COMPARISON_MARKERS_WIDE):
             claim_type = "comparison"
         elif numbers:
             claim_type = "numeric"

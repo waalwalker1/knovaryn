@@ -19,6 +19,8 @@ from ...domain.schemas import (
     TrainingExample,
     Verification,
 )
+from .claims import ClaimVerdict
+from .semantic import DeterministicSemanticVerifier, extract_atomic_claims
 
 
 @dataclass
@@ -310,6 +312,67 @@ class AnswerabilityValidator(BaseValidator):
         )
 
 
+class SemanticConsistencyValidator(BaseValidator):
+    """Semantic consistency (defect 4.1): atomic claims in the assistant
+    answer must not contradict the cited evidence — no causal-direction or
+    subject/object reversals, no polarity flips, no number/unit mismatches,
+    no unsupported entities.
+
+    The deterministic checks (claims.py via semantic.py) originally shipped
+    as a library with direct tests but were never wired into this acceptance
+    path — the pipeline could still accept a reversed claim. The coverage
+    gate exposed the orphans; this validator is the wire-in: every example's
+    answer is now claim-checked against its cited evidence, and any
+    contradicted claim fails this critical dimension (assemble_decision
+    rejects).
+    """
+
+    name = "semantic_consistency"
+    version = "1"
+
+    def __init__(self) -> None:
+        self._verifier = DeterministicSemanticVerifier()
+
+    async def assess(self, example: TrainingExample, ctx: ValidatorContext) -> QualityAssessment:
+        answer_text = _assistant_text(example)
+        # Evidence-scoped like GroundingValidator: only the spans this example
+        # cites may confirm or contradict its claims.
+        cited = [ctx.source_texts[s] for s in example.source_span_ids if s in ctx.source_texts]
+        evidence_text = " ".join(cited)
+        if not evidence_text.strip():
+            # mirror GroundingValidator fail-closed: nothing cited = nothing
+            # verifiable (grounding independently reports no_cited_evidence)
+            score, reasons = 0.0, ["no_cited_evidence"]
+        elif not answer_text.strip():
+            score, reasons = 0.0, ["empty_answer"]
+        else:
+            claims = extract_atomic_claims(answer_text)
+            claim_assessments = await self._verifier.assess_claims(
+                claims, evidence_text, candidate_answer=answer_text
+            )
+            reasons = sorted(
+                {
+                    rc
+                    for ca in claim_assessments
+                    if ca.verdict == ClaimVerdict.contradicted
+                    for rc in ca.reason_codes
+                }
+            )
+            score = 0.0 if reasons else 1.0
+        return QualityAssessment(
+            id="",
+            example_id=example.id,
+            validator_name=self.name,
+            validator_version=self.version,
+            policy_version=ctx.policy_version,
+            status=_status(score),
+            verify_state=_verify_state(score, 0.9),
+            score=score,
+            reason_codes=reasons,
+            concise_rationale=f"semantic_consistency score {score:.2f}",
+        )
+
+
 class PreferenceValidator(BaseValidator):
     """C1/D5: preference-pair quality — a genuine, non-fabricated signal.
 
@@ -396,6 +459,25 @@ class PreferenceValidator(BaseValidator):
         )
 
 
+def default_validators() -> list[BaseValidator]:
+    """The canonical validator set applied to every example.
+
+    Single source of truth so the product call sites (workspace quality
+    report, service pipeline) and the product-path tests cannot drift apart:
+    a validator added here runs everywhere, and a test exercising this list
+    exercises exactly what production runs.
+    """
+    return [
+        GroundingValidator(),
+        CompletenessValidator(),
+        FormatValidator(),
+        RefusalValidator(),
+        SchemaValidator(),
+        AnswerabilityValidator(),
+        SemanticConsistencyValidator(),
+    ]
+
+
 def assemble_decision(
     assessments: list[QualityAssessment],
     *,
@@ -439,7 +521,16 @@ def assemble_decision(
     # set of dimension keys actually certified (after the completeness ->
     # instruction_fulfillment alias above); a dimension that was never produced
     # OR returned unverified is not certifiable (fail-closed).
-    critical = ["grounding", "schema", "answerability", "instruction_fulfillment"]
+    # semantic_consistency is critical (defect 4.1): a claim that reverses or
+    # contradicts its cited evidence must force rejection, not just lower the
+    # average.
+    critical = [
+        "grounding",
+        "schema",
+        "answerability",
+        "instruction_fulfillment",
+        "semantic_consistency",
+    ]
     present = set(verify.keys())
     failed_critical = [d for d in critical if d in present and verify.get(d) == Verification.failed]
     unverified_critical = [
