@@ -45,6 +45,7 @@ plugins:
 
 markdown_extensions:
   - admonition
+  - attr_list  # {: width="100%"} on markdown images (raw-HTML srcs are not rewritten at build)
   - pymdownx.details
   - pymdownx.superfences
   - pymdownx.highlight

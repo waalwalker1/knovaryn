@@ -14,9 +14,7 @@ behind a durable pipeline engine. Four interfaces — CLI, MCP server, REST + we
 console, and the Python SDK — all drive the *same* services, so a job started
 from the CLI is visible everywhere.
 
-<p align="center">
-  <img src="../assets/system-architecture.png" alt="Knovaryn system architecture" width="100%"/>
-</p>
+![Knovaryn system architecture](../assets/system-architecture.png){: width="100%" }
 
 ```mermaid
 flowchart LR
@@ -89,9 +87,7 @@ flowchart LR
 
 ## 2. End-to-end pipeline flow — every example traced to its source
 
-<p align="center">
-  <img src="../assets/pipeline-flow.png" alt="Knovaryn pipeline flow" width="100%"/>
-</p>
+![Knovaryn pipeline flow](../assets/pipeline-flow.png){: width="100%" }
 
 ```mermaid
 flowchart LR
@@ -167,9 +163,7 @@ heartbeats, idempotency keys, checkpoint artifacts, and budget caps. A crash,
 kill, or timeout just expires the lease and **resumes from the last checkpoint**
 — no re-generation of paid work.
 
-<p align="center">
-  <img src="../assets/durable-jobs.png" alt="Knovaryn durable job lifecycle" width="100%"/>
-</p>
+![Knovaryn durable job lifecycle](../assets/durable-jobs.png){: width="100%" }
 
 ```mermaid
 flowchart LR
@@ -213,9 +207,7 @@ flowchart LR
 From an empty workspace to an exported dataset version over the MCP tools —
 exactly what a Claude/Cursor-style agent sees.
 
-<p align="center">
-  <img src="../assets/mcp-session.png" alt="Typical MCP agent session" width="100%"/>
-</p>
+![Typical MCP agent session](../assets/mcp-session.png){: width="100%" }
 
 ```mermaid
 flowchart TD
@@ -260,9 +252,7 @@ flowchart TD
 Offline-first, secrets from the environment only, tenant-scoped remote access,
 and nothing published unless explicitly approved.
 
-<p align="center">
-  <img src="../assets/security.png" alt="Knovaryn security and privacy flow" width="100%"/>
-</p>
+![Knovaryn security and privacy flow](../assets/security.png){: width="100%" }
 
 ```mermaid
 flowchart TD
@@ -333,9 +323,7 @@ flowchart TD
 
 ## 6. Why it's useful — problem → value
 
-<p align="center">
-  <img src="../assets/value-proposition.png" alt="Knovaryn value proposition" width="100%"/>
-</p>
+![Knovaryn value proposition](../assets/value-proposition.png){: width="100%" }
 
 ```mermaid
 flowchart TD

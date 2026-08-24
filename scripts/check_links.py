@@ -122,11 +122,35 @@ def _html_ids(html_path: Path) -> set[str]:
     return parser.ids
 
 
+def _site_url_prefix(root: Path) -> str:
+    """Path component of ``site_url`` from mkdocs.yml (e.g. ``/knovaryn/``).
+
+    The 404 page (and anything else that cannot know its own depth, such as
+    Material's search fallbacks) links with *absolute* URLs prefixed by the
+    site_url path. On the deployed site those resolve; locally the built
+    site/ tree has no such prefix directory, so the resolver must strip it.
+    """
+    cfg = root / "mkdocs.yml"
+    try:
+        m = re.search(r"^site_url:\s*(\S+)\s*$", cfg.read_text(encoding="utf-8"), re.M)
+    except OSError:
+        return ""
+    if not m:
+        return ""
+    rest = m.group(1).split("://", 1)[-1]  # drop scheme
+    _, _, path = rest.partition("/")  # drop host
+    path = path.strip("/")
+    if not path:
+        return "/"
+    return "/" + path + "/"
+
+
 def check(root: Path, site: Path | None) -> tuple[list[str], int]:
     problems: list[str]
     problems = []
     external = 0
     scanned = 0
+    site_prefix = _site_url_prefix(root)
 
     def resolve(base_file: Path, target: str) -> Path | None:
         """Resolve an internal target to a repo/virtual-root file, or None."""
@@ -134,6 +158,11 @@ def check(root: Path, site: Path | None) -> tuple[list[str], int]:
             # MkDocs absolute-style link: try docs/ then repo root then site root.
             rel = target.lstrip("/")
             candidates = [root / "docs" / rel, root / rel, (site / rel) if site else None]
+            # theme-generated absolute URLs carry the site_url path prefix
+            # (e.g. 404.html → /knovaryn/guides/quickstart/); strip it and try
+            # the unprefixed location inside the built site tree as well.
+            if site is not None and site_prefix != "/" and target.startswith(site_prefix):
+                candidates.append(site / rel[len(site_prefix.lstrip("/")) :])
             for c in candidates:
                 if c is not None and c.exists():
                     return c
@@ -177,9 +206,7 @@ def check(root: Path, site: Path | None) -> tuple[list[str], int]:
                 return
             resolved = resolve(md, path_part)
             if resolved is None:
-                problems.append(
-                    f"{md.relative_to(root)}: {kind} target not found: {t}"
-                )
+                problems.append(f"{md.relative_to(root)}: {kind} target not found: {t}")
                 return
             if frag:
                 if resolved.suffix == ".html":
@@ -214,15 +241,11 @@ def check(root: Path, site: Path | None) -> tuple[list[str], int]:
                 path_part, _, frag = t.partition("#")
                 if not path_part:
                     if frag and frag not in page_ids:
-                        problems.append(
-                            f"{html.relative_to(site)}: missing fragment #{frag}"
-                        )
+                        problems.append(f"{html.relative_to(site)}: missing fragment #{frag}")
                     return
                 resolved = resolve(html, path_part)
                 if resolved is None:
-                    problems.append(
-                        f"{html.relative_to(site)}: {kind} target not found: {t}"
-                    )
+                    problems.append(f"{html.relative_to(site)}: {kind} target not found: {t}")
                     return
                 if frag and resolved.suffix == ".html":
                     ids = page_ids if resolved == html else _html_ids(resolved)
@@ -253,14 +276,15 @@ def main() -> int:
         for p in sorted(set(problems)):
             print(f"  - {p}")
         print(
-            "\nExternal URLs are checked separately (informational): "
-            f"{external} encountered.",
+            f"\nExternal URLs are checked separately (informational): {external} encountered.",
             file=sys.stderr,
         )
         return 1
 
-    print(f"link check OK: all internal links/fragments/images resolve "
-          f"({external} external URLs deferred to markdown-link-check)")
+    print(
+        f"link check OK: all internal links/fragments/images resolve "
+        f"({external} external URLs deferred to markdown-link-check)"
+    )
     return 0
 
 

@@ -68,10 +68,12 @@ class TestNoPrivateBuildDisclosure:
         (rootfs / "app").mkdir(parents=True)
         (rootfs / "app" / "card.md").write_text("# dataset card\n", encoding="utf-8")
         dirty = rootfs / "app" / "leak.md"
-        # literal split across adjacent strings: this FILE is itself scanned
-        # by the tracked-tree gate, and the raw path shape must exist only in
-        # the runtime fixture value, never in committed source text
-        dirty.write_text("contact: /Users/someone/private\n", encoding="utf-8")
+        # literal split via EXPLICIT concatenation (`+`, not adjacency): this
+        # FILE is itself scanned by the tracked-tree gate, and the raw path
+        # shape must exist only in the runtime fixture value, never in committed
+        # source text. Adjacent-string splitting is NOT enough — ruff format
+        # merges implicit concatenation and would re-introduce the pattern.
+        dirty.write_text("contact: /Use" + "rs/someone/private\n", encoding="utf-8")
         monkeypatch.setenv(audit.CONTAINER_ROOTFS_ENV, str(rootfs))
 
         results = collect_all_findings()
