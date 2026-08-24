@@ -4,14 +4,14 @@
 # offline fake-provider demo and REST/MCP interfaces run without heavy extras).
 # Tag a different base or add `--extras docling` for full parsing.
 
+FROM python:3.11-slim AS base
+
 # OCI labels (defect 3.5): version is kept in lockstep with
 # knovaryn.__version__ by scripts/check_version_sync.py.
 LABEL org.opencontainers.image.title="Knovaryn" \
       org.opencontainers.image.version="0.2.1" \
       org.opencontainers.image.licenses="Apache-2.0" \
       org.opencontainers.image.source="https://github.com/waalwalker1/knovaryn"
-
-FROM python:3.11-slim AS base
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \

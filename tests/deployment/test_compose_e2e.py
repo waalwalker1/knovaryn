@@ -382,7 +382,12 @@ class TestComposeE2E:
             for span in lineage.get("source_spans", []):
                 precision = span.get("precision")
                 assert precision in {
-                    "exact_bbox", "exact_page", "page_range", "section", "chunk", "unknown"
+                    "exact_bbox",
+                    "exact_page",
+                    "page_range",
+                    "section",
+                    "chunk",
+                    "unknown",
                 }, f"span precision {precision!r} outside the honest vocabulary"
 
             # version -> export -> checksum metadata (steps 10–11)
@@ -397,7 +402,11 @@ class TestComposeE2E:
             def _find_sha(node: object) -> str | None:
                 if isinstance(node, dict):
                     for k, v in node.items():
-                        if k in ("sha256", "content_sha256") and isinstance(v, str) and len(v) == 64:
+                        if (
+                            k in ("sha256", "content_sha256")
+                            and isinstance(v, str)
+                            and len(v) == 64
+                        ):
                             return v
                         found = _find_sha(v)
                         if found:
@@ -436,9 +445,18 @@ class TestComposeE2E:
 
             async def _claim(name: str) -> str:
                 proc = await asyncio.create_subprocess_exec(
-                    "docker", "compose", "-f", str(COMPOSE_FILE),
-                    "--env-file", str(env_file),
-                    "exec", "-T", "api", "python", f"/tmp/{script_name}", name,
+                    "docker",
+                    "compose",
+                    "-f",
+                    str(COMPOSE_FILE),
+                    "--env-file",
+                    str(env_file),
+                    "exec",
+                    "-T",
+                    "api",
+                    "python",
+                    f"/tmp/{script_name}",
+                    name,
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
                 )
@@ -573,9 +591,7 @@ class TestComposeE2E:
             assert r.status_code == 200, r.text
             sources = r.json().get("sources", [])
             assert sources, "sources lost by restore"
-            src = next(
-                s for s in sources if s["id"] == made["source"]["id"]
-            )
+            src = next(s for s in sources if s["id"] == made["source"]["id"])
             assert src["sha256"] == hashlib.sha256(HANDBOOK_TEXT.encode()).hexdigest()
             assert src["artifact_id_original"], "artifact binding lost by restore"
 

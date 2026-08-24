@@ -37,9 +37,7 @@ def _block(path: Path, tag: str) -> str:
     could never be equal to what the renderer emits.
     """
     text = path.read_text(encoding="utf-8")
-    pattern = re.compile(
-        re.escape(gen._begin(tag)) + r"(.*?)" + re.escape(gen._end(tag)), re.S
-    )
+    pattern = re.compile(re.escape(gen._begin(tag)) + r"(.*?)" + re.escape(gen._end(tag)), re.S)
     m = pattern.search(text)
     assert m, f"missing {tag} markers in {path}"
     return m.group(0).strip()
@@ -72,22 +70,22 @@ def test_claim_matrix_matches_registry() -> None:
 
 
 def test_export_formats_block_matches_registry() -> None:
-    assert gen.render_export_formats().strip() == _block(
-        REF / "exporters.md", "EXPORT FORMATS"
-    )
+    assert gen.render_export_formats().strip() == _block(REF / "exporters.md", "EXPORT FORMATS")
 
 
 def test_config_defaults_block_matches_settings() -> None:
-    assert gen.render_config_defaults().strip() == _block(
-        REF / "config.md", "CONFIG DEFAULTS"
-    )
+    assert gen.render_config_defaults().strip() == _block(REF / "config.md", "CONFIG DEFAULTS")
 
 
 def test_no_phantom_format_names_survive_in_exporters() -> None:
     """The old hand-written table advertised hyphenated formats that never existed."""
     text = (REF / "exporters.md").read_text(encoding="utf-8")
-    for phantom in ("canonical-jsonl", "trl-conversational", "llamafactory-sharegpt",
-                    "openai-chat"):
+    for phantom in (
+        "canonical-jsonl",
+        "trl-conversational",
+        "llamafactory-sharegpt",
+        "openai-chat",
+    ):
         assert f"`{phantom}`" not in text, f"phantom export format {phantom!r} is back"
 
 

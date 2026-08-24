@@ -18,7 +18,7 @@ import asyncio
 import pytest
 from sqlalchemy import text
 
-from knovaryn.domain.schemas import SpanPrecision, SourceSpan
+from knovaryn.domain.schemas import SourceSpan, SpanPrecision
 from knovaryn.infrastructure.database.repositories import SpanRepository
 from knovaryn.infrastructure.database.session import Database
 
@@ -42,22 +42,26 @@ def upgraded_db(tmp_path):
 
         async def make_legacy():
             async with legacy.engine.begin() as conn:
-                await conn.execute(text(
-                    "CREATE TABLE source_spans ("
-                    " id VARCHAR(64) PRIMARY KEY,"
-                    " parsed_document_id VARCHAR(64) NOT NULL,"
-                    " page_number INTEGER,"
-                    " section_path VARCHAR(1024),"
-                    " element_reference VARCHAR(255),"
-                    " character_start INTEGER,"
-                    " character_end INTEGER,"
-                    " quoted_text TEXT,"
-                    " sha256 VARCHAR(64) NOT NULL)"
-                ))
-                await conn.execute(text(
-                    "INSERT INTO source_spans VALUES "
-                    "('span-legacy','doc-1',3,'','elem-9',10,20,'quoted','abc')"
-                ))
+                await conn.execute(
+                    text(
+                        "CREATE TABLE source_spans ("
+                        " id VARCHAR(64) PRIMARY KEY,"
+                        " parsed_document_id VARCHAR(64) NOT NULL,"
+                        " page_number INTEGER,"
+                        " section_path VARCHAR(1024),"
+                        " element_reference VARCHAR(255),"
+                        " character_start INTEGER,"
+                        " character_end INTEGER,"
+                        " quoted_text TEXT,"
+                        " sha256 VARCHAR(64) NOT NULL)"
+                    )
+                )
+                await conn.execute(
+                    text(
+                        "INSERT INTO source_spans VALUES "
+                        "('span-legacy','doc-1',3,'','elem-9',10,20,'quoted','abc')"
+                    )
+                )
 
         run(make_legacy())
     finally:
@@ -112,10 +116,17 @@ def test_migrated_table_accepts_full_precision_spans(upgraded_db: Database) -> N
                 id="span-full-precision",
                 parsed_document_id="doc-2",
                 page_number=4,
-                bounding_boxes=[{
-                    "page": 4, "left": 10.0, "top": 20.0, "right": 110.0,
-                    "bottom": 40.0, "coord_origin": "TOPLEFT", "coord_system": "page",
-                }],
+                bounding_boxes=[
+                    {
+                        "page": 4,
+                        "left": 10.0,
+                        "top": 20.0,
+                        "right": 110.0,
+                        "bottom": 40.0,
+                        "coord_origin": "TOPLEFT",
+                        "coord_system": "page",
+                    }
+                ],
                 quoted_text="torqued to 5 N·m",
                 sha256="deadbeef",
             ).with_derived_precision()

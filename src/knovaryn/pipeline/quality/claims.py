@@ -361,9 +361,9 @@ def _extract_subject(text: str) -> str | None:
 
 
 _ROLE_TRIPLE = re.compile(
-    r"\b([A-Z][A-Za-z0-9]*)"          # first entity
+    r"\b([A-Z][A-Za-z0-9]*)"  # first entity
     r"((?:\s+[a-z][a-zA-Z-]*){1,4})"  # short lowercase predicate
-    r"\s+([A-Z][A-Za-z0-9]*)\b"       # second entity
+    r"\s+([A-Z][A-Za-z0-9]*)\b"  # second entity
 )
 
 
@@ -400,11 +400,7 @@ def check_entity_role_reversal(claim_text: str, evidence_text: str) -> bool:
 
     for c_first, c_verb, c_second in triples(claim_text):
         for e_first, e_verb, e_second in triples(evidence_text):
-            if (
-                c_verb == e_verb
-                and c_first == e_second
-                and c_second == e_first
-            ):
+            if c_verb == e_verb and c_first == e_second and c_second == e_first:
                 return True
     return _exchange_reversal(claim_text, evidence_text)
 
@@ -412,12 +408,40 @@ def check_entity_role_reversal(claim_text: str, evidence_text: str) -> bool:
 # Words that may appear inside the exchanged middle but cannot anchor it —
 # determiners, prepositions, auxiliaries. The anchor must be a content word,
 # which in this shape is the transitive verb (or verb + object).
-_EXCHANGE_NON_ANCHORS = frozenset({
-    "the", "a", "an", "to", "by", "with", "from", "for", "into", "onto",
-    "over", "under", "after", "before", "during", "is", "are", "was",
-    "were", "be", "been", "being", "its", "their", "his", "her", "each",
-    "every", "and", "or",
-})
+_EXCHANGE_NON_ANCHORS = frozenset(
+    {
+        "the",
+        "a",
+        "an",
+        "to",
+        "by",
+        "with",
+        "from",
+        "for",
+        "into",
+        "onto",
+        "over",
+        "under",
+        "after",
+        "before",
+        "during",
+        "is",
+        "are",
+        "was",
+        "were",
+        "be",
+        "been",
+        "being",
+        "its",
+        "their",
+        "his",
+        "her",
+        "each",
+        "every",
+        "and",
+        "or",
+    }
+)
 
 
 def _exchange_reversal(claim_text: str, evidence_text: str) -> bool:
@@ -431,11 +455,7 @@ def _exchange_reversal(claim_text: str, evidence_text: str) -> bool:
     """
 
     def tokenize(text: str) -> list[str]:
-        return [
-            w.strip(".,;:!?'\"()").lower()
-            for w in text.split()
-            if w.strip(".,;:!?'\"()")
-        ]
+        return [w.strip(".,;:!?'\"()").lower() for w in text.split() if w.strip(".,;:!?'\"()")]
 
     ct = tokenize(claim_text)
     n = len(ct)
@@ -444,9 +464,9 @@ def _exchange_reversal(claim_text: str, evidence_text: str) -> bool:
 
     def matches(et: list[str]) -> bool:
         # claim = pre + mid + suf ; evidence == suf + mid + pre
-        for i in range(1, min(5, n - 1)):          # leading noun phrase
-            for m in range(1, min(7, n - i)):       # middle (verb phrase)
-                pre, mid, suf = ct[:i], ct[i:i + m], ct[i + m:]
+        for i in range(1, min(5, n - 1)):  # leading noun phrase
+            for m in range(1, min(7, n - i)):  # middle (verb phrase)
+                pre, mid, suf = ct[:i], ct[i : i + m], ct[i + m :]
                 if not suf or pre == suf:
                     continue
                 if et != suf + mid + pre:
@@ -694,9 +714,8 @@ def check_number_mismatch(claim_text: str, evidence_text: str) -> list[str]:
                 # Skip empty-unit comparison if there's no shared context
                 if not cn.unit and not en.unit and not common_context:
                     continue
-                if (
-                    abs(cn.value - en.value) > 0.001
-                    and not _conversion_equivalent(claim_q, evidence_q, cn.value, en.value)
+                if abs(cn.value - en.value) > 0.001 and not _conversion_equivalent(
+                    claim_q, evidence_q, cn.value, en.value
                 ):
                     reasons.append(f"number_mismatch:{cn.raw}:{cn.value}:{cn.unit}:{en.value}")
                     break
@@ -709,15 +728,9 @@ def _base_equivalent(claim_text: str, evidence_text: str, unit_type: str) -> boo
     ("2 meters" vs "200 centimeters"), which is not a mismatch."""
 
     def bases(text: str) -> list[float]:
-        return [
-            base
-            for _, base, t in _quantities_with_base(text)
-            if t == unit_type
-        ]
+        return [base for _, base, t in _quantities_with_base(text) if t == unit_type]
 
-    return any(
-        abs(cb - eb) <= 0.001 for cb in bases(claim_text) for eb in bases(evidence_text)
-    )
+    return any(abs(cb - eb) <= 0.001 for cb in bases(claim_text) for eb in bases(evidence_text))
 
 
 def check_unit_mismatch(claim_text: str, evidence_text: str) -> list[str]:

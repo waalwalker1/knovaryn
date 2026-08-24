@@ -416,9 +416,7 @@ async def get_example_lineage(
             project_id=project_id, principal=principal.name, scope="datasets:export"
         )
         data = await _ws().list_examples(project_id=project_id, limit=10000)
-        match = next(
-            (e for e in data.get("examples", []) if e.get("id") == example_id), None
-        )
+        match = next((e for e in data.get("examples", []) if e.get("id") == example_id), None)
         if match is None:
             from ...domain.errors import NotFoundError
 

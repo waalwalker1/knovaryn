@@ -86,8 +86,7 @@ def spec_for(profile: str) -> SemanticProfileSpec:
         return SPECS[profile]
     except KeyError:
         raise ValueError(
-            f"unknown semantic profile {profile!r}; expected one of "
-            f"{sorted(SPECS)}"
+            f"unknown semantic profile {profile!r}; expected one of {sorted(SPECS)}"
         ) from None
 
 

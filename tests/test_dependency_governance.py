@@ -36,8 +36,9 @@ def test_dependabot_labels_are_declared() -> None:
         for label in update.get("labels", []):
             entry = declared.get(label)
             if entry is None:
-                problems.append(f"label {label!r} used in dependabot.yml is not declared "
-                                f"in .github/labels.json")
+                problems.append(
+                    f"label {label!r} used in dependabot.yml is not declared in .github/labels.json"
+                )
             elif not entry.get("color"):
                 problems.append(f"label {label!r} has no color in labels.json")
             elif not entry.get("description"):

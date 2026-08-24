@@ -562,7 +562,7 @@ def test_streamable_http_client_round_trip(tmp_path: Path) -> None:
             proc.kill()
 
 
-async def _shttp_drive(port: int, proc: "subprocess.Popen[bytes]", err_path: Path) -> None:
+async def _shttp_drive(port: int, proc: subprocess.Popen[bytes], err_path: Path) -> None:
     # wait for the server to accept connections. Budget is generous (120 s):
     # cold module imports on a synced/slow filesystem can take tens of
     # seconds, and a slow start is NOT a defect — an early exit is.
@@ -599,19 +599,21 @@ async def _shttp_drive(port: int, proc: "subprocess.Popen[bytes]", err_path: Pat
 
     # cross-SDK-major client helper (defect 3.1): yields the (read, write)
     # pair on both mcp 1.x and 2.x without the deprecated 1.x alias.
-    async with open_streamable_http(f"http://127.0.0.1:{port}/mcp") as (
-        read,
-        write,
+    async with (
+        open_streamable_http(f"http://127.0.0.1:{port}/mcp") as (
+            read,
+            write,
+        ),
+        ClientSession(read, write) as session,
     ):
-        async with ClientSession(read, write) as session:
-            await session.initialize()
-            tools = await session.list_tools()
-            names = {t.name for t in tools.tools}
-            assert "health" in names
-            assert "knovaryn_list_jobs" in names
-            res = await session.call_tool("health", {})
-            text = "\n".join(t for b in res.content if (t := _block_text(b)))
-            assert '"status": "ok"' in text
+        await session.initialize()
+        tools = await session.list_tools()
+        names = {t.name for t in tools.tools}
+        assert "health" in names
+        assert "knovaryn_list_jobs" in names
+        res = await session.call_tool("health", {})
+        text = "\n".join(t for b in res.content if (t := _block_text(b)))
+        assert '"status": "ok"' in text
 
 
 def test_stdio_graceful_shutdown(tmp_path: Path) -> None:

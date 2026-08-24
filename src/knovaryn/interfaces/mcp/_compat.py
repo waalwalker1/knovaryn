@@ -26,7 +26,7 @@ from __future__ import annotations
 import importlib.metadata
 import importlib.util
 from contextlib import AbstractAsyncContextManager
-from typing import Any
+from typing import Any, cast
 
 # Majors the Knovaryn MCP adapter is tested against end-to-end (clean venv per
 # major, full stdio + streamable-HTTP lifecycle). The declared dependency
@@ -77,19 +77,23 @@ def _context_class() -> type[Any]:
     major = mcp_sdk_major()
     if major == 2:
         from mcp.server.mcpserver.context import Context as Context2
-        return Context2
+
+        return cast("type[Any]", Context2)
     from mcp.server.fastmcp import Context as Context1
-    return Context1
+
+    return cast("type[Any]", Context1)
 
 
 def _server_class() -> type[Any]:
     """The high-level server class for the installed SDK major."""
     major = mcp_sdk_major()
     if major == 2:
-        from mcp.server import MCPServer as Server2
-        return Server2
+        from mcp.server import MCPServer as Server2  # type: ignore[attr-defined]
+
+        return cast("type[Any]", Server2)
     from mcp.server.fastmcp import FastMCP as Server1
-    return Server1
+
+    return cast("type[Any]", Server1)
 
 
 def _rebuild_sdk_settings() -> None:
@@ -150,17 +154,24 @@ def open_streamable_http(
     from contextlib import asynccontextmanager
 
     @asynccontextmanager
-    async def _ctx():
+    async def _ctx() -> Any:
         from mcp.client.streamable_http import streamable_http_client
 
         if mcp_sdk_major() == 2:
-            import httpx2 as httpx_mod  # bundled with mcp 2.x
+            import importlib.util
+
+            if importlib.util.find_spec("httpx2") is not None:
+                import httpx2 as httpx_mod  # type: ignore[import-not-found]
+            else:
+                import httpx as httpx_mod
         else:
             import httpx as httpx_mod
 
-        async with httpx_mod.AsyncClient(headers=headers or {}, timeout=30.0) as hc:
-            async with streamable_http_client(url, http_client=hc) as streams:
-                yield streams[0], streams[1]
+        async with (
+            httpx_mod.AsyncClient(headers=headers or {}, timeout=30.0) as hc,
+            streamable_http_client(url, http_client=hc) as streams,
+        ):
+            yield streams[0], streams[1]
 
     return _ctx()
 

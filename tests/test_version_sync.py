@@ -31,9 +31,8 @@ def test_all_public_version_surfaces_match_authoritative_version() -> None:
     assert version, "knovaryn.__init__ must declare __version__"
 
     errors = checker.check(allow_drift=False)
-    assert not errors, (
-        f"public version surfaces drifted from {version}:\n- "
-        + "\n- ".join(e.split("\n  fix:")[0] for e in errors)
+    assert not errors, f"public version surfaces drifted from {version}:\n- " + "\n- ".join(
+        e.split("\n  fix:")[0] for e in errors
     )
 
 

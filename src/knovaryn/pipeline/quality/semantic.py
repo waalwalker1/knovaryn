@@ -18,7 +18,6 @@ from typing import Any, Literal
 
 from ...domain.errors import UnsupportedOperationError
 from ...domain.hashing import ContentHasher
-
 from .claims import (
     AtomicClaim,
     ClaimAssessment,
@@ -460,25 +459,28 @@ class ModelSemanticVerifier(SemanticVerifier):
     ) -> list[ClaimAssessment]:
         """One fingerprinted, cached judge call returning per-claim verdicts."""
         if self._model_gateway is None:
-            raise UnsupportedOperationError(
-                "no semantic judge configured; claims stay unverified"
-            )
+            raise UnsupportedOperationError("no semantic judge configured; claims stay unverified")
         claim_lines = "\n".join(f"{i}. {c.text}" for i, c in enumerate(claims))
         user = (
             f"EVIDENCE SPANS: {json.dumps(cited_span_ids)}\n\n"
-            f"EVIDENCE:\n\"\"\"\n{evidence_text}\n\"\"\"\n\n"
+            f'EVIDENCE:\n"""\n{evidence_text}\n"""\n\n'
             f"CLAIMS:\n{claim_lines}\n\n"
-            'Respond with ONLY the JSON array of verdicts.'
+            "Respond with ONLY the JSON array of verdicts."
         )
         schema_hash = ContentHasher.cfg_hash(
             {
                 "template": self.PROMPT_TEMPLATE_VERSION,
                 "verdicts": sorted(self.VERDICT_MAP),
-                "fields": ["claim_id", "verdict", "confidence",
-                           "evidence_span_ids", "reason_codes"],
+                "fields": [
+                    "claim_id",
+                    "verdict",
+                    "confidence",
+                    "evidence_span_ids",
+                    "reason_codes",
+                ],
             }
         )
-        result = await self._model_gateway.judge(  # type: ignore[attr-defined]
+        result = await self._model_gateway.judge(
             system=self.SYSTEM_PROMPT,
             user=user,
             prompt_template_version=self.PROMPT_TEMPLATE_VERSION,
@@ -490,7 +492,7 @@ class ModelSemanticVerifier(SemanticVerifier):
             raise ValueError("judge returned non-JSON-array output")
 
         cited = set(cited_span_ids)
-        by_index = {i: c for i, c in enumerate(claims)}
+        by_index = dict(enumerate(claims))
         assessments: list[ClaimAssessment] = []
         seen: set[int] = set()
         for item in raw:

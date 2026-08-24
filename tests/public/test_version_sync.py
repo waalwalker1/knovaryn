@@ -30,7 +30,11 @@ pytestmark = pytest.mark.unit
 def _authoritative_version() -> str:
     """Read the single authoritative version literal (defect 3.5)."""
     init_py = REPO_ROOT / "src" / "knovaryn" / "__init__.py"
-    m = re.search(r'^__version__\s*=\s*"(\d+\.\d+\.\d+)"', init_py.read_text(encoding="utf-8"), re.M)
+    m = re.search(
+        r'^__version__\s*=\s*"(\d+\.\d+\.\d+)"',
+        init_py.read_text(encoding="utf-8"),
+        re.M,
+    )
     assert m, f"no __version__ literal in {init_py.relative_to(REPO_ROOT)}"
     return m.group(1)
 
@@ -44,14 +48,13 @@ class TestVersionSync:
         wheel/sdist metadata cannot disagree with the installed package."""
         py = (REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8")
         assert re.search(r'^dynamic\s*=\s*\[[^\]]*"version"[^\]]*\]', py, re.M), (
-            'pyproject [project] must declare dynamic = ["version"] '
-            "(no version literal of its own)"
+            'pyproject [project] must declare dynamic = ["version"] (no version literal of its own)'
         )
         assert re.search(
             r"\[tool\.hatch\.version\][^\[]*path\s*=\s*\"src/knovaryn/__init__\.py\"",
             py,
             re.S,
-        ), '[tool.hatch.version] must point at src/knovaryn/__init__.py'
+        ), "[tool.hatch.version] must point at src/knovaryn/__init__.py"
 
     def test_package_exports_the_authoritative_version(self):
         from knovaryn import __version__
@@ -91,5 +94,3 @@ class TestVersionSync:
                 if m.group(1) != version:
                     wrong.append(f"{rel}: claims alpha `{m.group(1)}`, current is {version}")
         assert not wrong, "\n".join(wrong)
-
-

@@ -372,7 +372,7 @@ class ModelGateway:
                     }
                 )
         await self._cache.put(fp, result)
-        return result
+        return cast("dict[str, Any]", result)
 
 
 class _NullStore:

@@ -93,15 +93,17 @@ def _block_location(block: dict[str, Any]) -> dict[str, Any]:
             pages.add(page_no)
         bbox = p.get("bbox")
         if isinstance(bbox, dict):
-            bboxes.append({
-                "page": page_no or None,
-                "left": bbox.get("l"),
-                "top": bbox.get("t"),
-                "right": bbox.get("r"),
-                "bottom": bbox.get("b"),
-                "coord_origin": str(bbox.get("coord_origin") or "TOPLEFT"),
-                "coord_system": "page",
-            })
+            bboxes.append(
+                {
+                    "page": page_no or None,
+                    "left": bbox.get("l"),
+                    "top": bbox.get("t"),
+                    "right": bbox.get("r"),
+                    "bottom": bbox.get("b"),
+                    "coord_origin": str(bbox.get("coord_origin") or "TOPLEFT"),
+                    "coord_system": "page",
+                }
+            )
     return {
         "pages": sorted(pages),
         "bboxes": bboxes,
@@ -134,20 +136,37 @@ def normalize_blocks(canonical: dict[str, Any]) -> list[ChunkUnit]:
         heading_path = list(b.get("heading_path") or [])
         location = _block_location(b)
         if btype == "heading":
-            units.append(ChunkUnit(b.get("text", ""), "heading", heading_path, kind="heading",
-                                   location=location))
+            units.append(
+                ChunkUnit(
+                    b.get("text", ""), "heading", heading_path, kind="heading", location=location
+                )
+            )
         elif btype == "list_item":
-            units.append(ChunkUnit(b.get("text", ""), "list_item", heading_path, kind="list_item",
-                                   location=location))
+            units.append(
+                ChunkUnit(
+                    b.get("text", ""),
+                    "list_item",
+                    heading_path,
+                    kind="list_item",
+                    location=location,
+                )
+            )
         elif btype in ("table", "table_cell"):
-            units.append(ChunkUnit(b.get("text", ""), "table", heading_path, kind="table",
-                                   location=location))
+            units.append(
+                ChunkUnit(b.get("text", ""), "table", heading_path, kind="table", location=location)
+            )
         elif btype == "caption":
-            units.append(ChunkUnit(b.get("text", ""), "caption", heading_path, kind="caption",
-                                   location=location))
+            units.append(
+                ChunkUnit(
+                    b.get("text", ""), "caption", heading_path, kind="caption", location=location
+                )
+            )
         else:
-            units.append(ChunkUnit(b.get("text", ""), "paragraph", heading_path, kind="text",
-                                   location=location))
+            units.append(
+                ChunkUnit(
+                    b.get("text", ""), "paragraph", heading_path, kind="text", location=location
+                )
+            )
     return units
 
 
@@ -168,17 +187,21 @@ def _extract_docling_blocks(docling: dict[str, Any]) -> list[dict[str, Any]]:
         common = {"element_refs": [element_ref]}
         prov = item.get("prov") or []
         if label == "title" or label.startswith("heading"):
-            blocks.append({"type": "heading", "text": text, "heading_path": [],
-                           "prov": prov, **common})
+            blocks.append(
+                {"type": "heading", "text": text, "heading_path": [], "prov": prov, **common}
+            )
         elif label == "table":
-            blocks.append({"type": "table", "text": text, "heading_path": [],
-                           "prov": prov, **common})
+            blocks.append(
+                {"type": "table", "text": text, "heading_path": [], "prov": prov, **common}
+            )
         elif label == "list_item":
-            blocks.append({"type": "list_item", "text": text, "heading_path": [],
-                           "prov": prov, **common})
+            blocks.append(
+                {"type": "list_item", "text": text, "heading_path": [], "prov": prov, **common}
+            )
         else:
-            blocks.append({"type": "paragraph", "text": text, "heading_path": [],
-                           "prov": prov, **common})
+            blocks.append(
+                {"type": "paragraph", "text": text, "heading_path": [], "prov": prov, **common}
+            )
     return blocks
 
 

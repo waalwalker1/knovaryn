@@ -348,9 +348,7 @@ class SemanticConsistencyValidator(BaseValidator):
         # only, no network) or certified-semantic (judge second, fail-closed).
         self.profile = profile
         spec_for(profile)  # validates the name up front
-        self._verifier = verifier or build_semantic_verifier(
-            profile, gateway=gateway
-        )
+        self._verifier = verifier or build_semantic_verifier(profile, gateway=gateway)
 
     async def assess(self, example: TrainingExample, ctx: ValidatorContext) -> QualityAssessment:
         answer_text = _assistant_text(example)
@@ -541,8 +539,7 @@ def _configured_semantic_profile() -> str:
         from ...domain.config import load_config
 
         return str(
-            (load_config().get("quality") or {}).get("semantic_profile")
-            or PROFILE_OFFLINE_FAST
+            (load_config().get("quality") or {}).get("semantic_profile") or PROFILE_OFFLINE_FAST
         )
     except Exception:  # noqa: BLE001 - config unreadable means offline-fast
         return PROFILE_OFFLINE_FAST

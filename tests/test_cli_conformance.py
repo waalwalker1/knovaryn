@@ -107,9 +107,7 @@ def test_every_real_command_help_exits_zero() -> None:
         sub = _subcommands(cmd)
         if sub is None:
             return
-        assert "--help" in {
-            o for p in cmd.get_params(ctx_cls(cmd)) for o in p.opts
-        }, path
+        assert "--help" in {o for p in cmd.get_params(ctx_cls(cmd)) for o in p.opts}, path
         for name in sub:
             visit_groups(sub[name], [*path, name])
 
@@ -164,8 +162,10 @@ def test_no_phantom_commands_or_flags_in_public_docs() -> None:
                 break
         if best is None:
             sub = " ".join(tokens[: min(5, len(tokens))])
-            problems.append(f"{rel}: `{sub}` — first token(s) after 'knovaryn' do not form "
-                            f"a real command (known: {sorted(tree)})")
+            problems.append(
+                f"{rel}: `{sub}` — first token(s) after 'knovaryn' do not form "
+                f"a real command (known: {sorted(tree)})"
+            )
             continue
         cmd_path, consumed = best
         known_opts = tree[cmd_path]
@@ -173,17 +173,20 @@ def test_no_phantom_commands_or_flags_in_public_docs() -> None:
             if tok.startswith("--") and "=" in tok:
                 tok = tok.split("=", 1)[0]
             if tok.startswith("--") and tok != "--" and tok not in known_opts:
-                problems.append(f"{rel}: `{tok}` is not a flag of `knovaryn {cmd_path}` "
-                                f"(has: {known_opts})")
-    assert not problems, "public docs reference nonexistent CLI surface:\n- " + "\n- ".join(problems)
+                problems.append(
+                    f"{rel}: `{tok}` is not a flag of `knovaryn {cmd_path}` (has: {known_opts})"
+                )
+    assert not problems, "public docs reference nonexistent CLI surface:\n- " + "\n- ".join(
+        problems
+    )
 
 
 def test_command_tree_snapshot_is_deliberate() -> None:
     tree = _tree()
     assert _SNAPSHOT.exists(), (
         f"missing snapshot {_SNAPSHOT}; generate it when you change the CLI:\n"
-        f"  python -c \"import json,pathlib;"
-        f"print(json.dumps(_tree()))\" > tests/cli/command_tree_snapshot.json"
+        f'  python -c "import json,pathlib;'
+        f'print(json.dumps(_tree()))" > tests/cli/command_tree_snapshot.json'
     )
     recorded = json.loads(_SNAPSHOT.read_text(encoding="utf-8"))
     if recorded == tree:

@@ -650,15 +650,17 @@ class Workspace:
             for p in (sp.page_start, sp.page_end):
                 if p is not None:
                     pages.add(p)
-            out.append({
-                "span_id": sp.id,
-                "precision": sp.precision.value,
-                "pages": sorted(pages),
-                "bbox_count": len(sp.bounding_boxes),
-                "bounding_boxes": sp.bounding_boxes,
-                "section_path": sp.section_path,
-                "element_reference": sp.element_reference,
-            })
+            out.append(
+                {
+                    "span_id": sp.id,
+                    "precision": sp.precision.value,
+                    "pages": sorted(pages),
+                    "bbox_count": len(sp.bounding_boxes),
+                    "bounding_boxes": sp.bounding_boxes,
+                    "section_path": sp.section_path,
+                    "element_reference": sp.element_reference,
+                }
+            )
         return {"spans": out}
 
     async def validate_dataset(self, *, project_id: str, limit: int = 500) -> dict[str, Any]:

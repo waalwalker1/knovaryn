@@ -48,15 +48,26 @@ class _RecordingGateway:
         self.fail = fail
         self.calls: list[dict] = []
 
-    async def judge(self, *, system, user, prompt_template_version, schema_hash,
-                    stage="judge", max_output_tokens=None, model=None):
-        self.calls.append({
-            "system": system,
-            "user": user,
-            "template": prompt_template_version,
-            "schema_hash": schema_hash,
-            "stage": stage,
-        })
+    async def judge(
+        self,
+        *,
+        system,
+        user,
+        prompt_template_version,
+        schema_hash,
+        stage="judge",
+        max_output_tokens=None,
+        model=None,
+    ):
+        self.calls.append(
+            {
+                "system": system,
+                "user": user,
+                "template": prompt_template_version,
+                "schema_hash": schema_hash,
+                "stage": stage,
+            }
+        )
         if self.fail:
             raise RuntimeError("provider down")
         return {"content": self.payload, "usage": {"input_tokens": 10, "output_tokens": 20}}
@@ -101,8 +112,12 @@ class TestProfileRegistry:
         results = _run(verifier.assess_claims(claims, EVIDENCE))
         assert results
         assert gw.calls == [], "offline-fast must never call the judge"
-        assert all(r.verifier_name.startswith("deterministic") or "composite" in r.verifier_name
-                   or r.verifier_name for r in results)
+        assert all(
+            r.verifier_name.startswith("deterministic")
+            or "composite" in r.verifier_name
+            or r.verifier_name
+            for r in results
+        )
 
 
 class TestJudgePath:
@@ -110,17 +125,27 @@ class TestJudgePath:
         return extract_atomic_claims(text)
 
     def test_structured_verdicts_parsed_and_cited_only(self):
-        payload = json.dumps([
-            {"claim_id": 0, "verdict": "entailed", "confidence": 0.97,
-             "evidence_span_ids": ["sp-a", "sp-fabricated"],
-             "reason_codes": []},
-        ])
+        payload = json.dumps(
+            [
+                {
+                    "claim_id": 0,
+                    "verdict": "entailed",
+                    "confidence": 0.97,
+                    "evidence_span_ids": ["sp-a", "sp-fabricated"],
+                    "reason_codes": [],
+                },
+            ]
+        )
         gw = _RecordingGateway(payload)
         verifier = ModelSemanticVerifier(model_gateway=gw, model="judge-x/7b")
         claims = self._claims("Calibration takes 40 minutes per unit.")
-        results = _run(verifier.assess_claims(
-            claims, EVIDENCE, cited_span_ids=["sp-a", "sp-b"],
-        ))
+        results = _run(
+            verifier.assess_claims(
+                claims,
+                EVIDENCE,
+                cited_span_ids=["sp-a", "sp-b"],
+            )
+        )
         assert len(results) == 1
         r = results[0]
         assert r.verdict is ClaimVerdict.entailed
@@ -128,35 +153,59 @@ class TestJudgePath:
         assert r.verifier_name == "model_semantic:judge-x/7b:v2"
 
     def test_verdict_vocabulary_is_typed(self):
-        payload = json.dumps([
-            {"claim_id": 0, "verdict": "contradicted", "confidence": 0.9,
-             "evidence_span_ids": ["sp-a"], "reason_codes": ["number_mismatch"]},
-            {"claim_id": 1, "verdict": "insufficient_evidence", "confidence": 0.5,
-             "evidence_span_ids": [], "reason_codes": ["unsupported"]},
-            {"claim_id": 2, "verdict": "unverified", "confidence": 0.0,
-             "evidence_span_ids": [], "reason_codes": []},
-        ])
+        payload = json.dumps(
+            [
+                {
+                    "claim_id": 0,
+                    "verdict": "contradicted",
+                    "confidence": 0.9,
+                    "evidence_span_ids": ["sp-a"],
+                    "reason_codes": ["number_mismatch"],
+                },
+                {
+                    "claim_id": 1,
+                    "verdict": "insufficient_evidence",
+                    "confidence": 0.5,
+                    "evidence_span_ids": [],
+                    "reason_codes": ["unsupported"],
+                },
+                {
+                    "claim_id": 2,
+                    "verdict": "unverified",
+                    "confidence": 0.0,
+                    "evidence_span_ids": [],
+                    "reason_codes": [],
+                },
+            ]
+        )
         verifier = ModelSemanticVerifier(model_gateway=_RecordingGateway(payload))
         claims = self._claims(
             "Calibration takes 40 minutes. Crates hold 30 units. The sensor is popular."
         )
-        results = _run(verifier.assess_claims(claims, EVIDENCE,
-                                              cited_span_ids=["sp-a"]))
-        by_idx = {r.claim.text: r for r in results}
+        results = _run(verifier.assess_claims(claims, EVIDENCE, cited_span_ids=["sp-a"]))
         verdicts = {r.verdict for r in results}
         assert verdicts <= {
-            ClaimVerdict.entailed, ClaimVerdict.contradicted,
-            ClaimVerdict.insufficient, ClaimVerdict.unverified,
+            ClaimVerdict.entailed,
+            ClaimVerdict.contradicted,
+            ClaimVerdict.insufficient,
+            ClaimVerdict.unverified,
         }
         assert any(r.verdict is ClaimVerdict.contradicted for r in results)
         assert any(r.verdict is ClaimVerdict.insufficient for r in results)
 
     def test_confidence_clamped_and_missing_claims_unverified(self):
-        payload = json.dumps([
-            {"claim_id": 0, "verdict": "entailed", "confidence": 4.2,
-             "evidence_span_ids": ["sp-a"], "reason_codes": []},
-            # claim 1 deliberately absent
-        ])
+        payload = json.dumps(
+            [
+                {
+                    "claim_id": 0,
+                    "verdict": "entailed",
+                    "confidence": 4.2,
+                    "evidence_span_ids": ["sp-a"],
+                    "reason_codes": [],
+                },
+                # claim 1 deliberately absent
+            ]
+        )
         verifier = ModelSemanticVerifier(model_gateway=_RecordingGateway(payload))
         claims = self._claims("Calibration takes 40 minutes. Crates hold 12 units.")
         results = _run(verifier.assess_claims(claims, EVIDENCE, cited_span_ids=["sp-a"]))
@@ -189,12 +238,18 @@ class TestJudgePath:
         assert all(r.verdict is ClaimVerdict.unverified for r in results)
 
     def test_no_chain_of_thought_persisted(self):
-        payload = json.dumps([
-            {"claim_id": 0, "verdict": "entailed", "confidence": 0.9,
-             "evidence_span_ids": ["sp-a"],
-             "reason_codes": [],
-             "reasoning": "Let me think step by step about the calibration..."},
-        ])
+        payload = json.dumps(
+            [
+                {
+                    "claim_id": 0,
+                    "verdict": "entailed",
+                    "confidence": 0.9,
+                    "evidence_span_ids": ["sp-a"],
+                    "reason_codes": [],
+                    "reasoning": "Let me think step by step about the calibration...",
+                },
+            ]
+        )
         verifier = ModelSemanticVerifier(model_gateway=_RecordingGateway(payload))
         claims = self._claims("Calibration takes 40 minutes per unit.")
         results = _run(verifier.assess_claims(claims, EVIDENCE, cited_span_ids=["sp-a"]))
@@ -202,10 +257,17 @@ class TestJudgePath:
         assert "step by step" not in blob
 
     def test_gateway_receives_identity_template_and_schema(self):
-        payload = json.dumps([
-            {"claim_id": 0, "verdict": "entailed", "confidence": 0.9,
-             "evidence_span_ids": ["sp-a"], "reason_codes": []},
-        ])
+        payload = json.dumps(
+            [
+                {
+                    "claim_id": 0,
+                    "verdict": "entailed",
+                    "confidence": 0.9,
+                    "evidence_span_ids": ["sp-a"],
+                    "reason_codes": [],
+                },
+            ]
+        )
         gw = _RecordingGateway(payload)
         verifier = ModelSemanticVerifier(model_gateway=gw, model="judge-x/7b")
         claims = self._claims("Calibration takes 40 minutes per unit.")
@@ -231,10 +293,17 @@ class TestCertifiedCompositeEndToEnd:
         """A number mismatch caught deterministically survives the judge saying
         'entailed' — the model can never override a deterministic
         contradiction (defect 3.8 hard rule)."""
-        payload = json.dumps([
-            {"claim_id": 0, "verdict": "entailed", "confidence": 0.99,
-             "evidence_span_ids": ["sp-a"], "reason_codes": []},
-        ])
+        payload = json.dumps(
+            [
+                {
+                    "claim_id": 0,
+                    "verdict": "entailed",
+                    "confidence": 0.99,
+                    "evidence_span_ids": ["sp-a"],
+                    "reason_codes": [],
+                },
+            ]
+        )
         gw = _RecordingGateway(payload)
         verifier = build_semantic_verifier(PROFILE_CERTIFIED_SEMANTIC, gateway=gw)
         evidence = "The maximum batch size is 64 records."

@@ -66,8 +66,16 @@ def _ok_payload() -> dict[str, Any]:
     # install-profile matrix legs (ci.yml `extras` job) — push-required, so a
     # realistic payload carries every interpolated profile name
     for profile in (
-        "core", "mcp", "docling", "docetl", "litellm",
-        "s3", "parquet", "hub", "ml", "full",
+        "core",
+        "mcp",
+        "docling",
+        "docetl",
+        "litellm",
+        "s3",
+        "parquet",
+        "hub",
+        "ml",
+        "full",
     ):
         legs.append(_run(f"Install profile — {profile}", "success", run_id=len(legs)))
     # compose-e2e: stale skipped run from the push, fresh success from dispatch

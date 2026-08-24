@@ -71,7 +71,7 @@ class TestNoPrivateBuildDisclosure:
         # literal split across adjacent strings: this FILE is itself scanned
         # by the tracked-tree gate, and the raw path shape must exist only in
         # the runtime fixture value, never in committed source text
-        dirty.write_text("contact: /Use" "rs/someone/private\n", encoding="utf-8")
+        dirty.write_text("contact: /Users/someone/private\n", encoding="utf-8")
         monkeypatch.setenv(audit.CONTAINER_ROOTFS_ENV, str(rootfs))
 
         results = collect_all_findings()

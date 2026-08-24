@@ -23,9 +23,10 @@ from ...domain.errors import ConfigurationError, NotFoundError
 from ...infrastructure.models.profiles import DEFAULT_RUNTIME_PROFILE
 
 if TYPE_CHECKING:
+    from ...application.workspace import Workspace
     from ._compat import mcp_sdk_major  # noqa: F401  (re-exported for tests)
 
-    from ...application.workspace import Workspace
+    Context = Any  # type alias for type checking - actual class varies by MCP major
 else:
     # The high-level SDK server inspects tool signatures with ``eval_str``,
     # so ``Context`` and ``Workspace`` must be real, resolvable names in this
@@ -37,7 +38,7 @@ else:
     try:
         from ._compat import _context_class, mcp_sdk_major
 
-        Context = _context_class()
+        Context = _context_class()  # type: ignore[assignment]
     except ImportError:  # pragma: no cover - mcp unavailable
         Context = Any  # type: ignore[assignment, misc]
         mcp_sdk_major = None  # type: ignore[assignment]
@@ -164,9 +165,8 @@ def build_server(database_url: str | None = None) -> Any:
             "The MCP server requires the 'mcp' package. Install it (e.g. pip install mcp) "
             "or run Knovaryn via the CLI/REST instead."
         )
-    from ._compat import build_mcp_server
-
     from ...application.workspace import Workspace
+    from ._compat import build_mcp_server
 
     @asynccontextmanager
     async def _lifespan(mcp_server: Any) -> AsyncIterator[Workspace]:

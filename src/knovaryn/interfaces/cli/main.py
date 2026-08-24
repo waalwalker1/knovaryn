@@ -295,7 +295,8 @@ def version_cmd() -> None:
 # can never advertise a pipeline the code does not run.
 # ---------------------------------------------------------------------------
 
-class _ReviewChoice(str, enum.Enum):
+
+class _ReviewChoice(enum.StrEnum):
     approve = "approve"
     reject = "reject"
     needs_work = "needs_work"
@@ -349,7 +350,9 @@ app.add_typer(source_app, name="source")
 def source_add_cmd(
     project_id: str = typer.Argument(..., help="Target project handle (proj_…)."),
     path: Path = typer.Argument(..., help="File to ingest (text or binary; type is sniffed)."),
-    license: str | None = typer.Option(None, "--license", help="Declared source license (SPDX id)."),
+    license: str | None = typer.Option(
+        None, "--license", help="Declared source license (SPDX id)."
+    ),
     privacy: str | None = typer.Option(None, "--privacy", help="Privacy classification."),
     group: str | None = typer.Option(None, "--group", help="Source group key."),
     json_plain: bool = typer.Option(False, "--json", help="Machine-readable output."),
@@ -385,7 +388,9 @@ def source_list_cmd(
 def run_cmd(
     project_id: str = typer.Option(..., "--project", "-p", help="Project handle (proj_…)."),
     family: str | None = typer.Option(
-        None, "--family", help='Task family proportion as NAME:WEIGHT (e.g. factual_explanation:0.5).'
+        None,
+        "--family",
+        help="Task family proportion as NAME:WEIGHT (e.g. factual_explanation:0.5).",
     ),
     target: int | None = typer.Option(None, "--target", help="Target example count."),
     budget_max_usd: float | None = typer.Option(None, "--budget-usd", help="Spend cap (USD)."),
@@ -460,8 +465,9 @@ def review_cmd(
     )
 
 
-dataset_app = typer.Typer(help="Validate, version, export, and publish datasets.",
-                          no_args_is_help=True)
+dataset_app = typer.Typer(
+    help="Validate, version, export, and publish datasets.", no_args_is_help=True
+)
 app.add_typer(dataset_app, name="dataset")
 
 

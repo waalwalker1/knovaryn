@@ -37,9 +37,7 @@ pytestmark = [pytest.mark.mcp]
 
 
 def _worker_thread_names() -> set[str]:
-    return {
-        t.name for t in threading.enumerate() if "_connection_worker" in t.name
-    }
+    return {t.name for t in threading.enumerate() if "_connection_worker" in t.name}
 
 
 async def _run_mcp_lifecycles(db_url: str, cycles: int) -> None:
@@ -119,7 +117,8 @@ def test_server_construction_has_no_incomplete_field_warning(tmp_path: Path) -> 
     recorded.extend(caught)
 
     offenders = [
-        w for w in recorded
+        w
+        for w in recorded
         if "incomplete definition" in str(w.message).lower()
         or type(w.message).__name__ == "IncompleteFieldDefinitionWarning"
     ]
@@ -218,7 +217,7 @@ async def test_dispose_survives_caller_cancellation(
 
     task = asyncio.create_task(caller())
     await dispose_started.wait()  # disposal is now suspended mid-flight
-    task.cancel()                 # strike the caller, not the disposal
+    task.cancel()  # strike the caller, not the disposal
     with contextlib.suppress(asyncio.CancelledError):
         await task
 

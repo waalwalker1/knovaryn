@@ -365,7 +365,7 @@ class SourceSpan(BaseModel):
     # ``SourceSpan.with_derived_precision`` — never hand-asserted by callers.
     precision: SpanPrecision = SpanPrecision.unknown
 
-    def with_derived_precision(self) -> "SourceSpan":
+    def with_derived_precision(self) -> SourceSpan:
         """Return a copy whose ``precision`` is derived from stored fields.
 
         This is the only sanctioned way to set precision: it prevents callers

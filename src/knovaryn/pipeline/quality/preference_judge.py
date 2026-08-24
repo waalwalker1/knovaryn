@@ -29,11 +29,10 @@ import json
 import random
 import re
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, cast
 
 from ...domain.errors import UnsupportedOperationError
 from ...domain.hashing import ContentHasher
-
 
 DEFECT_CODES = (
     "unsupported_claim",
@@ -109,12 +108,20 @@ class CertifiedPairwiseJudge:
         '"confidence": <float 0-1>}'
     )
 
-    SCHEMA_HASH = ContentHasher.cfg_hash({
-        "template": "pairwise-judge/1",
-        "fields": ["first_quality", "second_quality", "preferred",
-                   "defects_first", "defects_second", "confidence"],
-        "defect_codes": sorted(DEFECT_CODES),
-    })
+    SCHEMA_HASH = ContentHasher.cfg_hash(
+        {
+            "template": "pairwise-judge/1",
+            "fields": [
+                "first_quality",
+                "second_quality",
+                "preferred",
+                "defects_first",
+                "defects_second",
+                "confidence",
+            ],
+            "defect_codes": sorted(DEFECT_CODES),
+        }
+    )
 
     def __init__(
         self,
@@ -169,12 +176,12 @@ class CertifiedPairwiseJudge:
         )
 
         try:
-            raw_a = await self._call(prompt, evidence_text,
-                                     chosen_text, rejected_text,
-                                     chosen_first=chosen_first)
-            raw_b = await self._call(prompt, evidence_text,
-                                     chosen_text, rejected_text,
-                                     chosen_first=not chosen_first)
+            raw_a = await self._call(
+                prompt, evidence_text, chosen_text, rejected_text, chosen_first=chosen_first
+            )
+            raw_b = await self._call(
+                prompt, evidence_text, chosen_text, rejected_text, chosen_first=not chosen_first
+            )
         except UnsupportedOperationError:
             raise
         except Exception as exc:  # noqa: BLE001
@@ -231,12 +238,15 @@ class CertifiedPairwiseJudge:
             base.reason_codes.append("identical_content")
 
         # rejected-side defect must be real and classified when chosen wins
-        defects_rejected = sorted({
-            *(d for d in parsed_a["defects_second"] if chosen_first),
-            *(d for d in parsed_a["defects_first"] if not chosen_first),
-            *(d for d in parsed_b["defects_second"] if not chosen_first),
-            *(d for d in parsed_b["defects_first"] if chosen_first),
-        } & set(DEFECT_CODES))
+        defects_rejected = sorted(
+            {
+                *(d for d in parsed_a["defects_second"] if chosen_first),
+                *(d for d in parsed_a["defects_first"] if not chosen_first),
+                *(d for d in parsed_b["defects_second"] if not chosen_first),
+                *(d for d in parsed_b["defects_first"] if chosen_first),
+            }
+            & set(DEFECT_CODES)
+        )
         base.rejected_defect_codes = defects_rejected
 
         if margin > 0 and base.order_consistent:
@@ -257,16 +267,21 @@ class CertifiedPairwiseJudge:
         )
 
         hard_invalid = {
-            "missing_answer_text", "chosen_below_absolute_floor",
+            "missing_answer_text",
+            "chosen_below_absolute_floor",
             "identical_content",
         }
         blockers = set(base.reason_codes)
         if blockers & hard_invalid:
             base.verdict = "invalid"
         elif blockers & {
-            "judge_order_disagreement", "insufficient_preference_margin",
-            "length_signature", "rejected_defect_not_classified",
-            "both_answers_good", "both_answers_bad", "judge_called_tie",
+            "judge_order_disagreement",
+            "insufficient_preference_margin",
+            "length_signature",
+            "rejected_defect_not_classified",
+            "both_answers_good",
+            "both_answers_bad",
+            "judge_called_tie",
         }:
             base.verdict = "review"
         elif margin > 0 and base.order_consistent:
@@ -298,18 +313,21 @@ class CertifiedPairwiseJudge:
             (chosen_text, rejected_text) if chosen_first else (rejected_text, chosen_text)
         )
         user = (
-            f"TASK/PROMPT:\n\"\"\"\n{prompt}\n\"\"\"\n\n"
-            f"EVIDENCE:\n\"\"\"\n{evidence_text}\n\"\"\"\n\n"
-            f"FIRST ANSWER:\n\"\"\"\n{first}\n\"\"\"\n\n"
-            f"SECOND ANSWER:\n\"\"\"\n{second}\n\"\"\"\n\n"
-            'Respond with ONLY the JSON object.'
+            f'TASK/PROMPT:\n"""\n{prompt}\n"""\n\n'
+            f'EVIDENCE:\n"""\n{evidence_text}\n"""\n\n'
+            f'FIRST ANSWER:\n"""\n{first}\n"""\n\n'
+            f'SECOND ANSWER:\n"""\n{second}\n"""\n\n'
+            "Respond with ONLY the JSON object."
         )
-        return await self._gateway.judge(  # type: ignore[attr-defined]
-            system=self.SYSTEM_PROMPT,
-            user=user,
-            prompt_template_version=self.PROMPT_TEMPLATE_VERSION,
-            schema_hash=self.SCHEMA_HASH,
-            stage="preference_judge",
+        return cast(
+            "dict[str, Any]",
+            await self._gateway.judge(
+                system=self.SYSTEM_PROMPT,
+                user=user,
+                prompt_template_version=self.PROMPT_TEMPLATE_VERSION,
+                schema_hash=self.SCHEMA_HASH,
+                stage="preference_judge",
+            ),
         )
 
     @staticmethod

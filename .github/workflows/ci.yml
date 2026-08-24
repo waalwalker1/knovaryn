@@ -144,6 +144,8 @@ jobs:
           python-version: "3.11"
       - name: Install mkdocs + material
         run: uv sync --extra dev
+      - name: Generate reference docs from code
+        run: uv run python scripts/generate_reference_docs.py
       - name: Build docs site
         run: uv run mkdocs build --strict
       # Defect 3.3: internal links/fragments/images are BLOCKING (was `|| true`).

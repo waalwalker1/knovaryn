@@ -556,7 +556,6 @@ __all__ = [
     "worker",
     "worker_async",
     "_state_dir",
-    "dataset_lifecycle_commands",
 ]
 
 
@@ -567,6 +566,7 @@ __all__ = [
 # application-service call, so the CLI can never drift from the pipeline the
 # MCP/REST/SDK paths run. No command invents its own persistence or validation.
 # ---------------------------------------------------------------------------
+
 
 def _print_result(payload: Any, *, json_plain: bool, human: str | None = None) -> None:
     if json_plain:
@@ -579,14 +579,14 @@ def _print_result(payload: Any, *, json_plain: bool, human: str | None = None) -
         console.print(payload)
 
 
-def _workspace_lifecycle(principal: str = "cli"):
+def _workspace_lifecycle(principal: str = "cli") -> Any:
     """Async context manager yielding an open Workspace (defect 3.4)."""
     from contextlib import asynccontextmanager
 
-    @asynccontextmanager
-    async def _ctx():
-        from ...application.workspace import Workspace
+    from ...application.workspace import Workspace
 
+    @asynccontextmanager
+    async def _ctx() -> Any:
         ws = Workspace(principal=principal)
         await ws.open()
         try:
@@ -602,7 +602,7 @@ def project_create(
 ) -> int:
     """Create a project. Exit 1 on duplicate slug / invalid input."""
 
-    async def go():
+    async def go() -> Any:
         async with _workspace_lifecycle() as ws:
             return await ws.create_project(
                 slug=slug, display_name=display_name or slug, description=description
@@ -622,7 +622,7 @@ def project_create(
 
 
 def project_list(*, limit: int = 50, json_plain: bool = False) -> int:
-    async def go():
+    async def go() -> Any:
         async with _workspace_lifecycle() as ws:
             return await ws.list_projects(limit=limit)
 
@@ -654,7 +654,7 @@ def source_add(
         console.print(f"[red]error:[/red] not a file: {path}")
         return 1
 
-    async def go():
+    async def go() -> Any:
         raw = path.read_bytes()
         async with _workspace_lifecycle() as ws:
             return await ws.add_source(
@@ -675,15 +675,14 @@ def source_add(
         {"id": src.id, "name": src.original_name, "sha256": src.sha256},
         json_plain=json_plain,
         human=(
-            f"added source [bold]{src.original_name}[/bold] ({src.id}) "
-            f"sha256={src.sha256[:12]}…"
+            f"added source [bold]{src.original_name}[/bold] ({src.id}) sha256={src.sha256[:12]}…"
         ),
     )
     return 0
 
 
 def source_list(*, project_id: str, limit: int = 100, json_plain: bool = False) -> int:
-    async def go():
+    async def go() -> Any:
         async with _workspace_lifecycle() as ws:
             return await ws.list_sources(project_id=project_id, limit=limit)
 
@@ -724,7 +723,7 @@ def run_pipeline(
             console.print(f"[red]error:[/red] --family expects NAME:WEIGHT, got {family!r}")
             return 1
 
-    async def go():
+    async def go() -> Any:
         async with _workspace_lifecycle() as ws:
             job = await ws.start_pipeline(
                 project_id=project_id,
@@ -756,7 +755,7 @@ def run_pipeline(
 
 
 def job_status(*, job_id: str, json_plain: bool = False) -> int:
-    async def go():
+    async def go() -> Any:
         async with _workspace_lifecycle() as ws:
             return await ws.get_job(job_id)
 
@@ -779,7 +778,7 @@ def job_status(*, job_id: str, json_plain: bool = False) -> int:
 
 
 def job_list(*, project_id: str | None = None, limit: int = 20, json_plain: bool = False) -> int:
-    async def go():
+    async def go() -> Any:
         async with _workspace_lifecycle() as ws:
             return await ws.list_jobs(project_id=project_id, limit=limit)
 
@@ -807,7 +806,7 @@ def review_decide(
 ) -> int:
     """Record approve/reject/needs_work against the example's latest revision."""
 
-    async def go():
+    async def go() -> Any:
         async with _workspace_lifecycle(principal=reviewer) as ws:
             if revision is None:
                 history = await ws.list_revisions(example_id=example_id)
@@ -839,7 +838,7 @@ def review_decide(
 
 
 def dataset_validate(*, project_id: str, limit: int = 500, json_plain: bool = False) -> int:
-    async def go():
+    async def go() -> Any:
         async with _workspace_lifecycle() as ws:
             return await ws.validate_dataset(project_id=project_id, limit=limit)
 
@@ -855,13 +854,12 @@ def dataset_validate(*, project_id: str, limit: int = 500, json_plain: bool = Fa
     return 0
 
 
-def dataset_version(*, project_id: str, semantic_version: str | None = None,
-                    json_plain: bool = False) -> int:
-    async def go():
+def dataset_version(
+    *, project_id: str, semantic_version: str | None = None, json_plain: bool = False
+) -> int:
+    async def go() -> Any:
         async with _workspace_lifecycle() as ws:
-            return await ws.create_version(
-                project_id=project_id, semantic_version=semantic_version
-            )
+            return await ws.create_version(project_id=project_id, semantic_version=semantic_version)
 
     try:
         version = _run_async(go())
@@ -884,7 +882,7 @@ def dataset_export(
     download_dir: str | None = None,
     json_plain: bool = False,
 ) -> int:
-    async def go():
+    async def go() -> Any:
         async with _workspace_lifecycle() as ws:
             return await ws.export_dataset_formatted(
                 project_id=project_id,
@@ -922,7 +920,7 @@ def dataset_publish(
     principal: str = "cli",
     json_plain: bool = False,
 ) -> int:
-    async def go():
+    async def go() -> Any:
         async with _workspace_lifecycle() as ws:
             return await ws.publish_dataset(
                 project_id=project_id, repo_id=repo_id, dry_run=dry_run, principal=principal
@@ -957,7 +955,9 @@ def init_state(*, json_plain: bool = False) -> int:
     except Exception as exc:  # noqa: BLE001
         console.print(f"[red]error:[/red] cannot create state directories: {exc}")
         return 1
-    db_url = cfg.get("storage", {}).get("database_url") or f"sqlite+aiosqlite:///{state / 'knovaryn.db'}"
+    db_url = cfg.get("storage", {}).get("database_url") or (
+        f"sqlite+aiosqlite:///{state / 'knovaryn.db'}"
+    )
     _print_result(
         {"state_dir": str(state), "artifact_root": str(art_root), "database_url": db_url},
         json_plain=json_plain,
