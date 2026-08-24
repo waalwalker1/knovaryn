@@ -183,3 +183,53 @@ def test_rest_review_is_real_not_fake(client):
         json={"decision": "bogus"},
     )
     assert r.status_code == 422
+
+
+def test_example_lineage_endpoint(client):
+    """Defect 3.7: per-example provenance is machine-verifiable — the lineage
+    endpoint returns document/group/span ids plus per-span location precision."""
+    proj = client.post("/v1/projects", json={"slug": "lineage", "display_name": "Lineage"}).json()
+    CONTENT = (
+        "# Pumps\n## Operation\n"
+        "The pump primes itself within thirty seconds of power-on. "
+        "Operating pressure must stay below 6 bar at all times.\n"
+        "## Maintenance\n"
+        "Filters are replaced every five hundred operating hours.\n"
+    )
+    r = client.post(
+        f"/v1/projects/{proj['id']}/sources",
+        json={"original_name": "pump.md", "media_type": "text/markdown", "content": CONTENT},
+    )
+    assert r.status_code == 201, r.text
+    r = client.post(
+        f"/v1/projects/{proj['id']}/pipeline",
+        json={"task_family_proportions": {"factual_explanation": 1.0}},
+    )
+    job = r.json()
+    assert client.post(f"/v1/jobs/{job['id']}/run").json()["state"] == "succeeded"
+
+    ex = client.get(f"/v1/projects/{proj['id']}/examples").json()["examples"][0]
+    r = client.get(f"/v1/projects/{proj['id']}/examples/{ex['id']}/lineage")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["example_id"] == ex["id"]
+    assert body["project_id"] == proj["id"]
+    assert isinstance(body["source_document_ids"], list)
+    assert body["source_span_ids"] == ex.get("source_span_ids", [])
+    for span in body["source_spans"]:
+        # defect 3.7: every cited span carries machine-verifiable location
+        # data — its id plus a derived SpanPrecision label, never a
+        # fabricated page number
+        assert span["span_id"] in body["source_span_ids"]
+        assert span["precision"] in (
+            "exact_bbox",
+            "exact_page",
+            "page_range",
+            "section",
+            "chunk",
+            "unknown",
+        )
+
+    # unknown example -> typed NotFoundError mapping (J2), not a 500
+    r = client.get(f"/v1/projects/{proj['id']}/examples/ex_does_not_exist/lineage")
+    assert r.status_code == 404, r.text

@@ -394,21 +394,32 @@ def _run_async(coro: Any) -> Any:
     """Run a coroutine whether or not a loop is already active.
 
     The CLI invokes commands synchronously (no running loop -> ``asyncio.run``),
-    but tests may call the sync entry point from inside an already-running loop,
-    where ``asyncio.run`` would raise. This branches on the current loop state.
+    but embedders (tests, notebook kernels, an MCP host driving the sync
+    entry points) may call them from inside an already-running loop, where
+    ``asyncio.run`` would raise — and where ``loop.run_until_complete`` on a
+    second loop is equally forbidden (asyncio allows one running loop per
+    thread). That case pumps a dedicated loop on a worker thread and blocks
+    the calling thread on the result.
     """
     import asyncio
+    import threading
 
     try:
         asyncio.get_running_loop()
     except RuntimeError:
         return asyncio.run(coro)
-    # a loop is already running in this thread: we cannot block it with
-    # asyncio.run(); create + pump a dedicated loop to completion.
+    # a loop is already running in this thread: run the coroutine to
+    # completion on its own loop in a daemon thread instead.
     inner = asyncio.new_event_loop()
+    worker = threading.Thread(target=inner.run_forever, daemon=True)
+    worker.start()
     try:
-        return inner.run_until_complete(coro)
+        return asyncio.run_coroutine_threadsafe(coro, inner).result()
     finally:
+        inner.call_soon_threadsafe(inner.stop)
+        worker.join(timeout=30)
+        if worker.is_alive():  # pragma: no cover - pathological loop wedge
+            raise RuntimeError("CLI async worker loop did not terminate")
         inner.close()
 
 
