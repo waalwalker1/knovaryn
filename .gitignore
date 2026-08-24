@@ -40,4 +40,7 @@ id_ed25519*
 
 # Docs build
 site/
-.knovaryn-build/
+# Local build scratch (any variant — the wildcard deliberately does not
+# enumerate names; local-only build/audit material never gets committed)
+.knovaryn-build*/
+knovaryn-demo/

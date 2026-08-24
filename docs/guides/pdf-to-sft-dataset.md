@@ -6,8 +6,10 @@ supervised fine-tuning (SFT) examples, gate them for quality, and export a
 trainer-ready **JSONL** (or Parquet) dataset.
 
 > **What you get:** a supervised fine-tuning dataset where every accepted
-> example is traceable to the exact page and section of a source PDF, and where
-> weak or ungrounded examples are quarantined instead of exported.
+> example carries evidence references that walk back to its source spans at a
+> machine-reported location precision (Docling-parsed PDFs yield
+> `exact_page`/`exact_bbox`), and where weak or ungrounded examples are
+> quarantined instead of exported.
 
 ## Prerequisites
 
@@ -63,7 +65,9 @@ from the last checkpoint instead of redoing paid work.
 
 Call **`knovaryn_preview_examples`**. Each candidate carries
 `source_document_ids`, `source_span_ids`, and a `content_hash`, so you can hop
-back through `knovaryn_lineage` to the exact page and section that supports it.
+back through `knovaryn_lineage` to the supporting spans — with each span's
+machine-reported location precision (page/section granularity for
+Docling-parsed PDFs) returned alongside.
 Use **`knovaryn_review_example`** to record an approve/reject decision — a
 review creates a new immutable revision, it never mutates the example in place
 (see [review & revisions](../concepts/quality-gates.md)).

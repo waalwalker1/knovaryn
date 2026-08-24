@@ -13,7 +13,8 @@ Replicates what a reviewer does by hand, as a single runnable script CI invokes:
    it to list tools
 7. REST smoke: boot ``knovaryn server``, hit ``/v1/health``, then stop it
 8. inspect wheel contents for private files / secrets (fail closed)
-9. print the SBOM/attestation hook point (signing happens in publish)
+9. verify wheel+sdist carry no private/unnecessary members (§8.7)
+10. run the packaged-surface unit tier from the INSTALLED wheel (§8.6)
 
 Exit 0 only if every step passes (validate before upload).
 """
@@ -99,6 +100,46 @@ def _wheel_clean(wheel: Path) -> list[str]:
     return findings
 
 
+def _member_names(path: Path) -> list[str]:
+    if path.suffix == ".whl":
+        with zipfile.ZipFile(path) as z:
+            return z.namelist()
+    import tarfile
+
+    with tarfile.open(path, "r:gz") as tf:
+        return tf.getnames()
+
+
+_FORBIDDEN_MEMBER_PATTERNS = [
+    # private build/process material must never ship (defect 3.6 / §8.7)
+    re.compile(r"(^|/)\.knovaryn-build"),
+    re.compile(r"build-report-39"),
+    re.compile(r"(^|/)docs/marketing/"),
+    re.compile(r"knovaryn-private"),
+    # tool state / local junk that is never part of a distribution
+    re.compile(r"(^|/)\.git(/|$)"),
+    re.compile(r"(^|/)\.venv(/|$)"),
+    re.compile(r"(^|/)__pycache__/"),
+    re.compile(r"(^|/)site/"),
+    re.compile(r"(^|/)knovaryn-demo/"),
+]
+
+
+def _archives_clean(wheel: Path, sdist: Path) -> None:
+    """No private or unnecessary files in wheel/sdist (§8.7). Fail closed."""
+    problems: list[str] = []
+    for path in (wheel, sdist):
+        for name in _member_names(path):
+            for pat in _FORBIDDEN_MEMBER_PATTERNS:
+                if pat.search(name):
+                    problems.append(f"{path.name}: {name} matches {pat.pattern}")
+    if problems:
+        for p in problems:
+            print(f"  ! {p}")
+        raise SystemExit("distribution contains private/unnecessary files")
+    print("  archive contents OK (no private/unnecessary members)")
+
+
 def _clean_install_smoke(tmp: Path, wheel: Path) -> str:
     env_dir = tmp / "venv"
     venv.EnvBuilder(with_pip=True).create(env_dir)
@@ -112,7 +153,7 @@ def _clean_install_smoke(tmp: Path, wheel: Path) -> str:
             "--quiet",
             "--no-input",
             f"{str(wheel)}[mcp]",
-            "mcp>=1.0,<2",
+            "mcp>=1.28,<3",
         ],
         check=False,  # mcp extra may be offline; still run echo
     )
@@ -187,21 +228,44 @@ def _rest_smoke(py: str) -> None:
             proc.kill()
 
 
+def _wheel_tests(py: str) -> None:
+    """Run the packaged-surface unit tier FROM THE INSTALLED WHEEL (§8.6).
+
+    The clean venv has no editable/source install; ``import knovaryn``
+    resolves to the wheel. tests/public asserts the shipped surface itself
+    (version sync, branding, disclosure gates, metadata/social cards), so a
+    regression in what the wheel contains fails here even though source-tree
+    tests still pass.
+    """
+    _run([py, "-m", "pip", "install", "--quiet", "--no-input", "pytest>=8"])
+    cp = subprocess.run(
+        [py, "-m", "pytest", str(ROOT / "tests" / "public"), "-q", "--no-header"],
+        cwd=tempfile.gettempdir(),
+        capture_output=True,
+        text=True,
+    )
+    if cp.returncode != 0:
+        sys.stderr.write(cp.stdout[-4000:] + cp.stderr[-2000:])
+        raise SystemExit("tests/public failed against the installed wheel")
+    tail = [ln for ln in cp.stdout.splitlines() if ln.strip()][-1:]
+    print(f"  wheel test battery OK ({tail[0] if tail else 'passed'})")
+
+
 def main() -> int:
     tmp = Path(tempfile.mkdtemp(prefix="knovaryn-pkgci-"))
     try:
-        print("[1/8] Building wheel + sdist ...")
+        print("[1/10] Building wheel + sdist ...")
         wheel, sdist = _build(tmp)
         print(f"  built {wheel.name} / {sdist.name}")
 
-        print("[2/8] twine check ...")
+        print("[2/10] twine check ...")
         _twine_check(wheel, sdist)
         print("  twine check OK")
 
-        print("[3/8] wheel metadata ...")
+        print("[3/10] wheel metadata ...")
         _metadata_ok(wheel)
 
-        print("[4/8] wheel content scan (secrets/private keys) ...")
+        print("[4/10] wheel content scan (secrets/private keys) ...")
         findings = _wheel_clean(wheel)
         if findings:
             for f in findings:
@@ -209,18 +273,24 @@ def main() -> int:
             raise SystemExit("wheel contains secret-like content -> refusing to publish")
         print("  wheel content scan OK (no secrets)")
 
-        print("[5/8] clean-env install (wheel + mcp extra) ...")
+        print("[5/10] archive contents (no private/unnecessary files, §8.7) ...")
+        _archives_clean(wheel, sdist)
+
+        print("[6/10] clean-env install (wheel + mcp extra) ...")
         py = _clean_install_smoke(tmp, wheel)
         print(f"  installed into {tmp / 'venv'}")
 
-        print("[6/8] CLI smoke (version/doctor/demo) ...")
+        print("[7/10] CLI smoke (version/doctor/demo) ...")
         _cli_smoke(py)
 
-        print("[7/8] MCP smoke ...")
+        print("[8/10] MCP smoke ...")
         _mcp_smoke(py)
 
-        print("[8/8] REST smoke (/v1/health) ...")
+        print("[9/10] REST smoke (/v1/health) ...")
         _rest_smoke(py)
+
+        print("[10/10] packaged-surface tests run against the installed wheel (§8.6) ...")
+        _wheel_tests(py)
 
         print("\nPackage CI PASSED — ready to publish.")
         return 0

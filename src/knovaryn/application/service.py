@@ -131,22 +131,34 @@ class ProjectService:
         spans: list[SourceSpan] = []
         for i, res in enumerate(results):
             span_ids: list[str] = []
-            # one real, persisted span per chunk (character-located, quoted text).
-            # Identity is CONTENT-ADDRESSED (source id + ordinal + quoted text),
-            # not random: a job that crashes and resumes must reproduce the same
-            # span ids so provider results restored from the durable call cache
-            # still cite evidence that exists in the resumed run (spec §11.5).
+            # one real, persisted span per chunk. Identity is CONTENT-ADDRESSED
+            # (source id + ordinal + quoted text), not random: a job that
+            # crashes and resumes must reproduce the same span ids so provider
+            # results restored from the durable call cache still cite evidence
+            # that exists in the resumed run (spec §11.5).
+            #
+            # Location precision is DERIVED from parser evidence (defect 3.7):
+            # Docling-backed documents carry page numbers / bounding boxes /
+            # original element refs through the chunker; fallback markdown and
+            # text flows honestly classify as section/chunk instead of
+            # fabricating a page.
+            pages = [p for p in (res.location.get("pages") or []) if p]
+            bboxes = res.location.get("bboxes") or []
+            refs = res.location.get("element_refs") or []
             span = SourceSpan(
                 id=self._content_handle("sp", parsed.source_document_id, i, res.main_text),
                 parsed_document_id=parsed.id,
-                page_number=None,
+                page_number=(pages[0] if len(pages) == 1 else None),
+                page_start=(min(pages) if pages else None),
+                page_end=(max(pages) if pages else None),
                 section_path="/".join(res.heading_path),
-                element_reference=f"chunk:{i}",
+                element_reference=(",".join(refs) if refs else f"chunk:{i}"),
                 character_start=0,
                 character_end=len(res.main_text),
+                bounding_boxes=bboxes,
                 quoted_text=res.main_text,
                 sha256=normalize_hash(res.main_text),
-            )
+            ).with_derived_precision()
             spans.append(span)
             span_ids.append(span.id)
             chunks.append(
@@ -157,6 +169,8 @@ class ProjectService:
                     source_group_id=None,
                     ordinal=i,
                     heading_path=res.heading_path,
+                    page_start=(min(pages) if pages else None),
+                    page_end=(max(pages) if pages else None),
                     structural_type="text",
                     main_text=res.main_text,
                     rendered_context=res.context_text,
@@ -338,7 +352,15 @@ class ProjectService:
     async def _validate(
         self, ex: TrainingExample, ctx: ValidatorContext, *, is_preference: bool
     ) -> Any:
-        decisions = [await v.assess(ex, ctx) for v in default_validators()]
+        from ..pipeline.quality.profiles import spec_for
+        from ..pipeline.quality.validators import _configured_semantic_profile
+
+        profile = _configured_semantic_profile()
+        gateway = self._gateway if spec_for(profile).uses_model_judge else None
+        decisions = [
+            await v.assess(ex, ctx)
+            for v in default_validators(semantic_profile=profile, gateway=gateway)
+        ]
         diag = diagnose_example(ex)
         artifact = _artifact_assessment(ex, diag)
         overall = assemble_decision(

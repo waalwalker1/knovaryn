@@ -4,11 +4,12 @@ Knovaryn ships container assets under `deploy/`. This page documents the two
 primary deployments: a **local** single-container run and a **team** stack of
 PostgreSQL + MinIO (S3-compatible) + Knovaryn.
 
-> **Status note:** container assets are provided for operators. In the 0.1.0
-> alpha the CLI and MCP server remain the supported interfaces; Docker packages
-> the same binary so a team can run the MPI-server/worker on containers. Treat
-> YAML below as the documented shape, and confirm against your build's
-> `deploy/` files, which are authoritative.
+> **Status note:** container assets are provided for operators and exercised by
+> CI (`deploy/compose/` is proven end-to-end by
+> `tests/deployment/test_compose_e2e.py`; a kustomize base lives under
+> `deploy/kubernetes/`). All four interfaces — CLI, MCP server, REST + web
+> console, SDK — are available in the container image. The `deploy/` files are
+> authoritative for your build.
 
 ## Conventions
 
@@ -25,11 +26,11 @@ PostgreSQL + MinIO (S3-compatible) + Knovaryn.
 A minimal container running the MCP server against local storage:
 
 ```bash
-docker build -f deploy/Dockerfile -t knovaryn .
+docker build -f deploy/docker/Dockerfile -t knovaryn .
 docker run --rm -it \
   -e KNOVARYN_PROFILE=offline-demo \
   -v "$PWD/.knovaryn:/data" \
-  knovaryn mcp --profile offline-demo
+  knovaryn mcp
 ```
 
 Point an MCP client at this container (stdio via `docker run`), or use a

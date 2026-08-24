@@ -1,0 +1,131 @@
+{
+  "backup": [
+    "--help",
+    "--json",
+    "--out"
+  ],
+  "dataset export": [
+    "--format",
+    "--help",
+    "--json",
+    "--out",
+    "--version"
+  ],
+  "dataset publish": [
+    "--help",
+    "--json",
+    "--live",
+    "--principal"
+  ],
+  "dataset validate": [
+    "--help",
+    "--json",
+    "--limit"
+  ],
+  "dataset version": [
+    "--help",
+    "--json",
+    "--set"
+  ],
+  "demo": [
+    "--examples",
+    "--help",
+    "--json",
+    "--out"
+  ],
+  "doctor": [
+    "--help",
+    "--json"
+  ],
+  "init": [
+    "--help",
+    "--json"
+  ],
+  "job list": [
+    "--help",
+    "--json",
+    "--limit",
+    "--project"
+  ],
+  "job status": [
+    "--help",
+    "--json"
+  ],
+  "mcp": [
+    "--database-url",
+    "--help",
+    "--host",
+    "--port",
+    "--transport"
+  ],
+  "project create": [
+    "--description",
+    "--help",
+    "--json",
+    "--name"
+  ],
+  "project list": [
+    "--help",
+    "--json",
+    "--limit"
+  ],
+  "repair": [
+    "--help",
+    "--json"
+  ],
+  "restore": [
+    "--from",
+    "--help",
+    "--json"
+  ],
+  "review": [
+    "--help",
+    "--json",
+    "--note",
+    "--reviewer",
+    "--revision"
+  ],
+  "run": [
+    "--budget-usd",
+    "--family",
+    "--help",
+    "--json",
+    "--profile",
+    "--project",
+    "--target"
+  ],
+  "server": [
+    "--help",
+    "--host",
+    "--port",
+    "--reload"
+  ],
+  "source add": [
+    "--group",
+    "--help",
+    "--json",
+    "--license",
+    "--privacy"
+  ],
+  "source list": [
+    "--help",
+    "--json",
+    "--limit"
+  ],
+  "verify-release": [
+    "--help"
+  ],
+  "version": [
+    "--help"
+  ],
+  "worker": [
+    "--database-url",
+    "--help",
+    "--id",
+    "--json",
+    "--lease",
+    "--max-attempts",
+    "--once",
+    "--poll"
+  ]
+}

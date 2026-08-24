@@ -3,14 +3,16 @@
 This page collects the diagrams that used to live in the README, so the README
 stays concise and these stay editable in one place. Each is available as a
 rendered PNG (`assets/*.png`) and as raw Mermaid source
-(`assets/diagrams/*.mmd`).
+(`assets/diagrams/*.mmd`); the inline blocks below mirror those sources.
+Diagram text is count-free by policy — surfaces say what they are, never how
+many; the generated reference pages carry live numbers.
 
 ## 1. System architecture — one core, four interfaces
 
 Everything sits on a single **application-services core** (domain + application)
-behind a durable pipeline engine. Four interfaces — CLI, the 23-tool MCP server,
-REST + web console, and the Python SDK — all drive the *same* services, so a job
-started from the CLI is visible everywhere.
+behind a durable pipeline engine. Four interfaces — CLI, MCP server, REST + web
+console, and the Python SDK — all drive the *same* services, so a job started
+from the CLI is visible everywhere.
 
 <p align="center">
   <img src="../assets/system-architecture.png" alt="Knovaryn system architecture" width="100%"/>
@@ -19,12 +21,12 @@ started from the CLI is visible everywhere.
 ```mermaid
 flowchart LR
     subgraph AGENTS["Host agents"]
-        MCPAG["Claude · Cursor · etc."]
+        MCPAG["MCP-capable agents"]
     end
 
     subgraph INTERFACES["Four interfaces — same services"]
         C["CLI<br/>(knovaryn)"]
-        M["MCP server<br/>(knovaryn_mcp — 23 tools)"]
+        M["MCP server<br/>(registered tool catalogue,<br/>generated reference page)"]
         R["REST + web console<br/>(knovaryn server)"]
         S["Python SDK"]
     end
@@ -37,7 +39,7 @@ flowchart LR
 
     subgraph PIPELINE["Durable pipeline engine"]
         IN["Intake & preflight"]
-        PA["Parse (Docling)"]
+        PA["Parse (Docling / fallbacks)"]
         SP["Split & chunk"]
         PL["Plan (dry-run cost)"]
         GE["Generate (ModelGateway)"]
@@ -49,10 +51,16 @@ flowchart LR
 
     subgraph INFRA["Infrastructure"]
         DB[("SQLite / Postgres")]
-        ART["Artifact store<br/>local / S3"]
+        ART["Artifact store<br/>content-addressed, local / S3"]
         MG["Model gateway<br/>fake offline · LiteLLM"]
-        AUTH["Auth / bearer + scopes"]
+        AUTH["Auth / bearer + scopes + tenancy"]
         SEC["Secrets: env-only, redacted"]
+    end
+
+    subgraph DEPLOY["Deployment profiles"]
+        D1["Local — single process"]
+        D2["Compose — api · worker · pg · minio · proxy"]
+        D3["Kubernetes — kustomize base"]
     end
 
     AGENTS --> MCPAG --> M
@@ -68,6 +76,15 @@ flowchart LR
     WS --> AUTH
     R --> AUTH
     MG --> SEC
+    DB -.-> D2
+    ART -.-> D2
+    D2 -.-> D3
+
+    style CORE fill:#e8f0fe,stroke:#1a73e8
+    style PIPELINE fill:#e6f4ea,stroke:#188038
+    style INFRA fill:#fef7e0,stroke:#b06000
+    style MG fill:#fce8e6,stroke:#c5221f
+    style DEPLOY fill:#f3e8fd,stroke:#8e24aa
 ```
 
 ## 2. End-to-end pipeline flow — every example traced to its source
@@ -95,14 +112,15 @@ flowchart LR
     subgraph SPLIT["3 · Split + chunk with provenance"]
         direction TB
         S1["Split at source group"] --> S2["Structure-aware chunking"]
-        S2 --> S3["Heading paths · spans · source_span_ids · sha256"]
+        S2 --> S3["Heading paths · spans · source_span_ids · sha256<br/>location precision recorded per span"]
     end
 
-    subgraph GEN["4 · Generate examples"]
+    subgraph GEN["4 · Generate examples (durable stage)"]
         direction TB
-        G1["Planner: task + difficulty map"] --> G2["Prompt library"]
+        G1["Planner: task + difficulty map<br/>budget · profile · target-size constraints"] --> G2["Prompt library"]
         G2 --> G3["SFT · Preference · KTO · Eval"]
         G3 --> G4["Model gateway — fake offline or LiteLLM"]
+        G4 --> G5["Provider-call cache<br/>(idempotent retries, no double cost)"]
     end
 
     subgraph VAL["5 · Validate — gates quarantine failures"]
@@ -110,33 +128,44 @@ flowchart LR
         V1["Schema / Grounding / Completeness"]
         V2["Format / Refusal / Dedupe"]
         V3["Contamination / Privacy / License"]
-        V1 --> V4{"All gates pass?"}
-        V2 --> V4
-        V3 --> V4
-        V4 -- fail --> V5["Quarantine"]
-        V4 -- pass --> V6["Review state"]
+        V4a["Semantic consistency<br/>offline-fast deterministic · certified-semantic judge"]
+        V4b["Preference signal (pairs)<br/>+ information gain"]
+        V1 --> V5{"All gates pass?"}
+        V2 --> V5
+        V3 --> V5
+        V4a --> V5
+        V4b --> V5
+        V5 -- fail --> V6["Quarantine / review routing"]
+        V5 -- pass --> V7["Review state"]
     end
 
     subgraph OUT["6 · Version + export + publish"]
         direction TB
-        O1["Dataset version"] --> O2["Release bundle: card · manifest · reports · checksums"]
-        O2 --> O3["Exporters — JSONL + variations"]
+        O1["Dataset version (immutable)"] --> O2["Release bundle: card · manifest · reports · checksums"]
+        O2 --> O3["Exporters — provenance gate re-resolves every citation"]
         O2 --> O4["Publish to Hugging Face — dry-run by default"]
     end
 
     A5 --> P1
     P3 --> S1
     S3 --> G1
-    G4 --> V1
-    V6 --> O1
+    G5 --> V1
+    V7 --> O1
+
+    style V6 fill:#fbe3e3,stroke:#b3261e
+    style A5 fill:#e8f0fe,stroke:#1a73e8
+    style O4 fill:#e8f0fe,stroke:#1a73e8
+    style V4a fill:#fef7e0,stroke:#b06000
+    style V4b fill:#fef7e0,stroke:#b06000
+    style G5 fill:#e6f4ea,stroke:#188038
 ```
 
 ## 3. Durable jobs — nothing is lost on a crash
 
-Every stage of the pipeline runs as a **durable job** with leases, heartbeats,
-idempotency keys, checkpoints, and budget caps. A crash, kill, or timeout just
-expires the lease and **resumes from the last checkpoint** — no re-generation of
-paid work.
+Every stage of the pipeline runs as a **durable job** with atomic claims,
+heartbeats, idempotency keys, checkpoint artifacts, and budget caps. A crash,
+kill, or timeout just expires the lease and **resumes from the last checkpoint**
+— no re-generation of paid work.
 
 <p align="center">
   <img src="../assets/durable-jobs.png" alt="Knovaryn durable job lifecycle" width="100%"/>
@@ -144,57 +173,92 @@ paid work.
 
 ```mermaid
 flowchart LR
-    A["Create job<br/>(idempotency key)"] --> B["Enqueue"]
-    B --> C["Lease acquired<br/>(worker holds lease)"]
-    C --> D["Stage 1 … Stage N"]
-    D --> E{"Checkpoint<br/>per stage"}
+    A["Create job<br/>(idempotency key)"] --> B["Enqueue<br/>(queued state)"]
+    B --> C{"Atomic claim<br/>SELECT … FOR UPDATE SKIP LOCKED<br/>(one winner among N workers)"}
 
-    E -->|"normal"| F["Stage complete → persist + heartbeats"]
-    F --> G["All stages done"]
-    G --> H["Record cost events + result"]
-    H --> I["Idempotent done state"]
+    C -->|"won lease"| D["Run stage"]
+    D --> E["Persist checkpoint artifact<br/>(stage inputs/outputs, resumable)"]
+    E --> F["Heartbeat renews lease<br/>while work continues"]
 
-    E -->|"crash / kill / timeout"| J["Lease expires → re-lease"]
-    J --> K["Resume from last checkpoint<br/>(no re-gen of paid work)"]
-    K --> D
+    F -->|"more stages"| D
+    F -->|"stages done"| G["Record cost events + result<br/>→ idempotent done state"]
 
-    E -->|"budget cap hit"| L["Cancel with cost audit"]
-    L --> M["Partial state preserved"]
+    E -->|"provider call"| H["Provider-call dedup cache<br/>(same prompt+model+seed = cached)"]
+    H --> D
+
+    subgraph CANCEL["Cancellation (polled, never mid-write)"]
+        X1["cancel requested"] --> X2{"safe point?<br/>between stages"}
+        X2 -- "yes" --> X3["Cancel with cost audit<br/>partial state preserved"]
+        X2 -- "no" --> X4["finish current stage,<br/>then cancel"]
+        X4 --> X3
+    end
+    F -.->|"poll cancel flag"| X1
+
+    subgraph CRASH["Crash / kill / timeout"]
+        K1["lease expires unrenewed"] --> K2["re-lease to any worker"]
+        K2 --> K3["resume from last<br/>checkpoint artifact"]
+        K3 --> D
+    end
+
+    style C fill:#e8f0fe,stroke:#1a73e8
+    style E fill:#fef7e0,stroke:#b06000
+    style K1 fill:#fce8e6,stroke:#c5221f
+    style K3 fill:#e6f4ea,stroke:#188038
+    style X3 fill:#fce8e6,stroke:#c5221f
+    style H fill:#e6f4ea,stroke:#188038
 ```
 
 ## 4. A typical MCP agent session
 
-From an empty workspace to a published dataset version using the 23-tool MCP
-suite — exactly what a Claude/Cursor-style agent sees.
+From an empty workspace to an exported dataset version over the MCP tools —
+exactly what a Claude/Cursor-style agent sees.
 
 <p align="center">
   <img src="../assets/mcp-session.png" alt="Typical MCP agent session" width="100%"/>
 </p>
 
 ```mermaid
-flowchart LR
-    A["knovaryn_create_project"] --> B["knovaryn_add_source"]
-    B --> C["knovaryn_inspect_source"]
-    C --> D["knovaryn_license_report"]
-    D --> E["knovaryn_estimate_run"]
-    E --> F{"budget OK?"}
-    F -->|"yes"| G["knovaryn_start_pipeline"]
-    F -->|"no / tune"| E
-    G --> H["knovaryn_get_job / run_job<br/>(poll progress)"]
-    H --> I["knovaryn_preview_examples"]
-    I --> J["knovaryn_review_example"]
-    J --> K["knovaryn_validate_dataset"]
-    K --> L["knovaryn_compare_runs"]
-    L --> M["knovaryn_create_dataset_version"]
-    M --> N["knovaryn_export_dataset"]
-    N --> O["knovaryn_publish_dataset<br/>(dry-run → confirm)"]
-    O --> P["knovaryn_doctor (health check)"]
+flowchart TD
+    subgraph PHASE1["Phase 1 · Set up"]
+        direction TB
+        A["knovaryn_create_project"] --> B["knovaryn_add_source"]
+        B --> C["knovaryn_inspect_source · knovaryn_license_report"]
+    end
+
+    subgraph PHASE2["Phase 2 · Estimate & run"]
+        direction TB
+        E["knovaryn_estimate_run (dry-run cost)"] --> F{"budget OK?"}
+        F -- "yes" --> G["knovaryn_start_pipeline"]
+        F -- "no / tune" --> E
+        G --> H["knovaryn_get_job / run_job — poll progress"]
+    end
+
+    subgraph PHASE3["Phase 3 · Inspect & review"]
+        direction TB
+        I["knovaryn_preview_examples"] --> J["knovaryn_review_example<br/>(immutable revisions)"]
+        J --> K["knovaryn_validate_dataset · knovaryn_compare_runs"]
+    end
+
+    subgraph PHASE4["Phase 4 · Ship"]
+        direction TB
+        L["knovaryn_create_dataset_version"] --> M["knovaryn_export_dataset"]
+        M --> N["knovaryn_publish_dataset<br/>(dry-run → confirm)"]
+    end
+
+    P["knovaryn_doctor — health check, anytime"]
+
+    PHASE1 --> PHASE2 --> PHASE3 --> PHASE4
+    P -.-> PHASE1
+
+    style E fill:#fef7e0,stroke:#b06000
+    style N fill:#e6f4ea,stroke:#188038
+    style P fill:#f3e8fd,stroke:#8e24aa
 ```
 
 ## 5. Security & privacy flow
 
-Offline-first, secrets from the environment only, and nothing published unless
-explicitly approved.
+Offline-first, secrets from the environment only, tenant-scoped remote access,
+and nothing published unless explicitly approved.
 
 <p align="center">
   <img src="../assets/security.png" alt="Knovaryn security and privacy flow" width="100%"/>
@@ -202,12 +266,25 @@ explicitly approved.
 
 ```mermaid
 flowchart TD
-    subgraph TRUST["Untrusted input boundary"]
+    subgraph INTAKE["Untrusted input boundary"]
         T1["Local file / archive / URL"]
         T2["Path-traversal + symlink checks"]
         T3["Verified archives · SSRF defense · URL ingest OFF by default"]
         T1 --> T2 --> T3
-        T3 --> T4["Preflight: SHA-256 · size · license · privacy class"]
+        T4["Preflight: SHA-256 · size · license · privacy class"]
+        T3 --> T4
+    end
+
+    subgraph LOCAL["Local trust (default)"]
+        L1["Deterministic fake provider — no keys, no network"]
+        L2["Loopback HTTP binding · Host/Origin checks"]
+    end
+
+    subgraph REMOTE["Remote access (opt-in)"]
+        R1["MCP streamable-http / REST behind bearer token"]
+        R2["Least-privilege scopes per principal<br/>(read · write · review · publish)"]
+        R3["Tenant isolation — principals only see their own projects"]
+        R1 --> R2 --> R3
     end
 
     subgraph SECRETS["Secrets handling"]
@@ -217,14 +294,14 @@ flowchart TD
         S1 --> S2 --> S3
     end
 
-    subgraph LOCAL["Offline-first by default"]
-        L1["Deterministic fake provider — no keys, no network"]
-        L2["Loopback HTTP binding · Host/Origin checks"]
-        L3["Bearer token + scopes when KNOVARYN_API_TOKEN set"]
-        L1 --> L2 --> L3
+    subgraph ARTIFACTS["Artifact integrity"]
+        A1["Content-addressed artifact store (SHA-256)"]
+        A2["Export re-resolves every citation + recomputes hashes"]
+        A3["Release bundle: detached checksums + per-file manifest<br/>verified by knovaryn verify-release"]
+        A1 --> A2 --> A3
     end
 
-    subgraph GATE["Publication gate"]
+    subgraph PUBLISH["Publication authorization"]
         G1["License approval required"]
         G2["Privacy report must pass"]
         G3["Confirmation token required"]
@@ -232,8 +309,26 @@ flowchart TD
         G1 --> G2 --> G3 --> G4
     end
 
+    subgraph RELEASE["Release attestation (supply chain)"]
+        N1["PyPI Sigstore provenance from OIDC trusted publishing"]
+        N2["CycloneDX SBOM + SHA256SUMS attached to the GitHub Release"]
+        N1 --- N2
+    end
+
     T4 --> LOCAL
-    LOCAL --> GATE
+    LOCAL --> REMOTE
+    REMOTE --> SECRETS
+    T4 --> ARTIFACTS
+    ARTIFACTS --> PUBLISH
+    PUBLISH --> RELEASE
+
+    style INTAKE fill:#fbe3e3,stroke:#b3261e
+    style REMOTE fill:#fef7e0,stroke:#b06000
+    style SECRETS fill:#fef7e0,stroke:#b06000
+    style LOCAL fill:#e6f4ea,stroke:#188038
+    style ARTIFACTS fill:#e8f0fe,stroke:#1a73e8
+    style PUBLISH fill:#e8f0fe,stroke:#1a73e8
+    style RELEASE fill:#f3e8fd,stroke:#8e24aa
 ```
 
 ## 6. Why it's useful — problem → value
@@ -254,12 +349,12 @@ flowchart TD
     end
 
     subgraph VALUE["What Knovaryn delivers"]
-        V1["Every example traced to doc · page · sentence (provenance)"]
-        V2["10 quality gates that quarantine failures"]
-        V3["Durable jobs — leases, heartbeats, resume from checkpoint"]
+        V1["Every example traced to source spans with<br/>machine-checkable location precision (provenance)"]
+        V2["Fail-closed quality gates that quarantine failures —<br/>deterministic checks, honest semantic modes"]
+        V3["Durable jobs — atomic claims, heartbeats,<br/>resume from checkpoint, no double cost"]
         V4["License registry + publication gate · dry-run by default"]
         V5["ModelGateway + trainer-native exporters — BYO model"]
-        V6["Cost ledger + budget caps (incl. deepseek_flash_budget)"]
+        V6["Cost ledger + budget caps"]
     end
 
     P1 --> V1
@@ -275,4 +370,8 @@ flowchart TD
     V4 --> OUT
     V5 --> OUT
     V6 --> OUT
+
+    style PAIN fill:#fbe3e3,stroke:#b3261e
+    style VALUE fill:#e6f4ea,stroke:#188038
+    style OUT fill:#e8f0fe,stroke:#1a73e8,stroke-width:2px
 ```

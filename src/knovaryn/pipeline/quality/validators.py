@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import abc
 from dataclasses import dataclass, field
+from typing import Any
 
 from ...domain.policies import AcceptancePolicy, preference_is_trivially_separable
 from ...domain.schemas import (
@@ -20,7 +21,14 @@ from ...domain.schemas import (
     Verification,
 )
 from .claims import ClaimVerdict
-from .semantic import DeterministicSemanticVerifier, extract_atomic_claims
+from .profiles import (
+    PROFILE_CERTIFIED_PAIRWISE,
+    PROFILE_HEURISTIC,
+    PROFILE_OFFLINE_FAST,
+    build_semantic_verifier,
+    spec_for,
+)
+from .semantic import SemanticVerifier, extract_atomic_claims
 
 
 @dataclass
@@ -328,10 +336,21 @@ class SemanticConsistencyValidator(BaseValidator):
     """
 
     name = "semantic_consistency"
-    version = "1"
+    version = "2"
 
-    def __init__(self) -> None:
-        self._verifier = DeterministicSemanticVerifier()
+    def __init__(
+        self,
+        profile: str = PROFILE_OFFLINE_FAST,
+        gateway: Any | None = None,
+        verifier: SemanticVerifier | None = None,
+    ) -> None:
+        # defect 3.8: the profile is explicit — offline-fast (deterministic
+        # only, no network) or certified-semantic (judge second, fail-closed).
+        self.profile = profile
+        spec_for(profile)  # validates the name up front
+        self._verifier = verifier or build_semantic_verifier(
+            profile, gateway=gateway
+        )
 
     async def assess(self, example: TrainingExample, ctx: ValidatorContext) -> QualityAssessment:
         answer_text = _assistant_text(example)
@@ -386,7 +405,30 @@ class PreferenceValidator(BaseValidator):
     """
 
     name = "preference"
-    version = "1"
+    version = "2"
+
+    def __init__(
+        self,
+        preference_profile: str = PROFILE_HEURISTIC,
+        gateway: Any | None = None,
+        judge: Any | None = None,
+    ) -> None:
+        # defect 3.9: optional certified pairwise profile. "heuristic" keeps
+        # the deterministic-only behavior; "certified-pairwise" adds the
+        # two-order evidence-cited judge on top (never instead of it).
+        self.preference_profile = preference_profile
+        self._judge = judge
+        self._gateway = gateway
+
+    def _certified_judge(self) -> Any | None:
+        if self._judge is not None:
+            return self._judge
+        if self.preference_profile == PROFILE_CERTIFIED_PAIRWISE:
+            from .preference_judge import CertifiedPairwiseJudge
+
+            if self._gateway is not None and hasattr(self._gateway, "judge"):
+                return CertifiedPairwiseJudge(self._gateway)
+        return None
 
     async def assess(self, example: TrainingExample, ctx: ValidatorContext) -> QualityAssessment:
         from .preference import (
@@ -441,6 +483,44 @@ class PreferenceValidator(BaseValidator):
             # marginal signals lower the score to review band but not to reject
             score = 0.6
 
+        # defect 3.9: optional certified pairwise layer on top of the
+        # deterministic checks. It can only DEMOTE (valid → review/invalid),
+        # never upgrade a failing pair — so it runs for every preference
+        # example regardless of the deterministic outcome: a deterministically
+        # fatal pair keeps its 0.0 score but still records judge lineage and
+        # disagreement codes instead of silently skipping certification.
+        judge_lineage: dict = {}
+        if example.topology == Topology.preference:
+            judge = self._certified_judge()
+            if judge is not None:
+                judgement = await judge.judge_pair(
+                    prompt="\n".join(
+                        m.content for m in example.prompt_messages if m.role != "system"
+                    ),
+                    chosen_text=chosen,
+                    rejected_text=rejected,
+                    evidence_text=evidence_text,
+                )
+                judge_lineage = judgement.to_dict()
+                if judgement.verdict == "invalid":
+                    score = 0.0
+                    reasons.extend(judgement.reason_codes or ["certified_pair_invalid"])
+                elif judgement.verdict == "review":
+                    score = min(score, 0.6)
+                    reasons.extend(judgement.reason_codes or ["certified_pair_review"])
+
+        rationale = (
+            f"preference signal score {score:.2f}: {', '.join(reasons)}"
+            if reasons
+            else "genuine preference signal present"
+        )
+        if judge_lineage:
+            # lineage without chain-of-thought: identity, margin, codes only
+            rationale += (
+                f" | judge={judge_lineage['judge_identity']}"
+                f" margin={judge_lineage['preference_margin']}"
+                f" consistent={judge_lineage['order_consistent']}"
+            )
         return QualityAssessment(
             id="",
             example_id=example.id,
@@ -451,22 +531,37 @@ class PreferenceValidator(BaseValidator):
             verify_state=_verify_state(score, 0.8),
             score=score,
             reason_codes=reasons or ["preference_signal_ok"],
-            concise_rationale=(
-                f"preference signal score {score:.2f}: {', '.join(reasons)}"
-                if reasons
-                else "genuine preference signal present"
-            ),
+            concise_rationale=rationale,
         )
 
 
-def default_validators() -> list[BaseValidator]:
+def _configured_semantic_profile() -> str:
+    """Read ``quality.semantic_profile`` from operator config (defect 3.8)."""
+    try:
+        from ...domain.config import load_config
+
+        return str(
+            (load_config().get("quality") or {}).get("semantic_profile")
+            or PROFILE_OFFLINE_FAST
+        )
+    except Exception:  # noqa: BLE001 - config unreadable means offline-fast
+        return PROFILE_OFFLINE_FAST
+
+
+def default_validators(
+    *, semantic_profile: str | None = None, gateway: Any | None = None
+) -> list[BaseValidator]:
     """The canonical validator set applied to every example.
 
     Single source of truth so the product call sites (workspace quality
     report, service pipeline) and the product-path tests cannot drift apart:
     a validator added here runs everywhere, and a test exercising this list
-    exercises exactly what production runs.
+    exercises exactly what production runs. The semantic profile is
+    explicit (defect 3.8): resolved from ``quality.semantic_profile``
+    (default ``offline-fast``); ``certified-semantic`` additionally requires
+    a gateway exposing ``judge()``.
     """
+    profile = semantic_profile or _configured_semantic_profile()
     return [
         GroundingValidator(),
         CompletenessValidator(),
@@ -474,7 +569,7 @@ def default_validators() -> list[BaseValidator]:
         RefusalValidator(),
         SchemaValidator(),
         AnswerabilityValidator(),
-        SemanticConsistencyValidator(),
+        SemanticConsistencyValidator(profile=profile, gateway=gateway),
     ]
 
 

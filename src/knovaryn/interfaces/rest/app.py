@@ -23,6 +23,7 @@ from typing import Any
 
 from fastapi import Depends, FastAPI, HTTPException, status
 
+from ... import __version__
 from ...application.service import ProjectService
 from ...application.workspace import Workspace
 from ...domain.ids import IdGenerator
@@ -55,7 +56,8 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
 app = FastAPI(
     title="Knovaryn",
-    version="0.1.0",
+    # authoritative version source (defect 3.5) — never a literal here
+    version=__version__,
     description="Open, MCP-native training-data foundry REST API.",
     lifespan=lifespan,
 )
@@ -397,6 +399,42 @@ async def list_examples(
             project_id=project_id, principal=principal.name, scope="datasets:export"
         )
         return await _ws().list_examples(project_id=project_id, status=status, limit=limit)
+    except Exception as exc:  # noqa: BLE001
+        raise _err(exc) from exc
+
+
+@app.get("/v1/projects/{project_id}/examples/{example_id}/lineage")
+async def get_example_lineage(
+    project_id: str,
+    example_id: str,
+    principal: Principal = Depends(P_EXPORT_READ),
+) -> dict[str, Any]:
+    """Provenance + lineage for one example, including per-span location
+    precision (defect 3.7) so provenance claims are machine-verifiable."""
+    try:
+        await _ws().require_project_access(
+            project_id=project_id, principal=principal.name, scope="datasets:export"
+        )
+        data = await _ws().list_examples(project_id=project_id, limit=10000)
+        match = next(
+            (e for e in data.get("examples", []) if e.get("id") == example_id), None
+        )
+        if match is None:
+            from ...domain.errors import NotFoundError
+
+            raise NotFoundError(f"example not found: {example_id}")
+        span_ids = match.get("source_span_ids", [])
+        locations = await _ws().get_span_locations(span_ids)
+        return {
+            "example_id": example_id,
+            "project_id": project_id,
+            "source_document_ids": match.get("source_document_ids", []),
+            "source_group_ids": match.get("source_group_ids", []),
+            "source_span_ids": span_ids,
+            "source_spans": locations.get("spans", []),
+            "chunk_id": match.get("chunk_id"),
+            "topology": match.get("topology"),
+        }
     except Exception as exc:  # noqa: BLE001
         raise _err(exc) from exc
 

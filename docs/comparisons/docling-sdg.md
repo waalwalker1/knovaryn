@@ -18,7 +18,7 @@ complementary rather than adversarial.
 |---|---|---|
 | Scope | Training-data foundry (parse→split→generate→gate→export→publish) | Document parsing / conversion |
 | Document → dataset | Yes (end-to-end) | No — parse only (you build the rest) |
-| MCP surface | `knovaryn_mcp` (full 23-tool dataset workflow) | Docling MCP (parsing tools) |
+| MCP surface | `knovaryn_mcp` (full dataset workflow: ingest → estimate → run → review → export) | Docling MCP (parsing tools) |
 | Provenance | Span-level enforced lineage + content hash on examples | Returns structured docs for you to process |
 | Quality gate | Fail-closed quarantine on generated examples | N/A (parsing) |
 | Relation | Consumes Docling's canonical JSON | Provides the parse |

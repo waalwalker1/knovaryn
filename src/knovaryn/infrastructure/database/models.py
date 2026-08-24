@@ -128,6 +128,13 @@ class SourceSpanDB(Base):
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     parsed_document_id: Mapped[str] = mapped_column(ForeignKey("parsed_documents.id"), index=True)
     page_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Defect 3.7 (v0.2.1): full page range + machine-verifiable location data.
+    # ``precision`` is derived from the stored fields themselves
+    # (SourceSpan.with_derived_precision), never caller-asserted.
+    page_start: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    page_end: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    bounding_boxes: Mapped[list] = mapped_column(JSON, default=list)
+    precision: Mapped[str] = mapped_column(String(32), default="unknown")
     section_path: Mapped[str] = mapped_column(String(1024), default="")
     element_reference: Mapped[str] = mapped_column(String(255), default="")
     character_start: Mapped[int | None] = mapped_column(Integer, nullable=True)

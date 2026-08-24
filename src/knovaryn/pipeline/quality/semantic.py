@@ -9,9 +9,15 @@ Defines the SemanticVerifier interface and three implementations:
 from __future__ import annotations
 
 import abc
+import asyncio
+import json
 import logging
+import re
 from dataclasses import dataclass
-from typing import Literal
+from typing import Any, Literal
+
+from ...domain.errors import UnsupportedOperationError
+from ...domain.hashing import ContentHasher
 
 from .claims import (
     AtomicClaim,
@@ -261,8 +267,13 @@ class DeterministicSemanticVerifier(SemanticVerifier):
         evidence_lower = evidence_text.lower().strip()
 
         for claim in claims:
-            verdict = ClaimVerdict.entailed
-            confidence = 0.9
+            # Fail-closed default (defect 3.8): the deterministic layer can
+            # only DEMOTE to contradicted — absence of a firing rule is
+            # ``unverified``, never ``entailed``. Entailment is provable only
+            # by the certified judge; a rule layer that answers "entailed"
+            # because nothing tripped manufactures false accepts.
+            verdict = ClaimVerdict.unverified
+            confidence = 0.0
             reason_codes: list[str] = []
             contradiction_quotes: list[str] = []
             supporting_quotes: list[str] = []
@@ -348,24 +359,62 @@ class DeterministicSemanticVerifier(SemanticVerifier):
 class ModelSemanticVerifier(SemanticVerifier):
     """LLM-based semantic verifier that calls a model gateway.
 
-    This implementation wraps a model gateway call to get structured JSON
-    output validating each claim against the evidence.
+    Defect 3.8 (v0.2.1): the judge path is fully implemented against
+    ``ModelGateway.judge`` — typed, cited-evidence-only, structured
+    claim-by-claim verdicts with no chain-of-thought exposure. Any failure
+    (missing provider, invalid output) degrades to ``unverified``, never to
+    ``entailed``.
     """
 
     name: str = "model_semantic"
-    version: str = "1"
+    version: str = "2"
+    PROMPT_TEMPLATE_VERSION = "semantic-judge/1"
+
+    VERDICT_MAP = {
+        "entailed": ClaimVerdict.entailed,
+        "contradicted": ClaimVerdict.contradicted,
+        "insufficient_evidence": ClaimVerdict.insufficient,
+        "unverified": ClaimVerdict.unverified,
+    }
+
+    SYSTEM_PROMPT = (
+        "You are a strict semantic entailment judge. You receive EVIDENCE and a "
+        "list of numbered CLAIMS. For each claim decide whether the EVIDENCE "
+        "alone entails it, contradicts it, or provides insufficient evidence.\n"
+        "Rules:\n"
+        "- Judge ONLY against the provided evidence; never use outside knowledge.\n"
+        "- Output ONLY a JSON array, no prose, no explanations of reasoning.\n"
+        '- Each element: {"claim_id": <number>, "verdict": "entailed|contradicted|'
+        'insufficient_evidence|unverified", "confidence": <float 0-1>, '
+        '"evidence_span_ids": [<ids>], "reason_codes": [<short codes>]}\n'
+        "- reason_codes use snake_case labels such as entity_role_reversal, "
+        "causal_reversal, negation_mismatch, number_mismatch, unsupported."
+    )
 
     def __init__(
         self,
-        model_gateway: object,
+        model_gateway: object | None = None,
         structured_output_support: bool = True,
         max_retries: int = 2,
         timeout: int = 60,
+        model: str | None = None,
     ):
+        if model_gateway is not None and not hasattr(model_gateway, "judge"):
+            raise TypeError(
+                "ModelSemanticVerifier requires a gateway exposing "
+                "`async judge(...)` (ModelGateway.judge); refusing an "
+                "unfingerprinted ad-hoc completion path."
+            )
         self._model_gateway = model_gateway
         self._structured_output_support = structured_output_support
         self._max_retries = max_retries
         self._timeout = timeout
+        self.model = model or getattr(model_gateway, "verifier_model", "") or "unconfigured"
+
+    @property
+    def identity(self) -> str:
+        """Judge identity recorded in quality lineage (defects 3.8/3.9)."""
+        return f"{self.name}:{self.model}:v{self.version}"
 
     async def assess_claims(
         self,
@@ -375,25 +424,28 @@ class ModelSemanticVerifier(SemanticVerifier):
         candidate_answer: str = "",
         cited_span_ids: list[str] | None = None,
     ) -> list[ClaimAssessment]:
-        """Assess claims using a model gateway call.
+        """Assess claims using a model gateway judge call.
 
-        Falls back to deterministic checks if model call fails.
+        Any failure degrades to ``unverified`` — never ``entailed``.
         """
         try:
-            return await self._call_model(
-                claims, evidence_text, prompt, candidate_answer, cited_span_ids or []
+            return await asyncio.wait_for(
+                self._call_model(
+                    claims, evidence_text, prompt, candidate_answer, cited_span_ids or []
+                ),
+                timeout=self._timeout,
             )
-        except Exception:
-            logger.warning("Model semantic verifier call failed, returning unverified")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Model semantic verifier call failed: %s", exc)
             return [
                 ClaimAssessment(
                     claim=c,
                     verdict=ClaimVerdict.unverified,
                     confidence=0.0,
                     reason_codes=["model_verifier_failed"],
-                    verifier_name=self.name,
-                    verifier_version=self.version,
-                    concise_rationale="Model verifier call failed, claim unverified",
+                    verifier_name=self.identity,
+                    verifier_version=str(self.version),
+                    concise_rationale="Judge unavailable; claim left unverified",
                 )
                 for c in claims
             ]
@@ -406,16 +458,107 @@ class ModelSemanticVerifier(SemanticVerifier):
         candidate_answer: str,
         cited_span_ids: list[str],
     ) -> list[ClaimAssessment]:
-        """Make the actual model call.
+        """One fingerprinted, cached judge call returning per-claim verdicts."""
+        if self._model_gateway is None:
+            raise UnsupportedOperationError(
+                "no semantic judge configured; claims stay unverified"
+            )
+        claim_lines = "\n".join(f"{i}. {c.text}" for i, c in enumerate(claims))
+        user = (
+            f"EVIDENCE SPANS: {json.dumps(cited_span_ids)}\n\n"
+            f"EVIDENCE:\n\"\"\"\n{evidence_text}\n\"\"\"\n\n"
+            f"CLAIMS:\n{claim_lines}\n\n"
+            'Respond with ONLY the JSON array of verdicts.'
+        )
+        schema_hash = ContentHasher.cfg_hash(
+            {
+                "template": self.PROMPT_TEMPLATE_VERSION,
+                "verdicts": sorted(self.VERDICT_MAP),
+                "fields": ["claim_id", "verdict", "confidence",
+                           "evidence_span_ids", "reason_codes"],
+            }
+        )
+        result = await self._model_gateway.judge(  # type: ignore[attr-defined]
+            system=self.SYSTEM_PROMPT,
+            user=user,
+            prompt_template_version=self.PROMPT_TEMPLATE_VERSION,
+            schema_hash=schema_hash,
+            stage="semantic_judge",
+        )
+        raw = self._extract_json(result.get("content") or result.get("text") or "")
+        if not isinstance(raw, list):
+            raise ValueError("judge returned non-JSON-array output")
 
-        In offline/demo mode, falls back to deterministic.
-        This implementation is a stub for the actual model gateway integration.
-        """
-        # Placeholder for model gateway call
-        # In production this would construct a prompt with the claims and evidence,
-        # call the model with structured output, parse the JSON response,
-        # and return ClaimAssessment objects.
-        raise NotImplementedError("ModelSemanticVerifier requires a model gateway implementation")
+        cited = set(cited_span_ids)
+        by_index = {i: c for i, c in enumerate(claims)}
+        assessments: list[ClaimAssessment] = []
+        seen: set[int] = set()
+        for item in raw:
+            try:
+                idx = int(item.get("claim_id"))
+            except (TypeError, ValueError, AttributeError):
+                continue
+            claim = by_index.get(idx)
+            if claim is None or idx in seen:
+                continue
+            seen.add(idx)
+            verdict = self.VERDICT_MAP.get(str(item.get("verdict")), ClaimVerdict.unverified)
+            try:
+                confidence = min(1.0, max(0.0, float(item.get("confidence", 0.0))))
+            except (TypeError, ValueError):
+                confidence = 0.0
+            # cited-evidence-only enforcement: drop any span id the judge
+            # invented outside this example's citations
+            spans = [s for s in (item.get("evidence_span_ids") or []) if s in cited]
+            reason_codes = [str(rc) for rc in (item.get("reason_codes") or [])][:6]
+            assessments.append(
+                ClaimAssessment(
+                    claim=claim,
+                    verdict=verdict,
+                    confidence=confidence,
+                    supporting_span_ids=spans if verdict == ClaimVerdict.entailed else [],
+                    reason_codes=reason_codes,
+                    verifier_name=self.identity,
+                    verifier_version=str(self.version),
+                    concise_rationale=f"judge:{verdict.value}",  # no CoT exposure
+                )
+            )
+
+        # claims the judge skipped are unverified, never silently entailed
+        missing = [c for i, c in by_index.items() if i not in seen]
+        assessments.extend(
+            ClaimAssessment(
+                claim=c,
+                verdict=ClaimVerdict.unverified,
+                confidence=0.0,
+                reason_codes=["judge_no_verdict"],
+                verifier_name=self.identity,
+                verifier_version=str(self.version),
+                concise_rationale="judge returned no verdict for this claim",
+            )
+            for c in missing
+        )
+        return assessments
+
+    @staticmethod
+    def _extract_json(text: str) -> Any:
+        """Pull the first JSON value out of a possibly chatty response."""
+        stripped = text.strip()
+        if stripped.startswith("```"):
+            stripped = re.sub(r"^```[a-zA-Z]*\n?", "", stripped)
+            stripped = re.sub(r"\n?```$", "", stripped).strip()
+        try:
+            return json.loads(stripped)
+        except json.JSONDecodeError:
+            pass
+        start = stripped.find("[")
+        end = stripped.rfind("]")
+        if start != -1 and end > start:
+            try:
+                return json.loads(stripped[start : end + 1])
+            except json.JSONDecodeError:
+                return None
+        return None
 
 
 class CompositeSemanticVerifier(SemanticVerifier):

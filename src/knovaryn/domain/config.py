@@ -158,12 +158,21 @@ _DEFAULTS: dict[str, Any] = {
         "require_evidence": True,
         "judge_disagreement": "review",
         "human_review_sample": 0.05,
+        # defect 3.8: explicit semantic validation profile.
+        #   offline-fast      — deterministic checks only, no network
+        #   certified-semantic — deterministic first, cited-evidence-only
+        #                        model judge second (requires a live provider)
+        "semantic_profile": "offline-fast",
     },
     "preference": {
         "negative_strategy": "edit_chosen_near_miss",
         "length_ratio_min": 0.80,
         "length_ratio_max": 1.25,
         "detect_superficial_artifacts": True,
+        # defect 3.9: "heuristic" (deterministic checks only, default) or
+        # "certified-pairwise" (adds the two-order evidence-cited judge;
+        # requires a live provider; judge can demote but never upgrade).
+        "profile": "heuristic",
     },
     "privacy": {
         "provider_data_allowed": True,

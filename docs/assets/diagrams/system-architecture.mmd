@@ -1,13 +1,15 @@
 %% Knovaryn — System Architecture
 %% One application-services core, four interfaces, durable-job engine
+%% Count-free by policy (contract 6.2): surfaces say what they are, never
+%% how many — the live catalogue/reference pages carry the real numbers.
 flowchart LR
     subgraph AGENTS["Host agents"]
-        MCPAG["Claude · Cursor · etc."]
+        MCPAG["MCP-capable agents"]
     end
 
     subgraph INTERFACES["Four interfaces — same services"]
         C["CLI<br/>(knovaryn)"]
-        M["MCP server<br/>(knovaryn_mcp — 23 tools)"]
+        M["MCP server<br/>(registered tool catalogue,<br/>generated reference page)"]
         R["REST + web console<br/>(knovaryn server)"]
         S["Python SDK"]
     end
@@ -20,7 +22,7 @@ flowchart LR
 
     subgraph PIPELINE["Durable pipeline engine"]
         IN["Intake & preflight"]
-        PA["Parse (Docling)"]
+        PA["Parse (Docling / fallbacks)"]
         SP["Split & chunk"]
         PL["Plan (dry-run cost)"]
         GE["Generate (ModelGateway)"]
@@ -32,10 +34,16 @@ flowchart LR
 
     subgraph INFRA["Infrastructure"]
         DB[("SQLite / Postgres")]
-        ART["Artifact store<br/>local / S3"]
+        ART["Artifact store<br/>content-addressed, local / S3"]
         MG["Model gateway<br/>fake offline · LiteLLM"]
-        AUTH["Auth / bearer + scopes"]
+        AUTH["Auth / bearer + scopes + tenancy"]
         SEC["Secrets: env-only, redacted"]
+    end
+
+    subgraph DEPLOY["Deployment profiles"]
+        D1["Local — single process"]
+        D2["Compose — api · worker · pg · minio · proxy"]
+        D3["Kubernetes — kustomize base"]
     end
 
     AGENTS --> MCPAG --> M
@@ -51,8 +59,12 @@ flowchart LR
     WS --> AUTH
     R --> AUTH
     MG --> SEC
+    DB -.-> D2
+    ART -.-> D2
+    D2 -.-> D3
 
     style CORE fill:#e8f0fe,stroke:#1a73e8
     style PIPELINE fill:#e6f4ea,stroke:#188038
     style INFRA fill:#fef7e0,stroke:#b06000
     style MG fill:#fce8e6,stroke:#c5221f
+    style DEPLOY fill:#f3e8fd,stroke:#8e24aa

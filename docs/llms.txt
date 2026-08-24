@@ -19,7 +19,8 @@ S3-compatible storage) as a configuration change.
 
 - CLI: `knovaryn` (demo, doctor, repair, backup, restore, server, worker, mcp,
   verify-release, version)
-- MCP: `knovaryn-mcp` (stdio) / `knovaryn mcp` — 23-tool server
+- MCP: `knovaryn-mcp` (stdio) / `knovaryn mcp` — MCP server; the registered
+  tool catalogue is generated from the server registration
 - REST + web console: `knovaryn server` (bearer-token aware)
 - Python SDK: `knovaryn.application.workspace.Workspace`
 

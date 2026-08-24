@@ -147,20 +147,23 @@ def doctor(*, json_plain: bool = False) -> int:
     except Exception as exc:  # noqa: BLE001
         checks.append(("Artifact store", False, f"not writable: {exc}", False))
 
-    table = Table(title="Knovaryn doctor — environment check")
-    table.add_column("Component")
-    table.add_column("Status")
-    table.add_column("Detail")
-    for name, ok, detail, _optional in checks:
-        table.add_row(name, "[green]OK[/green]" if ok else "[red]FAIL[/red]", detail)
-    console.print(table)
-
     if json_plain:
+        # --json is a machine contract: stdout must carry EXACTLY one
+        # parseable JSON document, never the rich table alongside it.
+        # (profile_smoke installs into clean venvs and json.loads stdout.)
         console.print_json(
             __import__("json").dumps(
                 [{"component": n, "ok": o, "detail": d, "optional": p} for n, o, d, p in checks]
             )
         )
+    else:
+        table = Table(title="Knovaryn doctor — environment check")
+        table.add_column("Component")
+        table.add_column("Status")
+        table.add_column("Detail")
+        for name, ok, detail, _optional in checks:
+            table.add_row(name, "[green]OK[/green]" if ok else "[red]FAIL[/red]", detail)
+        console.print(table)
     # Optional/opt-in extras that are simply not installed are informational and
     # must not fail the exit code; only critical checks can make doctor non-zero.
     return 0 if all(ok for _, ok, _, optional in checks if not optional) else 1
@@ -545,4 +548,422 @@ def worker(
     return 0
 
 
-__all__ = ["doctor", "backup", "repair", "server", "worker", "worker_async", "_state_dir"]
+__all__ = [
+    "doctor",
+    "backup",
+    "repair",
+    "server",
+    "worker",
+    "worker_async",
+    "_state_dir",
+    "dataset_lifecycle_commands",
+]
+
+
+# ---------------------------------------------------------------------------
+# Project lifecycle commands (defect 3.4, v0.2.1)
+#
+# These are the real CLI surface over Workspace — every command maps to one
+# application-service call, so the CLI can never drift from the pipeline the
+# MCP/REST/SDK paths run. No command invents its own persistence or validation.
+# ---------------------------------------------------------------------------
+
+def _print_result(payload: Any, *, json_plain: bool, human: str | None = None) -> None:
+    if json_plain:
+        import json as _json
+
+        console.print_json(_json.dumps(payload, default=str))
+    elif human:
+        console.print(human)
+    else:
+        console.print(payload)
+
+
+def _workspace_lifecycle(principal: str = "cli"):
+    """Async context manager yielding an open Workspace (defect 3.4)."""
+    from contextlib import asynccontextmanager
+
+    @asynccontextmanager
+    async def _ctx():
+        from ...application.workspace import Workspace
+
+        ws = Workspace(principal=principal)
+        await ws.open()
+        try:
+            yield ws
+        finally:
+            await ws.close()
+
+    return _ctx()
+
+
+def project_create(
+    *, slug: str, display_name: str = "", description: str = "", json_plain: bool = False
+) -> int:
+    """Create a project. Exit 1 on duplicate slug / invalid input."""
+
+    async def go():
+        async with _workspace_lifecycle() as ws:
+            return await ws.create_project(
+                slug=slug, display_name=display_name or slug, description=description
+            )
+
+    try:
+        project = _run_async(go())
+    except Exception as exc:  # noqa: BLE001
+        console.print(f"[red]error:[/red] {exc}")
+        return 1
+    _print_result(
+        {"id": project.id, "slug": project.slug, "display_name": project.display_name},
+        json_plain=json_plain,
+        human=f"created project [bold]{project.slug}[/bold] ({project.id})",
+    )
+    return 0
+
+
+def project_list(*, limit: int = 50, json_plain: bool = False) -> int:
+    async def go():
+        async with _workspace_lifecycle() as ws:
+            return await ws.list_projects(limit=limit)
+
+    data = _run_async(go())
+    if json_plain:
+        _print_result(data, json_plain=True)
+        return 0
+    table = Table(title="Projects")
+    table.add_column("Slug")
+    table.add_column("ID")
+    table.add_column("Name")
+    for p in data.get("projects", []):
+        table.add_row(p.get("slug", ""), p.get("id", ""), p.get("display_name", ""))
+    console.print(table)
+    return 0
+
+
+def source_add(
+    *,
+    project_id: str,
+    path: Path,
+    license: str | None = None,
+    privacy: str | None = None,
+    group: str | None = None,
+    json_plain: bool = False,
+) -> int:
+    """Register a file (text or binary) through intake; detected type wins."""
+    if not path.is_file():
+        console.print(f"[red]error:[/red] not a file: {path}")
+        return 1
+
+    async def go():
+        raw = path.read_bytes()
+        async with _workspace_lifecycle() as ws:
+            return await ws.add_source(
+                project_id=project_id,
+                original_name=path.name,
+                raw=raw,
+                declared_license=license,
+                privacy=privacy,
+                group_key=group,
+            )
+
+    try:
+        src = _run_async(go())
+    except Exception as exc:  # noqa: BLE001
+        console.print(f"[red]error:[/red] {exc}")
+        return 1
+    _print_result(
+        {"id": src.id, "name": src.original_name, "sha256": src.sha256},
+        json_plain=json_plain,
+        human=(
+            f"added source [bold]{src.original_name}[/bold] ({src.id}) "
+            f"sha256={src.sha256[:12]}…"
+        ),
+    )
+    return 0
+
+
+def source_list(*, project_id: str, limit: int = 100, json_plain: bool = False) -> int:
+    async def go():
+        async with _workspace_lifecycle() as ws:
+            return await ws.list_sources(project_id=project_id, limit=limit)
+
+    try:
+        data = _run_async(go())
+    except Exception as exc:  # noqa: BLE001
+        console.print(f"[red]error:[/red] {exc}")
+        return 1
+    if json_plain:
+        _print_result(data, json_plain=True)
+        return 0
+    table = Table(title="Sources")
+    table.add_column("ID")
+    table.add_column("Name")
+    table.add_column("Media type")
+    for s in data.get("sources", []):
+        table.add_row(s.get("id", ""), s.get("original_name", ""), s.get("media_type", ""))
+    console.print(table)
+    return 0
+
+
+def run_pipeline(
+    *,
+    project_id: str,
+    family: str | None = None,
+    target: int | None = None,
+    budget_max_usd: float | None = None,
+    profile: str | None = None,
+    json_plain: bool = False,
+) -> int:
+    """Queue and drive one pipeline job to completion (single-worker mode)."""
+    proportions = None
+    if family:
+        try:
+            name, _, weight = family.partition(":")
+            proportions = {name.strip(): float(weight or "1.0")}
+        except ValueError:
+            console.print(f"[red]error:[/red] --family expects NAME:WEIGHT, got {family!r}")
+            return 1
+
+    async def go():
+        async with _workspace_lifecycle() as ws:
+            job = await ws.start_pipeline(
+                project_id=project_id,
+                task_family_proportions=proportions,
+                target_examples=target,
+                budget_max_usd=budget_max_usd,
+                profile=profile,
+            )
+            return job, await ws.run_job(job.id)
+
+    try:
+        job, result = _run_async(go())
+    except Exception as exc:  # noqa: BLE001
+        console.print(f"[red]error:[/red] {exc}")
+        return 1
+    payload = {
+        "job_id": job.id,
+        "state": str(result.get("state") or ""),
+        "actual_cost": result.get("actual_cost"),
+        "error_summary": result.get("error_summary"),
+    }
+    ok = payload["state"] == "succeeded"
+    _print_result(
+        payload,
+        json_plain=json_plain,
+        human=f"job [bold]{job.id}[/bold] → {payload['state']}",
+    )
+    return 0 if ok else 1
+
+
+def job_status(*, job_id: str, json_plain: bool = False) -> int:
+    async def go():
+        async with _workspace_lifecycle() as ws:
+            return await ws.get_job(job_id)
+
+    try:
+        summary = _run_async(go())
+    except Exception as exc:  # noqa: BLE001
+        console.print(f"[red]error:[/red] {exc}")
+        return 1
+    payload = summary.to_dict()
+    _print_result(
+        payload,
+        json_plain=json_plain,
+        human=(
+            f"job {job_id} → {payload['state']}"
+            f" (stage={payload.get('current_stage')},"
+            f" progress={payload.get('progress_current')}/{payload.get('progress_total')})"
+        ),
+    )
+    return 0 if payload["state"] == "succeeded" else (0 if payload["state"] != "failed" else 1)
+
+
+def job_list(*, project_id: str | None = None, limit: int = 20, json_plain: bool = False) -> int:
+    async def go():
+        async with _workspace_lifecycle() as ws:
+            return await ws.list_jobs(project_id=project_id, limit=limit)
+
+    data = _run_async(go())
+    if json_plain:
+        _print_result(data, json_plain=True)
+        return 0
+    table = Table(title="Jobs")
+    table.add_column("ID")
+    table.add_column("State")
+    for j in data.get("jobs", []):
+        table.add_row(str(j.get("id", "")), str(j.get("state", "")))
+    console.print(table)
+    return 0
+
+
+def review_decide(
+    *,
+    example_id: str,
+    decision: str,
+    note: str = "",
+    reviewer: str = "cli",
+    revision: int | None = None,
+    json_plain: bool = False,
+) -> int:
+    """Record approve/reject/needs_work against the example's latest revision."""
+
+    async def go():
+        async with _workspace_lifecycle(principal=reviewer) as ws:
+            if revision is None:
+                history = await ws.list_revisions(example_id=example_id)
+                revs = history.get("revisions") or []
+                if not revs:
+                    raise ValueError(f"example has no revisions: {example_id}")
+                base = int(revs[-1]["revision_id"])
+            else:
+                base = revision
+            return await ws.review_example(
+                example_id=example_id,
+                revision_id=base,
+                reviewer=reviewer,
+                decision=decision,
+                note=note,
+            )
+
+    try:
+        result = _run_async(go())
+    except Exception as exc:  # noqa: BLE001
+        console.print(f"[red]error:[/red] {exc}")
+        return 1
+    _print_result(
+        {"example_id": example_id, "decision": decision, "revision": result.get("revision")},
+        json_plain=json_plain,
+        human=f"recorded {decision} on {example_id}",
+    )
+    return 0
+
+
+def dataset_validate(*, project_id: str, limit: int = 500, json_plain: bool = False) -> int:
+    async def go():
+        async with _workspace_lifecycle() as ws:
+            return await ws.validate_dataset(project_id=project_id, limit=limit)
+
+    try:
+        report = _run_async(go())
+    except Exception as exc:  # noqa: BLE001
+        console.print(f"[red]error:[/red] {exc}")
+        return 1
+    _print_result(report, json_plain=json_plain)
+    if not json_plain:
+        counts = report.get("summary", report.get("counts", {}))
+        console.print(f"validation summary: {counts}")
+    return 0
+
+
+def dataset_version(*, project_id: str, semantic_version: str | None = None,
+                    json_plain: bool = False) -> int:
+    async def go():
+        async with _workspace_lifecycle() as ws:
+            return await ws.create_version(
+                project_id=project_id, semantic_version=semantic_version
+            )
+
+    try:
+        version = _run_async(go())
+    except Exception as exc:  # noqa: BLE001
+        console.print(f"[red]error:[/red] {exc}")
+        return 1
+    _print_result(
+        {"version_id": version.id, "semantic_version": version.semantic_version},
+        json_plain=json_plain,
+        human=f"created dataset version {version.semantic_version} ({version.id})",
+    )
+    return 0
+
+
+def dataset_export(
+    *,
+    project_id: str,
+    format: str = "openai_chat",
+    version_id: str | None = None,
+    download_dir: str | None = None,
+    json_plain: bool = False,
+) -> int:
+    async def go():
+        async with _workspace_lifecycle() as ws:
+            return await ws.export_dataset_formatted(
+                project_id=project_id,
+                format=format,
+                version_id=version_id,
+                download_dir=download_dir,
+            )
+
+    try:
+        artifact = _run_async(go())
+    except Exception as exc:  # noqa: BLE001
+        console.print(f"[red]error:[/red] {exc}")
+        return 1
+    _print_result(
+        {
+            "artifact_id": artifact.artifact_id,
+            "path": artifact.download_path,
+            "sha256": artifact.sha256,
+            "records": artifact.record_count,
+        },
+        json_plain=json_plain,
+        human=(
+            f"exported {artifact.record_count} records → {artifact.download_path} "
+            f"(sha256={artifact.sha256[:12]}…)"
+        ),
+    )
+    return 0
+
+
+def dataset_publish(
+    *,
+    project_id: str,
+    repo_id: str,
+    dry_run: bool = True,
+    principal: str = "cli",
+    json_plain: bool = False,
+) -> int:
+    async def go():
+        async with _workspace_lifecycle() as ws:
+            return await ws.publish_dataset(
+                project_id=project_id, repo_id=repo_id, dry_run=dry_run, principal=principal
+            )
+
+    try:
+        result = _run_async(go())
+    except Exception as exc:  # noqa: BLE001
+        console.print(f"[red]error:[/red] {exc}")
+        return 1
+    gate = result.get("publication_gate", {})
+    status = result.get("status", "ok")
+    _print_result(
+        result,
+        json_plain=json_plain,
+        human=f"publish {'dry-run' if dry_run else 'LIVE'} → status={status}"
+        + (f", gate_allowed={gate.get('allowed')}" if isinstance(gate, dict) else ""),
+    )
+    # §15.6: a blocked or unavailable publication path fails the command.
+    blocked = (isinstance(gate, dict) and gate.get("allowed") is False) or status != "ok"
+    return 1 if blocked else 0
+
+
+def init_state(*, json_plain: bool = False) -> int:
+    """Create the local state directory + verify configuration loads."""
+    cfg = load_config()
+    state = _state_dir()
+    art_root = Path(cfg.get("storage", {}).get("artifact_root") or ".knovaryn/artifacts")
+    try:
+        state.mkdir(parents=True, exist_ok=True)
+        art_root.mkdir(parents=True, exist_ok=True)
+    except Exception as exc:  # noqa: BLE001
+        console.print(f"[red]error:[/red] cannot create state directories: {exc}")
+        return 1
+    db_url = cfg.get("storage", {}).get("database_url") or f"sqlite+aiosqlite:///{state / 'knovaryn.db'}"
+    _print_result(
+        {"state_dir": str(state), "artifact_root": str(art_root), "database_url": db_url},
+        json_plain=json_plain,
+        human=(
+            f"initialized state at [bold]{state}[/bold]\n"
+            f"  artifacts: {art_root}\n  database:  {db_url}"
+        ),
+    )
+    return 0

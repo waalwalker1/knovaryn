@@ -74,10 +74,17 @@ def test_doctor_healthy_state_returns_zero(isolated_config) -> None:
 
 
 def test_doctor_json_output(isolated_config, capsys) -> None:
+    """--json is a machine contract: stdout carries exactly ONE parseable JSON
+    document (no rich table alongside it), with the documented item shape."""
+    import json
+
     code = cli_commands.doctor(json_plain=True)
     captured = capsys.readouterr().out
     assert code in (0, 1)
-    assert "knovaryn" in captured.lower() or "database" in captured.lower()
+    doc = json.loads(captured)  # raises if anything but pure JSON was emitted
+    assert isinstance(doc, list) and doc
+    for item in doc:
+        assert {"component", "ok", "detail", "optional"} <= set(item)
 
 
 def test_doctor_non_sqlite_backend_missing_db_ok(monkeypatch, capsys) -> None:

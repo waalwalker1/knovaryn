@@ -25,7 +25,7 @@ from typing import Any
 
 from ...domain.errors import ExportError
 from ...domain.hashing import ContentHasher
-from ...domain.schemas import Topology, TrainingExample
+from ...domain.schemas import SpanPrecision, Topology, TrainingExample
 
 
 class LocationPrecision:
@@ -54,12 +54,34 @@ class LocationPrecision:
 
     @classmethod
     def of_span(cls, span: Any) -> str:
-        """Derive the truthful precision level of a SourceSpan from its data."""
-        if getattr(span, "bounding_boxes", None):
+        """Derive the truthful precision level of a SourceSpan from its data.
+
+        Defect 3.7: the authoritative derivation lives in
+        ``SourceSpan.with_derived_precision`` (domain layer); persisted spans
+        carry it in ``span.precision``. Duck-typed spans without that field
+        (in-memory/test doubles) fall back to the same rule order applied to
+        their raw fields — including the page-range and section levels the
+        pre-0.2.1 derivation could not see.
+        """
+        own = getattr(span, "precision", None)
+        if isinstance(own, SpanPrecision):
+            return own.value
+        if getattr(span, "bounding_boxes", None) and getattr(span, "page_number", None) is not None:
             return cls.EXACT_BBOX
         if getattr(span, "page_number", None) is not None:
             return cls.EXACT_PAGE
-        if getattr(span, "character_start", None) is not None:
+        if (
+            getattr(span, "page_start", None) is not None
+            and getattr(span, "page_end", None) is not None
+        ):
+            return cls.PAGE_RANGE
+        if getattr(span, "section_path", None):
+            return cls.SECTION
+        if (
+            getattr(span, "character_start", None) is not None
+            or getattr(span, "quoted_text", None)
+            or getattr(span, "element_reference", None)
+        ):
             return cls.CHUNK
         return cls.UNKNOWN
 

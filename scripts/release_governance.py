@@ -5,9 +5,12 @@ v0.1 allowed publishing a Release for any commit regardless of whether CI
 passed on it — the publish workflow built and uploaded whatever SHA the tag
 pointed at. This module closes that hole:
 
-* the canonical required-check set is parsed from
-  ``.github/workflows/ci.yml`` job ids, so the gate can never silently drift
-  from CI's own definition;
+* the canonical required-check set is parsed from the push-required job ids
+  across ALL governance workflows (``ci.yml`` AND ``security.yml``, §3.11),
+  so the gate can never silently drift from the workflows' own definitions.
+  Event-gated jobs (schedule/dispatch, e.g. compose-e2e) are excluded — they
+  have no check run on an ordinary push SHA — and are enforced release-time
+  by publish.yml needing the reusable deploy-e2e workflow on the tag SHA;
 * ``verify_release_sha`` resolves the commit's check runs through the GitHub
   API and fails closed: every required job must be present and concluded
   ``SUCCESS`` — failed, missing, or still-running are all violations;
@@ -40,16 +43,36 @@ from knovaryn.domain.errors import ConfigurationError  # noqa: E402
 
 DEFAULT_REPO = "waalwalker1/knovaryn"
 DEFAULT_WORKFLOW = Path(__file__).resolve().parents[1] / ".github" / "workflows" / "ci.yml"
+WORKFLOWS_DIR = Path(__file__).resolve().parents[1] / ".github" / "workflows"
+# §3.11: a release SHA must have passed BOTH the CI and the Security workflows.
+GOVERNANCE_WORKFLOW_FILES = ("ci.yml", "security.yml")
 
 # Injected in publish.yml so the API call is observable and testable.
 FetchJson = Callable[..., dict[str, Any]]
+
+# Jobs gated to non-push events (schedule / dispatch / reusable-call / release)
+# have no check run on an ordinary commit — demanding one would block every
+# release forever. They are opt-in surfaces, enforced where they actually run
+# (e.g. publish.yml runs the deployment E2E explicitly via needs:).
+_EVENT_GATED_IF = re.compile(
+    r"schedule|workflow_dispatch|workflow_call|github\.event_name\s*==\s*'release'", re.I
+)
+
+
+def _job_required_on_push(job: Any) -> bool:
+    """False only when the job's ``if:`` gates it away from ordinary pushes."""
+    cond = str((job or {}).get("if") or "")
+    return not _EVENT_GATED_IF.search(cond)
 
 
 def ci_job_ids(workflow_path: Path | str | None = None) -> frozenset[str]:
     """The CI job ids this repo treats as required checks for a release.
 
     Parsed from the workflow's own ``jobs:`` mapping — adding or renaming a
-    CI job automatically changes what the release gate demands.
+    CI job automatically changes what the release gate demands. Jobs gated to
+    schedule/dispatch-only events are excluded (they cannot have run on an
+    arbitrary push SHA); their release-time enforcement lives in publish.yml's
+    own needs-chain instead.
     """
     path = Path(workflow_path) if workflow_path else DEFAULT_WORKFLOW
     if not path.is_file():
@@ -58,7 +81,14 @@ def ci_job_ids(workflow_path: Path | str | None = None) -> frozenset[str]:
     jobs = data.get("jobs")
     if not isinstance(jobs, dict) or not jobs:
         raise ConfigurationError(f"CI workflow {path} defines no jobs")
-    return frozenset(str(j) for j in jobs)
+    return frozenset(
+        str(j) for j, cfg in jobs.items() if _job_required_on_push(cfg)
+    )
+
+
+def governance_workflows() -> list[Path]:
+    """Workflow files whose jobs are all required on a release SHA (§3.11)."""
+    return [WORKFLOWS_DIR / name for name in GOVERNANCE_WORKFLOW_FILES]
 
 
 def _github_fetch_json(url: str, *, token: str | None = None) -> dict[str, Any]:
@@ -155,12 +185,14 @@ def verify_release_sha(
     *,
     fetch_json: FetchJson | None = None,
     token: str | None = None,
-    workflow_path: Path | str | None = None,
+    workflow_paths: list[Path | str] | None = None,
 ) -> dict[str, Any]:
-    """Verify every CI job passed on ``sha``; raise ConfigurationError if not.
+    """Verify every required CI *and* Security job passed on ``sha`` (§3.11).
 
     Fails closed on: unknown commit, a required job (or any matrix leg of
-    one) that failed, has no check run (CI never ran), or is still running.
+    one) that failed, has no check run (its workflow never ran on this SHA),
+    or is still running. Required jobs are parsed from the workflows' own
+    ``jobs:`` mappings (event-gated jobs excluded — see ``ci_job_ids``).
     Check runs are matched by expanded job ``name:`` (matrix-aware), falling
     back to the literal prefix for unpredicted legs and to the job id when
     no ``name:`` is set.
@@ -168,11 +200,24 @@ def verify_release_sha(
     import urllib.error
 
     fetch = fetch_json or _github_fetch_json
-    required = ci_job_ids(workflow_path)
+    paths = [Path(p) for p in workflow_paths] if workflow_paths else governance_workflows()
 
-    path = Path(workflow_path) if workflow_path else DEFAULT_WORKFLOW
-    data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-    jobs_cfg = data.get("jobs") or {}
+    required: dict[str, str] = {}  # job_id -> workflow file name (ids are unique repo-wide)
+    matchers: dict[str, tuple[set[str], str]] = {}
+    for path in paths:
+        if not path.is_file():
+            raise ConfigurationError(f"governance workflow not found: {path}")
+        data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        jobs_cfg = data.get("jobs") or {}
+        for job_id in sorted(ci_job_ids(path)):
+            if job_id in required:
+                raise ConfigurationError(
+                    f"duplicate required job id across workflows: {job_id!r} "
+                    f"in both {required[job_id]} and {path.name}"
+                )
+            required[job_id] = path.name
+            job = jobs_cfg.get(job_id)
+            matchers[job_id] = _job_check_names(job_id, job if isinstance(job, dict) else {})
 
     url = f"https://api.github.com/repos/{repo}/commits/{sha}/check-runs"
     # Paginate (default page size is 30 — a SHA with several CI runs exceeds
@@ -213,11 +258,6 @@ def verify_release_sha(
         if name not in by_name or _recency(run) > _recency(by_name[name]):
             by_name[name] = run
 
-    matchers: dict[str, tuple[set[str], str]] = {}
-    for job_id in sorted(required):
-        job = jobs_cfg.get(job_id)
-        matchers[job_id] = _job_check_names(job_id, job if isinstance(job, dict) else {})
-
     verified: set[str] = set()
     violations: list[str] = []
     for job_id in sorted(required):
@@ -236,7 +276,9 @@ def verify_release_sha(
             if not contested:
                 leg_names = sorted(n for n in by_name if n.startswith(prefix))
         if not leg_names:
-            violations.append(f"'{job_id}' (no check run — CI did not run on this SHA)")
+            violations.append(
+                f"'{job_id}' (no check run — {required[job_id]} did not run on this SHA)"
+            )
             continue
         bad = []
         for leg in leg_names:
@@ -253,7 +295,8 @@ def verify_release_sha(
     if violations:
         raise ConfigurationError(
             "release governance: refusing to release "
-            f"{sha[:12]} on {repo} — required CI checks did not pass: " + "; ".join(violations)
+            f"{sha[:12]} on {repo} — required CI/Security checks did not pass: "
+            + "; ".join(violations)
         )
     return {"sha": sha, "repo": repo, "verified_jobs": verified}
 
@@ -270,7 +313,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     print(
         f"OK: {args.sha[:12]} passed all {len(report['verified_jobs'])} "
-        f"required CI jobs on {args.repo}"
+        f"required CI/Security jobs on {args.repo}"
     )
     return 0
 

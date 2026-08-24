@@ -53,6 +53,25 @@ class ExtractionStatus(StrEnum):
     partial = "partial"
 
 
+class SpanPrecision(StrEnum):
+    """Defect 3.7 (v0.2.1) — persisted location-precision classification.
+
+    Derived from the fields actually stored on a :class:`SourceSpan`, never
+    claimed by callers: a span may not assert higher precision than its data
+    supports. ``exact_bbox`` requires page + non-empty bounding boxes;
+    ``exact_page`` requires a single known page; ``page_range`` requires a
+    known page interval; ``section`` requires a section path; everything else
+    is ``chunk`` or ``unknown``.
+    """
+
+    exact_bbox = "exact_bbox"
+    exact_page = "exact_page"
+    page_range = "page_range"
+    section = "section"
+    chunk = "chunk"
+    unknown = "unknown"
+
+
 class Topology(StrEnum):
     sft = "sft"
     preference = "preference"
@@ -332,6 +351,9 @@ class SourceSpan(BaseModel):
     id: str
     parsed_document_id: str
     page_number: int | None = None
+    # page interval when a span covers several known pages (defect 3.7)
+    page_start: int | None = None
+    page_end: int | None = None
     section_path: str = ""
     element_reference: str = ""
     character_start: int | None = None
@@ -339,6 +361,29 @@ class SourceSpan(BaseModel):
     bounding_boxes: list[Any] = Field(default_factory=list)
     quoted_text: str = ""
     sha256: str = ""
+    # persisted location precision (defect 3.7). Set through
+    # ``SourceSpan.with_derived_precision`` — never hand-asserted by callers.
+    precision: SpanPrecision = SpanPrecision.unknown
+
+    def with_derived_precision(self) -> "SourceSpan":
+        """Return a copy whose ``precision`` is derived from stored fields.
+
+        This is the only sanctioned way to set precision: it prevents callers
+        from claiming exact-page/bbox granularity the data does not carry.
+        """
+        if self.page_number is not None and self.bounding_boxes:
+            self.precision = SpanPrecision.exact_bbox
+        elif self.page_number is not None:
+            self.precision = SpanPrecision.exact_page
+        elif self.page_start is not None and self.page_end is not None:
+            self.precision = SpanPrecision.page_range
+        elif self.section_path:
+            self.precision = SpanPrecision.section
+        elif self.quoted_text or self.element_reference:
+            self.precision = SpanPrecision.chunk
+        else:
+            self.precision = SpanPrecision.unknown
+        return self
 
 
 class Chunk(BaseModel):

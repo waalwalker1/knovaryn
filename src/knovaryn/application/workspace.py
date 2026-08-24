@@ -40,6 +40,7 @@ from ..domain.schemas import (
     Project,
     SourceDocument,
     SourceKind,
+    SpanPrecision,
     TrainingExample,
 )
 from ..infrastructure.database.repositories import (
@@ -629,7 +630,47 @@ class Workspace:
                 "next_cursor": next_cursor,
             }
 
+    async def get_span_locations(self, span_ids: list[str]) -> dict[str, Any]:
+        """Machine-verifiable location data for cited spans (defect 3.7).
+
+        Every field is read from what was *stored* at pipeline time; the
+        precision label is the one derived by ``with_derived_precision``.
+        Spans without parser location evidence report ``unknown`` — never a
+        fabricated page number.
+        """
+        if not span_ids:
+            return {"spans": []}
+        async with self._db.session() as session:
+            spans = await SpanRepository(session).get_many(span_ids)
+        out = []
+        for sp in spans:
+            pages = set()
+            if sp.page_number is not None:
+                pages.add(sp.page_number)
+            for p in (sp.page_start, sp.page_end):
+                if p is not None:
+                    pages.add(p)
+            out.append({
+                "span_id": sp.id,
+                "precision": sp.precision.value,
+                "pages": sorted(pages),
+                "bbox_count": len(sp.bounding_boxes),
+                "bounding_boxes": sp.bounding_boxes,
+                "section_path": sp.section_path,
+                "element_reference": sp.element_reference,
+            })
+        return {"spans": out}
+
     async def validate_dataset(self, *, project_id: str, limit: int = 500) -> dict[str, Any]:
+        from ..pipeline.quality.profiles import spec_for
+        from ..pipeline.quality.validators import _configured_semantic_profile
+
+        profile = _configured_semantic_profile()
+        gateway = None
+        if spec_for(profile).uses_model_judge:
+            # certified-semantic: judge calls need a live provider; build_gateway
+            # raises ConfigurationError when no credentials exist (never fake).
+            gateway = build_gateway(project_id=project_id, stage="validate")
         async with self._db.session() as session:
             ex_repo = ExampleRepository(session)
             span_repo = SpanRepository(session)
@@ -647,13 +688,17 @@ class Workspace:
 
                 diag = diagnose_example(ex)
                 artifact = _artifact_assessment(ex, diag)
-                decisions = [await v.assess(ex, ctx) for v in default_validators()] + [artifact]
+                decisions = [
+                    await v.assess(ex, ctx)
+                    for v in default_validators(semantic_profile=profile, gateway=gateway)
+                ] + [artifact]
                 overall = assemble_decision(
                     decisions, example_id=ex.id, is_preference=(ex.topology.value == "preference")
                 )
                 assessments.append(overall)
                 topology_of[ex.id] = ex.topology.value
             report = build_quality_report(assessments, topologies=topology_of).to_dict()
+            report["semantic_profile"] = profile
             return report
 
     # -- review (WP H1/H2; immutable revisions, P0-9) --------------------------
@@ -825,6 +870,12 @@ class Workspace:
             )
             # A6: fail closed — block export on any broken / cross-project lineage.
             await verify_provenance_before_export(examples, resolver)
+            # defect 3.7: capture the location precision actually carried by
+            # every cited span (derived at pipeline time from stored fields)
+            # while the session is open, for the content manifest below.
+            _cited = sorted({s for ex in examples for s in ex.source_span_ids})
+            _span_rows = await SpanRepository(session).get_many(_cited)
+            _precision_of = {sp.id: sp.precision.value for sp in _span_rows}
 
         res = export_format(examples, format)
         store = self._artifact_store()
@@ -857,6 +908,16 @@ class Workspace:
             "record_count": len(examples),
             "per_split_counts": per_split,
             "source_document_ids": sorted({d for e in examples for d in e.source_document_ids}),
+            # defect 3.7: exported datasets must not imply exact-page/bbox
+            # provenance they do not carry — the manifest records the derived
+            # precision of every cited span so consumers can verify claims.
+            "provenance_precision": {
+                "counts": {
+                    p.value: sum(1 for v in _precision_of.values() if v == p.value)
+                    for p in SpanPrecision
+                },
+                "spans": _precision_of,
+            },
             "first_example_id": examples[0].id if examples else None,
         }
         manifest_meta = await store.put(

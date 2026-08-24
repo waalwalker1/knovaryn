@@ -3,7 +3,7 @@
   "@type": "SoftwareSourceCode",
   "identifier": "knovaryn",
   "name": "Knovaryn",
-  "version": "0.1.0",
+  "version": "0.2.1",
   "description": "Open, MCP-native training-data foundry: turn permitted documents into traceable, quality-gated SFT and preference datasets.",
   "license": "https://spdx.org/licenses/Apache-2.0",
   "codeRepository": "https://github.com/waalwalker1/knovaryn",

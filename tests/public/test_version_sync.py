@@ -4,8 +4,10 @@ v0.1 drifted: ``pyproject.toml`` said one version while the package
 ``__version__``, every pinned container image tag, and the README/index
 "current version" prose said another. Corrected contract:
 
-* ``pyproject.toml`` is the single source of truth; the package
-  ``__version__`` must equal it;
+* ``src/knovaryn/__init__.py::__version__`` is the single authoritative
+  literal; ``pyproject.toml`` carries NO version of its own — it declares
+  ``dynamic = ["version"]`` and hatchling consumes the literal at build
+  time, so build metadata cannot drift from the package;
 * every pinned ``ghcr.io/knovaryn/knovaryn:<tag>`` reference under deploy/
   must pin exactly the current version (pinning exists so a release is
   reproducible — a stale pin deploys the WRONG release);
@@ -25,26 +27,39 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 pytestmark = pytest.mark.unit
 
 
-def _project_version() -> str:
-    import tomllib
-
-    data = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-    return str(data["project"]["version"])
+def _authoritative_version() -> str:
+    """Read the single authoritative version literal (defect 3.5)."""
+    init_py = REPO_ROOT / "src" / "knovaryn" / "__init__.py"
+    m = re.search(r'^__version__\s*=\s*"(\d+\.\d+\.\d+)"', init_py.read_text(encoding="utf-8"), re.M)
+    assert m, f"no __version__ literal in {init_py.relative_to(REPO_ROOT)}"
+    return m.group(1)
 
 
 class TestVersionSync:
     """Versions stay synchronized across the project."""
 
-    def test_pyproject_and_package_version_match(self):
+    def test_pyproject_consumes_authoritative_version(self):
+        """pyproject must NOT carry its own version literal: builds take the
+        version from the package ``__version__`` via the hatchling hook, so
+        wheel/sdist metadata cannot disagree with the installed package."""
+        py = (REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8")
+        assert re.search(r'^dynamic\s*=\s*\[[^\]]*"version"[^\]]*\]', py, re.M), (
+            'pyproject [project] must declare dynamic = ["version"] '
+            "(no version literal of its own)"
+        )
+        assert re.search(
+            r"\[tool\.hatch\.version\][^\[]*path\s*=\s*\"src/knovaryn/__init__\.py\"",
+            py,
+            re.S,
+        ), '[tool.hatch.version] must point at src/knovaryn/__init__.py'
+
+    def test_package_exports_the_authoritative_version(self):
         from knovaryn import __version__
 
-        assert __version__ == _project_version(), (
-            f"package __version__ {__version__!r} != pyproject {_project_version()!r}; "
-            "pyproject.toml is the single source of truth"
-        )
+        assert __version__ == _authoritative_version()
 
     def test_container_image_pins_track_current_release(self):
-        version = _project_version()
+        version = _authoritative_version()
         pattern = re.compile(r"ghcr\.io/knovaryn/knovaryn:(\S+)")
         stale: list[str] = []
         for path in sorted(REPO_ROOT.glob("deploy/**/*")):
@@ -67,7 +82,7 @@ class TestVersionSync:
         versions) are fine — only 'this is an alpha (X)' style claims of the
         current release are checked.
         """
-        version = _project_version()
+        version = _authoritative_version()
         claim = re.compile(r"[Aa]lpha \(`(\d+\.\d+\.\d+)`\)")
         wrong: list[str] = []
         for rel in ("README.md", "docs/index.md"):
@@ -76,3 +91,5 @@ class TestVersionSync:
                 if m.group(1) != version:
                     wrong.append(f"{rel}: claims alpha `{m.group(1)}`, current is {version}")
         assert not wrong, "\n".join(wrong)
+
+

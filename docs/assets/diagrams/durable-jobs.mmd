@@ -1,23 +1,37 @@
-%% Knovaryn — Durable job lifecycle
-%% The engine that makes expensive pipeline work resumable & safe
+%% Knovaryn — Durable job lifecycle (contract 6.3 #4)
+%% Atomic claim · heartbeat · checkpoint artifacts · cancellation polling
+%% crash reclaim · provider-call deduplication — no double cost.
 flowchart LR
-    A["Create job<br/>(idempotency key)"] --> B["Enqueue"]
-    B --> C["Lease acquired<br/>(worker holds lease)"]
-    C --> D["Stage 1 … Stage N"]
-    D --> E{"Checkpoint<br/>per stage"}
+    A["Create job<br/>(idempotency key)"] --> B["Enqueue<br/>(queued state)"]
+    B --> C{"Atomic claim<br/>SELECT … FOR UPDATE SKIP LOCKED<br/>(one winner among N workers)"}
 
-    E -->|"normal"| F["Stage complete → persist + heartbeats"]
-    F --> G["All stages done"]
-    G --> H["Record cost events + result"]
-    H --> I["Idempotent done state"]
+    C -->|"won lease"| D["Run stage"]
+    D --> E["Persist checkpoint artifact<br/>(stage inputs/outputs, resumable)"]
+    E --> F["Heartbeat renews lease<br/>while work continues"]
 
-    E -->|"crash / kill / timeout"| J["Lease expires → re-lease"]
-    J --> K["Resume from last checkpoint<br/>(no re-gen of paid work)"]
-    K --> D
+    F -->|"more stages"| D
+    F -->|"stages done"| G["Record cost events + result<br/>→ idempotent done state"]
 
-    E -->|"budget cap hit"| L["Cancel with cost audit"]
-    L --> M["Partial state preserved"]
+    E -->|"provider call"| H["Provider-call dedup cache<br/>(same prompt+model+seed = cached)"]
+    H --> D
 
+    subgraph CANCEL["Cancellation (polled, never mid-write)"]
+        X1["cancel requested"] --> X2{"safe point?<br/>between stages"}
+        X2 -- "yes" --> X3["Cancel with cost audit<br/>partial state preserved"]
+        X2 -- "no" --> X4["finish current stage,<br/>then cancel"]
+        X4 --> X3
+    end
+    F -.->|"poll cancel flag"| X1
+
+    subgraph CRASH["Crash / kill / timeout"]
+        K1["lease expires unrenewed"] --> K2["re-lease to any worker"]
+        K2 --> K3["resume from last<br/>checkpoint artifact"]
+        K3 --> D
+    end
+
+    style C fill:#e8f0fe,stroke:#1a73e8
     style E fill:#fef7e0,stroke:#b06000
-    style J fill:#fce8e6,stroke:#c5221f
-    style K fill:#e6f4ea,stroke:#188038
+    style K1 fill:#fce8e6,stroke:#c5221f
+    style K3 fill:#e6f4ea,stroke:#188038
+    style X3 fill:#fce8e6,stroke:#c5221f
+    style H fill:#e6f4ea,stroke:#188038

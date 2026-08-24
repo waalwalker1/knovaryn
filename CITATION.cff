@@ -1,15 +1,18 @@
+# CFF 1.2.0: entity form not yet supported; use person with family-names.
+# This represents the Knovaryn maintainers as a collective.
 cff-version: 1.2.0
 message: "If you use Knovaryn, please cite it as below."
-# DOI is a placeholder; to be registered once the project is publicly archived.
-doi: 10.0000/PLACEHOLDER-KNOVARYN
+# No DOI yet: one will be added only after a real DOI is registered for a
+# public archive snapshot. Fabricated placeholder DOIs are not acceptable.
 title: "Knovaryn"
 abstract: >-
   Open, MCP-native training-data foundry: turn permitted documents into
   traceable, quality-gated SFT and preference datasets via CLI, MCP server,
   REST API, and web console. Every training example, traced to its source.
 authors:
-  - name: "Knovaryn maintainers"
-    affiliation: "Knovaryn open-source project"
+  # Organization represented as person with family-names (entity form
+  # requires CFF 1.3.0, not yet supported by cffconvert)
+  - family-names: "Knovaryn maintainers"
 keywords:
   - MCP
   - training-data
@@ -20,7 +23,7 @@ keywords:
   - LLM
   - provenance
 license: Apache-2.0
-date-released: 2026-08-07
-version: 0.1.0
+date-released: 2026-08-22
+version: 0.2.1
 repository-code: "https://github.com/waalwalker1/knovaryn"
 url: "https://waalwalker1.github.io/knovaryn"

@@ -47,6 +47,8 @@ def _ok_payload() -> dict[str, Any]:
         _run("Docs build & link check (L6)", "success", completed="2026-08-21T13:19:26Z", run_id=3),
         _run("Secret scan (gitleaks)", "success", completed="2026-08-21T13:19:20Z", run_id=4),
         _run("Dependency + static scan", "success", completed="2026-08-21T13:19:35Z", run_id=5),
+        # security.yml's Trivy job — §3.11 requires Security success too
+        _run("Container + IaC (Trivy)", "success", completed="2026-08-21T13:20:05Z", run_id=13),
         _run("Build mkdocs site", "success", completed="2026-08-21T13:19:29Z", run_id=6),
         _run("Deploy to GitHub Pages", "success", completed="2026-08-21T13:19:44Z", run_id=7),
         _run("Package CI (L7 — build + verify release candidate)", "success", run_id=8),
@@ -61,6 +63,13 @@ def _ok_payload() -> dict[str, Any]:
         legs.append(_run(f"Tier {tier}", "success", run_id=len(legs)))
     for os_name in ("windows-latest", "macos-latest"):
         legs.append(_run(f"Smoke — {os_name} (L1)", "success", run_id=len(legs)))
+    # install-profile matrix legs (ci.yml `extras` job) — push-required, so a
+    # realistic payload carries every interpolated profile name
+    for profile in (
+        "core", "mcp", "docling", "docetl", "litellm",
+        "s3", "parquet", "hub", "ml", "full",
+    ):
+        legs.append(_run(f"Install profile — {profile}", "success", run_id=len(legs)))
     # compose-e2e: stale skipped run from the push, fresh success from dispatch
     legs.append(
         _run(

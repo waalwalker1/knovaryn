@@ -36,6 +36,10 @@ jobs:
           python-version: "3.11"
       - name: Install deps
         run: uv sync --extra dev
+      # §8.2/§8.5: a stale lockfile must fail loudly, not conceal a widened
+      # dependency range behind an outdated resolution.
+      - name: Lockfile freshness (uv lock --check)
+        run: uv lock --check
       - name: Ruff lint
         run: uv run ruff check src tests
       - name: Ruff format check
@@ -142,8 +146,18 @@ jobs:
         run: uv sync --extra dev
       - name: Build docs site
         run: uv run mkdocs build --strict
-      - name: Markdown link check
-        run: uv run --with markdown-link-check markdown-link-check --config=$(pwd)/.mlc-config.json $(find docs README.md -name '*.md' -o -name 'README.md') || true
+      # Defect 3.3: internal links/fragments/images are BLOCKING (was `|| true`).
+      - name: Blocking internal link check (README + docs + llms.txt + generated HTML)
+        run: uv run scripts/check_links.py --site site
+      # External URLs: retried (config), anti-bot allowlisted, informational so
+      # provider flakiness cannot fail CI — but never silently swallowed.
+      - name: External link check (informational, retrying)
+        continue-on-error: true
+        run: uv run --with markdown-link-check markdown-link-check --config=$(pwd)/.mlc-config.json $(find docs README.md -name '*.md' -o -name 'README.md')
+      # §6.5: alt text, source/artifact parity, social-card geometry,
+      # count-free diagrams. Byte-exact render drift runs in assets.yml.
+      - name: Asset consistency checks (§6.5)
+        run: uv run scripts/check_assets.py
 
   container:
     name: Build container
@@ -154,23 +168,67 @@ jobs:
       - name: Build image
         run: docker build -f deploy/docker/Dockerfile -t knovaryn:ci .
 
-  # Defect 4.11: boot the REAL production topology (postgres + minio + api +
-  # worker + caddy proxy) and exercise upload → job → worker → backup through
-  # the reverse proxy. Opt-in via KNOVARYN_E2E_COMPOSE=1; skipped on ordinary
-  # pushes (too heavy), run weekly and on dispatch so the topology cannot rot.
-  compose-e2e:
-    name: Compose E2E (deployed topology)
+  # §8.8/§8.10: every declared installation profile installs independently,
+  # imports what it promises (and nothing it doesn't), and answers on the
+  # real CLI surface. `core` additionally forbids heavy extras sneaking in.
+  extras:
+    name: Install profile — ${{ matrix.profile }}
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - profile: core
+            install: "."
+            forbid: "--forbid-extra docling --forbid-extra mcp --forbid-extra litellm"
+          - profile: mcp
+            install: ".[mcp]"
+            forbid: ""
+          - profile: docling
+            install: ".[docling]"
+            forbid: ""
+          - profile: docetl
+            install: ".[docetl]"
+            forbid: ""
+          - profile: litellm
+            install: ".[litellm]"
+            forbid: ""
+          - profile: s3
+            install: ".[s3]"
+            forbid: ""
+          - profile: parquet
+            install: ".[parquet]"
+            forbid: ""
+          - profile: hub
+            install: ".[hub]"
+            forbid: ""
+          - profile: ml
+            install: ".[ml]"
+            forbid: ""
+          - profile: full
+            install: ".[full]"
+            forbid: ""
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.11"
-      - name: Install
-        run: uv sync --extra dev --extra mcp
-      - name: Boot the stack and run the E2E suite
-        env:
-          KNOVARYN_E2E_COMPOSE: "1"
-        run: uv run pytest tests/deployment -q -p no:cacheprovider
+      # A dedicated venv per profile: the smoke runs under THIS profile's
+      # interpreter so its imports prove what the installation carries.
+      - name: Install exactly this profile
+        run: |
+          uv venv "$RUNNER_TEMP/profile-venv" --python 3.11
+          # quoted: ".[mcp]" contains brackets the shell would otherwise glob
+          uv pip install --python "$RUNNER_TEMP/profile-venv/bin/python" "${{ matrix.install }}"
+      - name: Profile smoke (imports + probes + doctor)
+        run: >-
+          "$RUNNER_TEMP/profile-venv/bin/python" scripts/profile_smoke.py
+          ${{ matrix.profile }} ${{ matrix.forbid }}
+
+  # §3.10: the deployment E2E is a REUSABLE exact-SHA workflow shared with the
+  # release gate (publish.yml). Ordinary pushes skip it (too heavy); weekly and
+  # on dispatch it boots the real production topology so it cannot rot.
+  compose-e2e:
+    name: Compose E2E (deployed topology)
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    uses: ./.github/workflows/deploy-e2e.yml

@@ -101,9 +101,14 @@ a paused job can be resumed back to `queued`.
 ## Idempotency and resume in practice
 
 ```bash
-knovaryn run --resume launch-dataset --job <id>   # continue from checkpoint
-knovaryn job events --project <p> --job <id> --follow
+knovaryn job list --project <p>
+knovaryn job status <job_handle>          # state, checkpoint, cost so far
 ```
+
+Resume is a property of the durable engine, not a separate flag: if a worker
+dies (or you stop it), the lease expires and any worker — including a fresh
+`knovaryn worker` or a retried `knovaryn run` — claims the job again and
+continues from the last persisted checkpoint artifact.
 
 An `idempotency_key` and `input_config_hash` identify the logical job and its
 exact resolved configuration, so re-submitting the same work is recognized and
@@ -114,7 +119,7 @@ does not duplicate provider calls. `attempt_count` / `max_attempts`, plus
 
 - A job that fails records `error_code` and `error_summary` (surfaced by
   `knovaryn job status`) and emits structured `JobEvent`s.
-- Events are an append-only sequenced log (`job_events`) available via
-  `knovaryn job events`.
+- Events are an append-only sequenced log (`job_events`) available via REST /
+  MCP (`knovaryn_get_job`) and surfaced by `knovaryn job status`.
 - Because checkpoints are atomic and blob-before-manifest, a crash mid-write
   cannot leave a half-committed stage.

@@ -32,6 +32,9 @@ jobs:
           python-version: "3.11"
       - name: Install dev + mcp extras
         run: uv sync --extra dev --extra mcp
+      # §8.2/§8.5: a release must never rest on a stale lockfile.
+      - name: Lockfile freshness (uv lock --check)
+        run: uv lock --check
       - name: Build + verify + smoke (wheel/sdist/twine/meta/secrets/CLI/MCP/REST)
         run: uv run python scripts/package_ci.py
 
@@ -56,7 +59,7 @@ jobs:
   # ci.yml concluded SUCCESS on exactly that SHA (fails closed on failed,
   # missing, or still-running checks).
   ci-gate:
-    name: Release SHA passed CI (L9)
+    name: Release SHA passed CI + Security (L9 / §3.11)
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
     permissions:
@@ -67,14 +70,27 @@ jobs:
       - uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.11"
-      - name: Verify all required CI checks passed on the release SHA
+      # scripts/release_governance.py parses the required job sets from BOTH
+      # ci.yml and security.yml (§3.11) and demands every one concluded SUCCESS
+      # on this exact SHA — failed, missing (workflow never ran here), or
+      # still-running all refuse the release.
+      - name: Verify all required CI + Security checks passed on the release SHA
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: uv run --with pyyaml python scripts/release_governance.py "${{ github.sha }}" --repo "${{ github.repository }}"
 
+  # §3.10: the deployment E2E is a RELEASE GATE — it runs HERE, on the exact
+  # tag SHA, through the same reusable workflow scheduled CI uses. A release
+  # can never rest on a deployment suite that "may be absent or skipped" on
+  # its commit; the workflow itself fails on any skipped/deselected test.
+  deploy-e2e:
+    name: Deployment E2E gate (exact tag SHA)
+    if: startsWith(github.ref, 'refs/tags/v')
+    uses: ./.github/workflows/deploy-e2e.yml
+
   build:
     name: Build wheel & sdist
-    needs: [package-ci, tag-version-consistency, ci-gate]
+    needs: [package-ci, tag-version-consistency, ci-gate, deploy-e2e]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
     steps:
@@ -95,7 +111,7 @@ jobs:
   # (Provenance attestations for the wheel/sdist are produced by the PyPI
   # trusted-publishing step below; PyPI stores and serves them.)
   release-assets:
-    name: Attach checksums + SBOM to the release
+    name: Attach distributions + checksums + SBOM + notes to the release
     needs: [build, ci-gate]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
@@ -119,14 +135,53 @@ jobs:
         run: |
           uv export --format requirements-txt --no-hashes --no-dev -o requirements.txt
           uv run --with cyclonedx-bom cyclonedx-py requirements --pyproject pyproject.toml --of JSON -o sbom.cdx.json requirements.txt
-      - name: Attach SHA256SUMS + SBOM to the release
+      # §3.11: release notes come from the MAINTAINED CHANGELOG section for
+      # this version — never from private implementation notes or generated
+      # commit logs.
+      - name: Generate release notes from CHANGELOG.md
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          uv run python - "$VERSION" <<'PY'
+          import re, sys
+          version = sys.argv[1]
+          text = open("CHANGELOG.md", encoding="utf-8").read()
+          pattern = re.compile(
+              rf"^## \[{re.escape(version)}\] - \d{{4}}-\d{{2}}-\d{{2}}\n(.*?)(?=^## |\Z)",
+              re.S | re.M,
+          )
+          m = pattern.search(text)
+          if not m:
+              sys.exit(f"FAIL: CHANGELOG.md has no [{version}] section — "
+                       "write the changelog entry before releasing")
+          header = (
+              f"# Knovaryn {version}\n\n"
+              f"Wheel and source distribution are attached below and published to "
+              f"[PyPI](https://pypi.org/project/knovaryn/{version}/) with Sigstore "
+              f"provenance attestations (verifiable via PyPI's attestation UI). "
+              f"`SHA256SUMS` covers both distributions; `sbom.cdx.json` is the "
+              f"CycloneDX SBOM for this release.\n\n"
+          )
+          open("release-notes.md", "w", encoding="utf-8").write(header + m.group(1).strip() + "\n")
+          PY
+      - name: Attach wheel, sdist, SHA256SUMS, SBOM, and notes to the release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload "${GITHUB_REF_NAME}" dist/SHA256SUMS sbom.cdx.json --clobber
+        run: |
+          gh release upload "${GITHUB_REF_NAME}" \
+            dist/*.whl dist/*.tar.gz dist/SHA256SUMS sbom.cdx.json --clobber
+          gh release edit "${GITHUB_REF_NAME}" --notes-file release-notes.md
+      - name: Warn on non-prerelease 0.x (alpha maturity)
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          MAJOR="${VERSION%%.*}"
+          IS_PRERELEASE="$(gh release view "${GITHUB_REF_NAME}" --json isPrerelease --jq .isPrerelease)"
+          if [ "$MAJOR" = "0" ] && [ "$IS_PRERELEASE" != "true" ]; then
+            echo "::warning::0.x releases are alpha-maturity; mark this GitHub Release as a prerelease (gh release edit ${GITHUB_REF_NAME} --prerelease) unless the stability commitment changed deliberately."
+          fi
 
   publish:
     name: Publish to PyPI (OIDC trusted publishing)
-    needs: build
+    needs: [build, release-assets]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
     environment: pypi
@@ -145,3 +200,41 @@ jobs:
           # OIDC trusted publishing: the `environment: pypi` deployment must be
           # mapped to the `knovaryn` PyPI project in PyPI's trusted publishers
           # settings. No PYPI_API_TOKEN secret is stored or referenced.
+
+  # §3.11: the release is NOT complete until a CLEAN environment installs the
+  # public artifact from the PUBLIC index and the CLI/MCP surfaces answer.
+  post-publish-verify:
+    name: Post-PyPI verification (clean env, public index)
+    needs: publish
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - name: Resolve released version
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+      - name: Query the PyPI JSON endpoint (version + files present)
+        run: |
+          python - <<'PY'
+          import json, sys, urllib.request
+          version = __import__("os").environ["VERSION"]
+          with urllib.request.urlopen(
+              f"https://pypi.org/pypi/knovaryn/{version}/json", timeout=30
+          ) as resp:
+              data = json.load(resp)
+          files = {f["filename"] for f in data["urls"]}
+          assert files, f"PyPI has no files for knovaryn {version}"
+          assert any(f.endswith(".whl") for f in files), f"no wheel on PyPI: {files}"
+          assert any(f.endswith(".tar.gz") for f in files), f"no sdist on PyPI: {files}"
+          print(f"PyPI OK: knovaryn {version} with {sorted(files)}")
+          PY
+      - name: Clean install from the public index + CLI smoke
+        run: |
+          python -m venv clean && ./clean/bin/pip install --no-cache-dir --upgrade pip
+          ./clean/bin/pip install --no-cache-dir "knovaryn==${VERSION}"
+          ./clean/bin/knovaryn version
+          test "$(./clean/bin/knovaryn version | awk '{print $2}')" = "${VERSION}"
+          ./clean/bin/knovaryn doctor --json
+      - name: MCP extra clean install + entry point smoke
+        run: |
+          ./clean/bin/pip install --no-cache-dir "knovaryn[mcp]==${VERSION}"
+          ./clean/bin/knovaryn-mcp --help
+          ./clean/bin/knovaryn mcp --help >/dev/null

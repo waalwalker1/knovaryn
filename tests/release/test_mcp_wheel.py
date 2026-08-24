@@ -85,7 +85,7 @@ def _install_and_run_mcp(tmp_path: Path, database_url: str) -> None:
             "--quiet",
             "--no-input",
             f"{str(wheel)}[mcp]",
-            "mcp>=1.0,<2",
+            "mcp>=1.28,<3",
         ],
         check=True,
         capture_output=True,
