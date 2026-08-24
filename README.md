@@ -1,6 +1,10 @@
 <p align="center">
   <b>Knovaryn</b>
 </p>
+<!-- knovaryn-version: 0.2.1 -->
+<!-- Current-release marker (defect 3.5): kept equal to knovaryn.__version__
+     by scripts/check_version_sync.py. Update via `python scripts/check_version_sync.py --fix`. -->
+
 
 <h1 align="center">Knovaryn — open-source, MCP-native training-data foundry</h1>
 
@@ -13,8 +17,12 @@
 <p align="center">
   <a href="https://www.python.org/downloads/"><img alt="Python" src="https://img.shields.io/badge/python-3.11%2B-3776AB?logo=python&logoColor=white"/></a>
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-Apache--2.0-blue.svg"/></a>
-  <a href="https://modelcontextprotocol.io/"><img alt="MCP" src="https://img.shields.io/badge/MCP-2026--07--28-orange"/></a>
+  <a href="https://modelcontextprotocol.io/"><img alt="MCP" src="https://img.shields.io/badge/MCP-native-orange"/></a>
   <img alt="Offline-first, no API keys" src="https://img.shields.io/badge/offline--first-no%20API%20keys%20required-brightgreen"/>
+</p>
+
+<p align="center">
+  <a href="https://waalwalker1.github.io/knovaryn/"><strong>Documentation site →</strong></a>
 </p>
 
 <p align="center">
@@ -25,11 +33,15 @@
 
 ## Status
 
-> **Alpha (`0.2.0`)** — the core pipeline, provenance, quality gates, durable
-> jobs, MCP/REST/CLI/SDK interfaces, and release integrity are implemented and
-> tested (400+ offline tests). Public **beta** is pending owner acceptance; the
-> project is **not yet a stable release** and APIs may change. No change is
-> auto-published — publishing is always an explicit, gated action.
+> **Self-hosted open-source alpha (`0.2.1`).** You run it on your own machine or
+> infrastructure; there is **no hosted/managed service**. The core pipeline,
+> provenance, quality gates, durable jobs, release integrity, and the
+> CLI / REST / web console are **stable within the 0.x line** (breaking changes
+> documented in the changelog); the MCP tool surface and export formats are
+> **experimental** and may still be reshaped before 1.0. The bundled demo runs
+> entirely offline on a deterministic fake provider; live model generation and
+> certified judge profiles are explicit opt-ins that need real provider
+> credentials. Publishing is never automatic — always an explicit, gated action.
 
 ---
 
@@ -64,6 +76,8 @@ uv run knovaryn doctor        # environment + storage health
 
 In about 90 seconds you get a release bundle: dataset card, per-file manifest,
 quality/source/license/privacy reports, lineage, and a detached checksum.
+The full command lifecycle (project → source → run → review → dataset) is in
+the [CLI reference](docs/reference/cli.md).
 
 ## 3. Real-document quickstart
 
@@ -83,8 +97,11 @@ See [PDF → SFT dataset](docs/guides/pdf-to-sft-dataset.md),
 
 ## 4. MCP quickstart
 
-Knovaryn is an **MCP training-data server**: a 23-tool Model Context Protocol
-server any MCP-capable agent can drive.
+Knovaryn is an **MCP training-data server**: a Model Context Protocol server
+any MCP-capable agent can drive. The authoritative tool catalogue is generated
+from the server registration — see [MCP tools](docs/reference/mcp-tools.md).
+Supported MCP SDK range: `mcp>=1.28,<3` (an acceptance matrix exercises both
+the 1.x and 2.x lines over stdio and authenticated streamable HTTP).
 
 ```
 pip install "knovaryn[mcp]"
@@ -115,13 +132,22 @@ Every exported row carries `source_document_ids`, `source_span_ids`, and a
 
 ```
 TrainingExample → chunk → SourceSpan → ParsedDocument → SourceDocument
-                                                          → exact page + section
+                                                          → location + precision
 ```
+
+Every span carries a machine-verifiable **location precision**, derived from
+what the parser actually recorded — never asserted by callers: `exact_bbox`
+(page + bounding boxes, Docling-backed documents), `exact_page`, `page_range`,
+`section`, `chunk`, or `unknown`. Markdown and plain-text sources honestly
+report section/chunk granularity instead of fabricating page numbers; lineage
+(API `/v1/projects/{id}/examples/{eid}/lineage`, MCP `knovaryn_lineage`) returns
+the per-span precision so consumers can verify provenance claims.
 
 The export **provenance gate** resolves every document/span reference to an
 existing record in the same project and recomputes the content hash. A row that
 cannot be resolved **blocks the export** — Knovaryn never returns a "successful"
-export it cannot defend.
+export it cannot defend. Export content manifests record the derived precision
+of every cited span.
 
 ## 7. Quality and policy gates
 
@@ -130,11 +156,18 @@ gates — **failure means quarantine, never silent export**:
 
 - **schema** · **grounding** · **completeness/answerability** · **format**
 - **refusal** · **duplicate** · **contamination** (train/val/test leakage)
+- **semantic consistency** — deterministic contradiction checks
+  (`offline-fast`, default), optionally extended by a cited-evidence-only LLM
+  judge (`certified-semantic`; deterministic contradictions are final, an
+  unavailable judge yields *unverified*, never *verified*)
+- **preference signal** (DPO/KTO pairs) and **information gain**
 - **privacy** · **license**
 
 Human review (`knovaryn_review_example`) records an approve/reject decision as a
-new **immutable revision** — it never mutates an example in place. See
-[quality gates](docs/concepts/quality-gates.md).
+new **immutable revision** — it never mutates an example in place. The gate
+list is generated from validator registration:
+[quality gates](docs/reference/quality-gates.md); the validation-profile
+registry is documented in [validation profiles](docs/reference/profiles.md).
 
 ## 8. Supported stack
 
@@ -142,10 +175,10 @@ new **immutable revision** — it never mutates an example in place. See
 |---|---|
 | **Inputs** | PDF, Markdown, office/documents (via Docling), local files, archives; URL ingestion opt-in |
 | **Topologies** | SFT, DPO/preference, KTO, evaluation (grounded QA) |
-| **Exporters** | JSONL, Parquet; TRL, ShareGPT, Alpaca, OpenAI chat, Hugging Face layout |
+| **Exporters** | Generated list in the [exporter reference](docs/reference/exporters.md): JSONL, Parquet, TRL, ShareGPT, Alpaca, OpenAI chat, Hugging Face layout, evaluation |
 | **Providers** | Offline deterministic fake provider; LiteLLM gateway (OpenAI-/Anthropic-/DeepSeek-compatible) |
 | **Deployment** | Local (SQLite + filesystem); team (PostgreSQL + S3-compatible); Docker / Compose / Kubernetes |
-| **Interfaces** | CLI, 23-tool MCP server, REST + web console, Python SDK |
+| **Interfaces** | CLI, MCP server, REST + web console, Python SDK |
 
 ## 9. Architecture
 
@@ -176,14 +209,35 @@ architecture, pipeline flow, durable jobs, MCP session, security, value):
 
 ## 11. Benchmarks (methodology & limitations)
 
-Reproducible benchmarks cover parse fidelity, lineage resolution, generation
-validity, groundedness, duplicate/leakage rate, pipeline throughput, crash
-recovery, and export compatibility. **Honest framing:** offline fake-provider
-throughput measures framework overhead only — it is not synthetic-data
-generation throughput or model quality. See the
-[benchmark methodology](docs/marketing/benchmark-methodology.md).
+Reproducible benchmark suites cover parse fidelity, lineage resolution,
+generation validity, groundedness, duplicate/leakage rate, pipeline throughput,
+crash recovery, and export compatibility. Semantic-judge quality is measured as
+false-accept / false-reject rates with Wilson confidence intervals against an
+adversarial corpus. **Honest framing:** offline fake-provider throughput
+measures framework overhead only — it is not synthetic-data generation
+throughput or model quality. Numbers are versioned with their methodology in
+[benchmarks/](benchmarks/) — reproduce them before relying on them.
 
-## 12. Comparison — when to choose Knovaryn
+## 12. Limitations
+
+- **Alpha software**: APIs, storage layout, and the MCP surface may change
+  before 1.0; do not build unmanaged long-lived dependencies on 0.x internals.
+- The offline demo uses a deterministic fake provider — its output demonstrates
+  the pipeline mechanics, not generation quality. Real datasets require real
+  providers and your own review effort.
+- Location precision depends on what the parser records: plain-text/markdown
+  sources cannot yield page or bounding-box precision, and spans are reported
+  at the honest lower granularity instead.
+- Deterministic semantic checks catch specific contradiction classes only;
+  they cannot prove entailment. Judge-based verification requires configured,
+  reachable providers and inherits their limitations; unavailable judges fail
+  closed to *unverified* rather than guessing.
+- Publication gating enforces license/privacy policy inside Knovaryn; it is
+  not legal clearance. You are responsible for the rights to your sources.
+- Single-node SQLite mode is local-first and not multi-writer; team scale
+  expects PostgreSQL plus object storage.
+
+## 13. Comparison — when to choose Knovaryn
 
 Compared factually with related tools (Synthetic Data Kit, Distilabel, Docling,
 Easy Dataset) in the [peer landscape](docs/peers/index.md) and
@@ -191,22 +245,29 @@ Easy Dataset) in the [peer landscape](docs/peers/index.md) and
 want a **document-grounded, provenance-enforced, gate-and-export** foundry
 driven over **MCP** — not just a parser or a composition SDK.
 
-## 13. Documentation
+## 14. Documentation
 
-- [Docs site (MkDocs)](docs/) · [Guides](docs/guides/quickstart.md) ·
-  [Concepts](docs/concepts/overview.md) · [Architecture](docs/architecture/overview.md)
+- [Docs site (MkDocs)](https://waalwalker1.github.io/knovaryn/) ·
+  [Guides](docs/guides/quickstart.md) · [Concepts](docs/concepts/overview.md) ·
+  [Architecture](docs/architecture/overview.md)
 - [Reference — CLI](docs/reference/cli.md) · [Configuration](docs/reference/config.md) ·
+  [REST API](docs/reference/rest-api.md) · [MCP tools](docs/reference/mcp-tools.md) ·
+  [Quality gates](docs/reference/quality-gates.md) ·
+  [Validation profiles](docs/reference/profiles.md) ·
   [Exporters](docs/reference/exporters.md)
+- [Claim matrix](docs/reference/claim-matrix.md) — every public claim with its
+  maturity, evidence, and known limitation ·
+  [Support & FAQ](docs/support.md)
 - [README diagrams](docs/architecture/readme-diagrams.md)
 
-## 14. Contributing & community
+## 15. Contributing & community
 
 Please read [CONTRIBUTING.md](CONTRIBUTING.md), the
 [code of conduct](CODE_OF_CONDUCT.md), and [SECURITY.md](SECURITY.md). See
 [GOVERNANCE.md](GOVERNANCE.md), [ROADMAP.md](ROADMAP.md), and
 [CHANGELOG.md](CHANGELOG.md).
 
-## 15. License & citation
+## 16. License & citation
 
 **Apache-2.0** for original code (see [LICENSE](LICENSE)). Dataset licensing is
 kept separate from code licensing and governed by the source-license registry.

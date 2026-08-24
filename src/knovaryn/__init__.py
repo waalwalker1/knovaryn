@@ -7,7 +7,7 @@ post-training workflows.
 
 from __future__ import annotations
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 
 # Canonical display name for user-facing surfaces.
 __title__ = "Knovaryn"

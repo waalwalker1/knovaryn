@@ -1,8 +1,12 @@
 # Guides — 10-Minute Offline Quickstart
 
 This guide gets a full pipeline running in about ten minutes with **no API keys
-and no network**. It uses the deterministic **fake provider** and the
-`offline-demo` profile, so install and run are credential-free and reproducible.
+and no network**. It uses the deterministic **fake provider**, so install and
+run are credential-free and reproducible.
+
+Every command below exists on the real CLI — the
+[CLI reference](../reference/cli.md) is generated from the app itself, so it
+cannot drift from this page.
 
 ## 0. Install (uv)
 
@@ -34,12 +38,12 @@ anything misconfigured before you spend time. Fix warnings before continuing.
 Run the end-to-end demo to confirm the whole loop works on your machine:
 
 ```bash
-uv run knovaryn demo --offline --clear
+uv run knovaryn demo --examples 20 --json
 ```
 
-`--clear` resets the workspace state so the run is deterministic. It creates a
-project, adds a permissive document, plans, runs generation on the fake
-provider, and exports — the same loop you now drive by hand.
+It creates a throwaway project, ingests bundled sample documents, generates on
+the fake provider, validates, versions, and exports — the same loop you now
+drive by hand.
 
 ## 3. Drive the CLI yourself
 
@@ -48,86 +52,80 @@ Now the same pipeline, command by command.
 ### Create a project
 
 ```bash
-uv run knovaryn project create \
+uv run knovaryn project create quickstart \
   --name "Quickstart Dataset" \
-  --slug quickstart \
   --description "10-minute walkthrough"
 ```
+
+Note the project handle (`proj_…`) in the output — every later command takes
+it.
 
 ### Add a permitted source
 
 ```bash
-uv run knovaryn source add \
-  --project quickstart \
-  ./fixtures/maintenance-manual-2021.pdf \
-  --declared-license "CC0" \
-  --kind upload
+uv run knovaryn source add <proj_handle> ./handbook.md \
+  --license CC0 --privacy public
 ```
 
-The source is preflighted (SHA-256, size, page count, license). Inspect it:
+The source is preflighted (SHA-256, size, license, privacy classification) as
+untrusted input. Inspect what was ingested:
 
 ```bash
-uv run knovaryn source show quickstart --source <id>
+uv run knovaryn source list <proj_handle>
 ```
 
-### Estimate before you spend
+### Run generation
 
-```bash
-uv run knovaryn plan \
-  --project quickstart \
-  --topologies sft preference \
-  --target 200 \
-  --dry-run-cost
-```
-
-Nothing is generated yet — this reports predicted chunks, expected tokens
-across generator/critic/verifier, estimated cost under the budget, and expected
-yield.
-
-### Run
+Nothing is spent until you ask for generation. The dry-run **cost estimate**
+is available over MCP (`knovaryn_estimate_run`) and REST; on the CLI,
+`run` starts the pipeline and enforces your spend cap:
 
 ```bash
 uv run knovaryn run \
-  --project quickstart \
-  --profile balanced \
-  --topologies sft preference
+  --project <proj_handle> \
+  --target 50 \
+  --budget-usd 0
 ```
 
-This executes the plan through the job engine (leased worker, checkpoints,
-budgets).
-
-### Preview / review
+With the fake provider nothing can spend anyway; with real providers
+`--budget-usd` is a hard cap. The job runs through the durable job engine
+(leased worker, checkpoints, budgets) — watch it:
 
 ```bash
-uv run knovaryn review list --project quickstart --status review --topology sft --limit 1
-uv run knovaryn review show --project quickstart --example <id>
-uv run knovaryn review list --project quickstart --status review --topology preference --limit 1
-uv run knovaryn review show --project quickstart --example <id>
+uv run knovaryn job list --project <proj_handle>
+uv run knovaryn job status <job_handle>
 ```
 
-Each example shows its evidence block (`source_document_ids`,
-`source_span_ids`, content hash) and, for preference pairs, the
-`rejected_defect` and preference margin.
+### Review with evidence
 
-### Export
+Example handles (`ex_…`) appear in validation output and in the REST/MCP
+listings. Record a review decision as an immutable revision:
 
 ```bash
-uv run knovaryn export \
-  --project quickstart \
-  --version 0.1.0 \
-  --format canonical-jsonl \
-  --format parquet \
-  --format trl-conversational \
-  --format llamafactory-sharegpt
+uv run knovaryn review <ex_handle> approve \
+  --reviewer alice --note "grounded in section 2"
 ```
 
-A single canonical dataset version exported to multiple trainer formats.
+### Validate, version, export
+
+```bash
+uv run knovaryn dataset validate <proj_handle>
+uv run knovaryn dataset version <proj_handle> --set 1.0.0
+uv run knovaryn dataset export <proj_handle> \
+  --format openai_chat --out ./export
+```
+
+One canonical dataset version, exported per format id (`trl_sft`,
+`trl_preference`, `kto`, `sharegpt`, `alpaca`, `openai_chat`,
+`huggingface_layout`, `evaluation`, `jsonl`, `parquet` — the generated table in
+the [exporter reference](../reference/exporters.md) is authoritative). Repeat
+`dataset export` with another `--format` for additional trainer layouts.
 
 ## What you just did
 
-permitted document → preflight → plan/estimate → generated, validated examples
-→ review with evidence → trainer-ready exports. And it ran entirely offline on
-the fake provider.
+permitted document → preflight → generation on the fake provider → validated,
+reviewed examples with evidence → one versioned dataset exported to a
+trainer-ready format. And it ran entirely offline.
 
 ## Next
 

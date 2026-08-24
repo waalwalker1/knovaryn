@@ -2437,7 +2437,6 @@ wheels = [
 
 [[package]]
 name = "knovaryn"
-version = "0.2.0"
 source = { editable = "." }
 dependencies = [
     { name = "aiofiles" },
@@ -2483,6 +2482,18 @@ docetl = [
 docling = [
     { name = "docling" },
 ]
+full = [
+    { name = "aioboto3" },
+    { name = "docetl" },
+    { name = "docling" },
+    { name = "huggingface-hub" },
+    { name = "litellm" },
+    { name = "mcp" },
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
+    { name = "numpy", version = "2.5.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+    { name = "pyarrow" },
+    { name = "scikit-learn" },
+]
 hub = [
     { name = "huggingface-hub" },
 ]
@@ -2506,6 +2517,7 @@ s3 = [
 
 [package.metadata]
 requires-dist = [
+    { name = "aioboto3", marker = "extra == 'full'", specifier = ">=13" },
     { name = "aioboto3", marker = "extra == 's3'", specifier = ">=13" },
     { name = "aiofiles", specifier = ">=23.2" },
     { name = "aioresponses", marker = "extra == 'dev'", specifier = ">=0.7" },
@@ -2514,21 +2526,28 @@ requires-dist = [
     { name = "asyncpg", marker = "sys_platform != 'win32'", specifier = ">=0.29" },
     { name = "build", marker = "extra == 'dev'", specifier = ">=1.2" },
     { name = "docetl", marker = "extra == 'docetl'", specifier = ">=0.1" },
+    { name = "docetl", marker = "extra == 'full'", specifier = ">=0.1" },
     { name = "docling", marker = "extra == 'docling'", specifier = ">=2.26" },
+    { name = "docling", marker = "extra == 'full'", specifier = ">=2.26" },
     { name = "fastapi", specifier = ">=0.110" },
     { name = "httpx", specifier = ">=0.27" },
+    { name = "huggingface-hub", marker = "extra == 'full'", specifier = ">=0.23" },
     { name = "huggingface-hub", marker = "extra == 'hub'", specifier = ">=0.23" },
     { name = "hypothesis", marker = "extra == 'dev'", specifier = ">=6.100" },
     { name = "jinja2", specifier = ">=3.1" },
+    { name = "litellm", marker = "extra == 'full'", specifier = ">=1.45" },
     { name = "litellm", marker = "extra == 'litellm'", specifier = ">=1.45" },
-    { name = "mcp", marker = "extra == 'dev'", specifier = ">=1.0,<2" },
-    { name = "mcp", marker = "extra == 'mcp'", specifier = ">=1.0,<2" },
+    { name = "mcp", marker = "extra == 'dev'", specifier = ">=1.28,<3" },
+    { name = "mcp", marker = "extra == 'full'", specifier = ">=1.28,<3" },
+    { name = "mcp", marker = "extra == 'mcp'", specifier = ">=1.28,<3" },
     { name = "mkdocs", marker = "extra == 'dev'", specifier = ">=1.6" },
     { name = "mkdocs-material", marker = "extra == 'dev'", specifier = ">=9.5" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.10" },
+    { name = "numpy", marker = "extra == 'full'", specifier = ">=1.26" },
     { name = "numpy", marker = "extra == 'ml'", specifier = ">=1.26" },
     { name = "pip-audit", marker = "extra == 'dev'", specifier = ">=2.7" },
     { name = "pre-commit", marker = "extra == 'dev'", specifier = ">=3.7" },
+    { name = "pyarrow", marker = "extra == 'full'", specifier = ">=16" },
     { name = "pyarrow", marker = "extra == 'parquet'", specifier = ">=16" },
     { name = "pydantic", specifier = ">=2.6,<3" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.1" },
@@ -2539,8 +2558,9 @@ requires-dist = [
     { name = "respx", marker = "extra == 'dev'", specifier = ">=0.21" },
     { name = "rich", specifier = ">=13.7" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.4" },
+    { name = "scikit-learn", marker = "extra == 'full'", specifier = ">=1.4" },
     { name = "scikit-learn", marker = "extra == 'ml'", specifier = ">=1.4" },
-    { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0" },
+    { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.31" },
     { name = "sse-starlette", specifier = ">=2.1" },
     { name = "structlog", specifier = ">=24.1" },
     { name = "twine", marker = "extra == 'dev'", specifier = ">=5.0" },
@@ -2548,7 +2568,7 @@ requires-dist = [
     { name = "uuid6", specifier = ">=2024.7.10" },
     { name = "uvicorn", specifier = ">=0.29" },
 ]
-provides-extras = ["docling", "docetl", "litellm", "s3", "parquet", "hub", "mcp", "ml", "dev"]
+provides-extras = ["dev", "docetl", "docling", "full", "hub", "litellm", "mcp", "ml", "parquet", "s3"]
 
 [[package]]
 name = "latex2mathml"

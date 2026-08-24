@@ -15,33 +15,33 @@ At the center is **Knovaryn**, an **MCP-native training-data foundry**:
 
 ```
 Source documents ──▶ Parse ──▶ Split & chunk ──▶ Generate ──▶ Validate ──▶ Export ──▶ Publish
-  (PDF · PPTX · HTML)   (Docling)     (provenance)   (SFT/pref/KTO)  (10 gates)   (JSONL · HF)
+  (PDF · PPTX · HTML)   (Docling)     (provenance)   (SFT/pref/KTO)  (fail-closed gates)  (JSONL · HF)
 ```
 
 ## Why it matters
 
 | Problem today | What this project changes |
 |---|---|
-| Unstructured data sits unused — no one can load a 400-slide deck into a model. | **Universal ingestion** turns any permitted document into clean, chunked, annotated Markdown. |
-| Training-data pipelines are opaque; you can't tell where a row came from. | **Provenance by design** — every example points back to the exact doc, page, and sentence. |
-| Weak or unsafe examples ship silently. | **10 quality gates that quarantine failures** instead of exporting them. |
-| Expensive generation work is lost on every crash. | **Durable jobs** — leases, heartbeats, resume-from-checkpoint, budget caps. |
+| Unstructured data sits unused — no one can load a 400-slide deck into a model. | **Universal ingestion** turns permitted documents into clean, chunked, annotated Markdown derivatives. |
+| Training-data pipelines are opaque; you can't tell where a row came from. | **Provenance by design** — every example points back to its source spans with machine-reported location precision. |
+| Weak or unsafe examples ship silently. | **Fail-closed quality gates that quarantine failures** instead of exporting them. |
+| Expensive generation work is lost on every crash. | **Durable jobs** — atomic claims, heartbeats, resume-from-checkpoint, budget caps. |
 | Licensing and privacy are an afterthought. | **License registry + publication gate**; secrets from environment only; dry-run by default. |
-| Provider & trainer lock-in. | **Provider-agnostic model gateway** + native exporters for TRL, LLaMA-Factory, OpenAI, Parquet, and Hugging Face. |
+| Provider & trainer lock-in. | **Provider-agnostic model gateway** + native exporters for TRL, ShareGPT/Alpaca, OpenAI chat, Parquet, and Hugging Face. |
 
 ## How the whole system works
 
 A high-level view of the end-to-end architecture. Six fully annotated diagrams —
 **system architecture**, **pipeline flow**, **durable jobs**, **MCP session**,
-**security**, and **value proposition** — plus their raw Mermaid source live in the
-[repository README](https://github.com/waalwalker1/knovaryn#readme).
+**security**, and **value proposition** — plus their raw Mermaid source live on
+[Architecture at a glance](architecture/readme-diagrams.md).
 
 ```mermaid
 flowchart LR
     subgraph AGENTS["Host agents"]
         MCPAG["Claude Desktop · Cursor · any MCP client"]
     end
-    MCPAG --> M["knovaryn_mcp — 23 tools"]
+    MCPAG --> M["knovaryn_mcp — registered tool catalogue"]
     subgraph CORE["Knovaryn core"]
         IN["Intake & preflight"] --> PA["Parse (Docling)"]
         PA --> SP["Split & chunk"]

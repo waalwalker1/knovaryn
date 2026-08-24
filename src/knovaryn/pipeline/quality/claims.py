@@ -104,34 +104,42 @@ class ClaimAssessment(BaseModel):
 
 # Unit normalization table
 UNIT_MAP: dict[str, dict[str, str | float]] = {
-    # Time
+    # Time (base: seconds) — real multipliers so conversion-aware checks see
+    # "30 minutes" ≠ "30 seconds" at base value while "0.5 hours" == "30 min".
     "seconds": {"canonical": "seconds", "type": "time", "multiplier": 1.0},
     "second": {"canonical": "seconds", "type": "time", "multiplier": 1.0},
     "sec": {"canonical": "seconds", "type": "time", "multiplier": 1.0},
     "secs": {"canonical": "seconds", "type": "time", "multiplier": 1.0},
-    "minutes": {"canonical": "minutes", "type": "time", "multiplier": 1.0},
-    "minute": {"canonical": "minutes", "type": "time", "multiplier": 1.0},
-    "min": {"canonical": "minutes", "type": "time", "multiplier": 1.0},
-    "mins": {"canonical": "minutes", "type": "time", "multiplier": 1.0},
-    "hours": {"canonical": "hours", "type": "time", "multiplier": 1.0},
-    "hour": {"canonical": "hours", "type": "time", "multiplier": 1.0},
-    "days": {"canonical": "days", "type": "time", "multiplier": 1.0},
-    "day": {"canonical": "days", "type": "time", "multiplier": 1.0},
-    "weeks": {"canonical": "weeks", "type": "time", "multiplier": 1.0},
-    "week": {"canonical": "weeks", "type": "time", "multiplier": 1.0},
-    "months": {"canonical": "months", "type": "time", "multiplier": 1.0},
-    "month": {"canonical": "months", "type": "time", "multiplier": 1.0},
-    "ms": {"canonical": "milliseconds", "type": "time", "multiplier": 1.0},
-    "milliseconds": {"canonical": "milliseconds", "type": "time", "multiplier": 1.0},
-    # Data / bytes
+    "minutes": {"canonical": "minutes", "type": "time", "multiplier": 60.0},
+    "minute": {"canonical": "minutes", "type": "time", "multiplier": 60.0},
+    "min": {"canonical": "minutes", "type": "time", "multiplier": 60.0},
+    "mins": {"canonical": "minutes", "type": "time", "multiplier": 60.0},
+    "hours": {"canonical": "hours", "type": "time", "multiplier": 3600.0},
+    "hour": {"canonical": "hours", "type": "time", "multiplier": 3600.0},
+    "hr": {"canonical": "hours", "type": "time", "multiplier": 3600.0},
+    "hrs": {"canonical": "hours", "type": "time", "multiplier": 3600.0},
+    "days": {"canonical": "days", "type": "time", "multiplier": 86400.0},
+    "day": {"canonical": "days", "type": "time", "multiplier": 86400.0},
+    "weeks": {"canonical": "weeks", "type": "time", "multiplier": 604800.0},
+    "week": {"canonical": "weeks", "type": "time", "multiplier": 604800.0},
+    "months": {"canonical": "months", "type": "time", "multiplier": 2592000.0},  # 30 days
+    "month": {"canonical": "months", "type": "time", "multiplier": 2592000.0},  # 30 days
+    "ms": {"canonical": "milliseconds", "type": "time", "multiplier": 0.001},
+    "milliseconds": {"canonical": "milliseconds", "type": "time", "multiplier": 0.001},
+    "millisecond": {"canonical": "milliseconds", "type": "time", "multiplier": 0.001},
+    # Data / bytes (base: bytes, decimal prefixes)
     "b": {"canonical": "bytes", "type": "data", "multiplier": 1.0},
     "bytes": {"canonical": "bytes", "type": "data", "multiplier": 1.0},
-    "kb": {"canonical": "kilobytes", "type": "data", "multiplier": 1.0},
-    "kilobytes": {"canonical": "kilobytes", "type": "data", "multiplier": 1.0},
-    "mb": {"canonical": "megabytes", "type": "data", "multiplier": 1.0},
-    "megabytes": {"canonical": "megabytes", "type": "data", "multiplier": 1.0},
-    "gb": {"canonical": "gigabytes", "type": "data", "multiplier": 1.0},
-    "gigabytes": {"canonical": "gigabytes", "type": "data", "multiplier": 1.0},
+    "byte": {"canonical": "bytes", "type": "data", "multiplier": 1.0},
+    "kb": {"canonical": "kilobytes", "type": "data", "multiplier": 1000.0},
+    "kilobytes": {"canonical": "kilobytes", "type": "data", "multiplier": 1000.0},
+    "kilobyte": {"canonical": "kilobytes", "type": "data", "multiplier": 1000.0},
+    "mb": {"canonical": "megabytes", "type": "data", "multiplier": 1e6},
+    "megabytes": {"canonical": "megabytes", "type": "data", "multiplier": 1e6},
+    "megabyte": {"canonical": "megabytes", "type": "data", "multiplier": 1e6},
+    "gb": {"canonical": "gigabytes", "type": "data", "multiplier": 1e9},
+    "gigabytes": {"canonical": "gigabytes", "type": "data", "multiplier": 1e9},
+    "gigabyte": {"canonical": "gigabytes", "type": "data", "multiplier": 1e9},
     # Distance
     "meters": {"canonical": "meters", "type": "distance", "multiplier": 1.0},
     "metres": {"canonical": "meters", "type": "distance", "multiplier": 1.0},
@@ -139,6 +147,33 @@ UNIT_MAP: dict[str, dict[str, str | float]] = {
     "kilometers": {"canonical": "kilometers", "type": "distance", "multiplier": 1000.0},
     "kilometres": {"canonical": "kilometers", "type": "distance", "multiplier": 1000.0},
     "km": {"canonical": "kilometers", "type": "distance", "multiplier": 1000.0},
+    "centimeters": {"canonical": "centimeters", "type": "distance", "multiplier": 0.01},
+    "centimeter": {"canonical": "centimeters", "type": "distance", "multiplier": 0.01},
+    "centimetres": {"canonical": "centimeters", "type": "distance", "multiplier": 0.01},
+    "centimetre": {"canonical": "centimeters", "type": "distance", "multiplier": 0.01},
+    "cm": {"canonical": "centimeters", "type": "distance", "multiplier": 0.01},
+    "millimeters": {"canonical": "millimeters", "type": "distance", "multiplier": 0.001},
+    "millimeter": {"canonical": "millimeters", "type": "distance", "multiplier": 0.001},
+    "millimetres": {"canonical": "millimeters", "type": "distance", "multiplier": 0.001},
+    "millimetre": {"canonical": "millimeters", "type": "distance", "multiplier": 0.001},
+    "mm": {"canonical": "millimeters", "type": "distance", "multiplier": 0.001},
+    # Volume (base: liters) — the liter/milliliter family is what unit-error
+    # defects look like in practice ("50 milliliters" for "50 liters").
+    "liters": {"canonical": "liters", "type": "volume", "multiplier": 1.0},
+    "liter": {"canonical": "liters", "type": "volume", "multiplier": 1.0},
+    "litres": {"canonical": "liters", "type": "volume", "multiplier": 1.0},
+    "litre": {"canonical": "liters", "type": "volume", "multiplier": 1.0},
+    "milliliters": {"canonical": "milliliters", "type": "volume", "multiplier": 0.001},
+    "milliliter": {"canonical": "milliliters", "type": "volume", "multiplier": 0.001},
+    "millilitres": {"canonical": "milliliters", "type": "volume", "multiplier": 0.001},
+    "millilitre": {"canonical": "milliliters", "type": "volume", "multiplier": 0.001},
+    "ml": {"canonical": "milliliters", "type": "volume", "multiplier": 0.001},
+    # Mass (base: kilograms)
+    "kilograms": {"canonical": "kilograms", "type": "mass", "multiplier": 1.0},
+    "kilogram": {"canonical": "kilograms", "type": "mass", "multiplier": 1.0},
+    "kg": {"canonical": "kilograms", "type": "mass", "multiplier": 1.0},
+    "grams": {"canonical": "grams", "type": "mass", "multiplier": 0.001},
+    "gram": {"canonical": "grams", "type": "mass", "multiplier": 0.001},
     # Currency
     "usd": {"canonical": "usd", "type": "currency", "multiplier": 1.0},
     "$": {"canonical": "usd", "type": "currency", "multiplier": 1.0},
@@ -325,33 +360,125 @@ def _extract_subject(text: str) -> str | None:
     return None
 
 
+_ROLE_TRIPLE = re.compile(
+    r"\b([A-Z][A-Za-z0-9]*)"  # first entity
+    r"((?:\s+[a-z][a-zA-Z-]*){1,4})"  # short lowercase predicate
+    r"\s+([A-Z][A-Za-z0-9]*)\b"  # second entity
+)
+
+
 def check_entity_role_reversal(claim_text: str, evidence_text: str) -> bool:
     """Check if claim swaps subject and object roles compared to evidence.
 
-    Looks for sentences where two entities appear in both claim and evidence
-    but with swapped subject/object roles. Handles any transitive verb pattern
-    like "X verbs Y" vs "Y verbs X".
+    A role reversal is a VERB-ANCHORED pattern: the same two entities around
+    the same transitive verb, in opposite order ("Bob approved Alice" vs
+    "Alice approved Bob"). Merely sharing two capitalized tokens whose textual
+    orders differ is NOT a reversal — unrelated nouns ("Devices ... March")
+    legitimately appear in any order and flagging them false-rejected
+    entailed answers.
+
+    Two shapes are detected:
+
+    * capitalized triples via :data:`_ROLE_TRIPLE` (proper-noun subjects);
+    * an exact token exchange for common-noun subjects — claim
+      ``X ships Y`` vs evidence ``Y ships X``, i.e. evidence equals the
+      claim with its leading noun phrase and trailing noun phrase swapped
+      around an identical middle that carries a verb.
     """
-    # Find pairs of capitalized words (potential named entities) in both
-    import re
 
-    entities_claim = re.findall(r"\b[A-Z][a-z]*\b", claim_text)
-    entities_ev = re.findall(r"\b[A-Z][a-z]*\b", evidence_text)
+    def triples(text: str) -> list[tuple[str, str, str]]:
+        found: list[tuple[str, str, str]] = []
+        for m in _ROLE_TRIPLE.finditer(text):
+            predicate_words = m.group(2).split()
+            if not predicate_words:
+                continue
+            verb = predicate_words[-1].lower().rstrip(".,;:!?'\"")
+            if len(verb) < 3 or verb in _DISCOURSE_WORDS:
+                continue
+            found.append((m.group(1), verb, m.group(3)))
+        return found
 
-    # If both have the same two entities, check if they're swapped
-    if len(entities_claim) >= 2 and len(entities_ev) >= 2:
-        claim_set = set(entities_claim)
-        ev_set = set(entities_ev)
-        common = claim_set & ev_set
-        if len(common) >= 2:
-            # Both have the same two entities — check ordering
-            claim_order = [e for e in entities_claim if e in common]
-            ev_order = [e for e in entities_ev if e in common]
-            if claim_order and ev_order:
-                # Reversed if first entity in claim is second in evidence
-                reversed_order = claim_order[0] == ev_order[-1] and claim_order[-1] == ev_order[0]
-                return bool(reversed_order)
+    for c_first, c_verb, c_second in triples(claim_text):
+        for e_first, e_verb, e_second in triples(evidence_text):
+            if c_verb == e_verb and c_first == e_second and c_second == e_first:
+                return True
+    return _exchange_reversal(claim_text, evidence_text)
 
+
+# Words that may appear inside the exchanged middle but cannot anchor it —
+# determiners, prepositions, auxiliaries. The anchor must be a content word,
+# which in this shape is the transitive verb (or verb + object).
+_EXCHANGE_NON_ANCHORS = frozenset(
+    {
+        "the",
+        "a",
+        "an",
+        "to",
+        "by",
+        "with",
+        "from",
+        "for",
+        "into",
+        "onto",
+        "over",
+        "under",
+        "after",
+        "before",
+        "during",
+        "is",
+        "are",
+        "was",
+        "were",
+        "be",
+        "been",
+        "being",
+        "its",
+        "their",
+        "his",
+        "her",
+        "each",
+        "every",
+        "and",
+        "or",
+    }
+)
+
+
+def _exchange_reversal(claim_text: str, evidence_text: str) -> bool:
+    """Common-noun role swap: claim = PRE + MID + SUF with evidence =
+    SUF + MID + PRE (token-exact), where MID anchors on a content word.
+
+    "the warehouse ships sensors to the assembly plant" ↔
+    "the assembly plant ships sensors to the warehouse": X/M/Y → Y/M/X.
+    Exact token equality keeps the false-positive rate at zero on
+    paraphrased entailment (different wording can never match).
+    """
+
+    def tokenize(text: str) -> list[str]:
+        return [w.strip(".,;:!?'\"()").lower() for w in text.split() if w.strip(".,;:!?'\"()")]
+
+    ct = tokenize(claim_text)
+    n = len(ct)
+    if n < 4:
+        return False
+
+    def matches(et: list[str]) -> bool:
+        # claim = pre + mid + suf ; evidence == suf + mid + pre
+        for i in range(1, min(5, n - 1)):  # leading noun phrase
+            for m in range(1, min(7, n - i)):  # middle (verb phrase)
+                pre, mid, suf = ct[:i], ct[i : i + m], ct[i + m :]
+                if not suf or pre == suf:
+                    continue
+                if et != suf + mid + pre:
+                    continue
+                if any(w not in _EXCHANGE_NON_ANCHORS and len(w) >= 3 for w in mid):
+                    return True
+        return False
+
+    for sentence in re.split(r"(?<=[.!?])\s+", evidence_text):
+        et = tokenize(sentence)
+        if len(et) == n and matches(et):
+            return True
     return False
 
 
@@ -497,6 +624,43 @@ def normalize_date(text: str, anchor: datetime | None = None) -> list[Normalized
     return results
 
 
+def _quantities_with_base(text: str) -> list[tuple[float, float, str]]:
+    """(raw value, value × unit multiplier, unit type) per unit-attached number.
+
+    Powers the conversion-aware rescue in ``check_number_mismatch``: "2 meters"
+    and "200 centimeters" are the SAME quantity and must never be reported as
+    a numerical contradiction.
+    """
+    out: list[tuple[float, float, str]] = []
+    for m in re.finditer(r"(\d[\d,]*\.?\d*)\s*([a-zA-Z]{1,12})\b", text):
+        info = UNIT_MAP.get(m.group(2).lower())
+        if not info:
+            continue
+        try:
+            raw = float(m.group(1).replace(",", ""))
+        except ValueError:
+            continue
+        out.append((raw, raw * float(info["multiplier"]), str(info["type"])))
+    return out
+
+
+def _conversion_equivalent(
+    claim_q: list[tuple[float, float, str]],
+    evidence_q: list[tuple[float, float, str]],
+    claim_value: float,
+    evidence_value: float,
+) -> bool:
+    """True when this exact number pair is a same-quantity unit conversion."""
+    return any(
+        c_raw == claim_value
+        and e_raw == evidence_value
+        and c_type == e_type
+        and abs(c_base - e_base) <= 0.001
+        for c_raw, c_base, c_type in claim_q
+        for e_raw, e_base, e_type in evidence_q
+    )
+
+
 def check_number_mismatch(claim_text: str, evidence_text: str) -> list[str]:
     """Check for numerical mismatches between claim and evidence.
 
@@ -508,6 +672,9 @@ def check_number_mismatch(claim_text: str, evidence_text: str) -> list[str]:
 
     if not evidence_numbers or not claim_numbers:
         return reasons
+
+    claim_q = _quantities_with_base(claim_text)
+    evidence_q = _quantities_with_base(evidence_text)
 
     # Extract key context words from both sentences for cross-referencing
     def _context_words(text: str) -> set[str]:
@@ -547,10 +714,23 @@ def check_number_mismatch(claim_text: str, evidence_text: str) -> list[str]:
                 # Skip empty-unit comparison if there's no shared context
                 if not cn.unit and not en.unit and not common_context:
                     continue
-                if abs(cn.value - en.value) > 0.001:
+                if abs(cn.value - en.value) > 0.001 and not _conversion_equivalent(
+                    claim_q, evidence_q, cn.value, en.value
+                ):
                     reasons.append(f"number_mismatch:{cn.raw}:{cn.value}:{cn.unit}:{en.value}")
                     break
     return reasons
+
+
+def _base_equivalent(claim_text: str, evidence_text: str, unit_type: str) -> bool:
+    """True when both texts carry quantities of ``unit_type`` whose base-unit
+    values agree — i.e. the same measurement expressed in convertible units
+    ("2 meters" vs "200 centimeters"), which is not a mismatch."""
+
+    def bases(text: str) -> list[float]:
+        return [base for _, base, t in _quantities_with_base(text) if t == unit_type]
+
+    return any(abs(cb - eb) <= 0.001 for cb in bases(claim_text) for eb in bases(evidence_text))
 
 
 def check_unit_mismatch(claim_text: str, evidence_text: str) -> list[str]:
@@ -573,6 +753,11 @@ def check_unit_mismatch(claim_text: str, evidence_text: str) -> list[str]:
             # Same type, check if canonical is different
             ev_canonicals = {e.canonical for e in ev_by_type[cu.unit_type]}
             if cu.canonical not in ev_canonicals:
+                # A differing canonical whose measured quantity is
+                # base-equivalent is a unit CONVERSION, not a contradiction
+                # ("the cable is 2 meters long" vs "200 centimeters long").
+                if _base_equivalent(claim_text, evidence_text, cu.unit_type):
+                    continue
                 reasons.append(f"unit_mismatch:{cu.raw}:{cu.canonical}:{list(ev_canonicals)}")
     return reasons
 
@@ -696,6 +881,23 @@ _DISCOURSE_WORDS: frozenset[str] = frozenset(
 )
 
 
+def _entity_in_evidence(entity_lower: str, evidence_lower: str) -> bool:
+    """Substring membership with singular/plural tolerance.
+
+    A faithful paraphrase may restate "each unit" as "Units" — flagging the
+    plural as a fabricated entity false-rejects entailed answers. Only the
+    morphology changes; the referent is still supported.
+    """
+    if entity_lower in evidence_lower:
+        return True
+    candidates = (
+        entity_lower[:-1],  # units -> unit
+        entity_lower[:-2],  # boxes -> box
+        entity_lower[:-3] + "y",  # companies -> company
+    )
+    return any(len(c) >= 3 and c in evidence_lower for c in candidates)
+
+
 def check_unsupported_entities(claim_text: str, evidence_text: str) -> list[str]:
     """Check for named entities in claim that don't appear in evidence.
 
@@ -703,7 +905,8 @@ def check_unsupported_entities(claim_text: str, evidence_text: str) -> list[str]
     PascalCase) whose lowercase form is not a discourse word — sentence
     position alone does not exempt a token, so a fabricated sentence-initial
     name ("Bob approved Carol") is still caught, while grammatical capitals
-    ("According", "The") never are.
+    ("According", "The") never are. Plural forms of an attested singular are
+    supported (see ``_entity_in_evidence``).
 
     Returns list of unsupported entity names.
     """
@@ -714,7 +917,7 @@ def check_unsupported_entities(claim_text: str, evidence_text: str) -> list[str]
         entity = match.group(0)
         if entity.lower() in _DISCOURSE_WORDS:
             continue
-        if entity.lower() not in evidence_lower:
+        if not _entity_in_evidence(entity.lower(), evidence_lower):
             unsupported.append(entity)
 
     return unsupported

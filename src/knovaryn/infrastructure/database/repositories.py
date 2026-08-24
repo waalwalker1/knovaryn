@@ -240,13 +240,20 @@ class JobRepository:
         )
 
     async def claim_eligible(self, *, worker: str, lease_seconds: int = 300) -> schemas.Job | None:
-        """Atomically claim one eligible job (best-effort local).
+        """Atomically claim one eligible job.
 
         Eligible means: ``queued``/``retry_wait`` (never leased), or a job
         abandoned by a dead worker — ``leased``/``running`` whose lease has
         expired (defect 4.8). Without the expired-lease arm, a worker that dies
         mid-run orphans its job forever: no state transition ever fires and no
         replacement worker can pick it up.
+
+        Concurrency (§3.10): the candidate row is selected ``FOR UPDATE SKIP
+        LOCKED``, so two workers racing over the same queue can never claim
+        the same job — the loser's SELECT simply skips past the locked row to
+        the next candidate instead of blocking or double-claiming. SQLite has
+        no row locks and a single writer anyway; its dialect ignores the
+        FOR UPDATE clause, so the same statement serves both backends.
         """
         from datetime import datetime, timedelta
 
@@ -261,12 +268,13 @@ class JobRepository:
             )
             .order_by(m.JobDB.created_at)
             .limit(1)
+            .with_for_update(skip_locked=True)
         )
         res = await self._s.execute(stmt)
         row = res.scalars().first()
         if row is None:
             return None
-        # claim (best-effort; single-worker SQLite path)
+        # still holding the row lock: flip to leased inside this transaction
         row.state = "leased"
         row.lease_owner = worker
         row.lease_expires_at = now + timedelta(seconds=lease_seconds)
@@ -1062,6 +1070,10 @@ class SpanRepository:
                 id=span.id,
                 parsed_document_id=span.parsed_document_id,
                 page_number=span.page_number,
+                page_start=span.page_start,
+                page_end=span.page_end,
+                bounding_boxes=list(span.bounding_boxes),
+                precision=str(span.precision.value),
                 section_path=span.section_path,
                 element_reference=span.element_reference,
                 character_start=span.character_start,
@@ -1079,6 +1091,10 @@ class SpanRepository:
             id=row.id,
             parsed_document_id=row.parsed_document_id,
             page_number=row.page_number,
+            page_start=row.page_start,
+            page_end=row.page_end,
+            bounding_boxes=list(row.bounding_boxes or []),
+            precision=schemas.SpanPrecision(row.precision or "unknown"),
             section_path=row.section_path,
             element_reference=row.element_reference,
             character_start=row.character_start,

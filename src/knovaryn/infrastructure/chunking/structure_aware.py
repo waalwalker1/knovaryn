@@ -47,6 +47,11 @@ class ChunkUnit:
     element_type: str
     heading_path: list[str]
     kind: str = "text"  # heading | paragraph | list_item | table | caption | code
+    # Source-location metadata preserved end-to-end (defect 3.7): pages,
+    # bounding boxes (+ coordinate system), original element references and
+    # document-wide character offsets when the parser supplied them. Empty
+    # for parsers without location evidence (plain markdown/text).
+    location: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -56,6 +61,70 @@ class ChunkResult:
     heading_path: list[str]
     boundary_reasons: list[str]
     units: list[ChunkUnit] = field(default_factory=list)
+    # merged location of every unit in this chunk (same shape as ChunkUnit.location)
+    location: dict[str, Any] = field(default_factory=dict)
+
+
+def _block_location(block: dict[str, Any]) -> dict[str, Any]:
+    """Extract normalized source-location data from a canonical/docling block.
+
+    Accepted inputs: a ``location`` key already in canonical form, or raw
+    Docling provenance under ``prov`` (``[{page_no, bbox: {l,t,r,b,
+    coord_origin}}]``). Returns {} when the parser gave no location data —
+    which downstream code must surface as honest lower precision, never as a
+    fabricated page.
+    """
+    loc = block.get("location")
+    if isinstance(loc, dict) and loc:
+        return {
+            "pages": sorted({int(p) for p in loc.get("pages", []) if p}),
+            "bboxes": list(loc.get("bboxes", [])),
+            "element_refs": list(loc.get("element_refs", [])),
+        }
+    prov = block.get("prov") or []
+    pages: set[int] = set()
+    bboxes: list[dict[str, Any]] = []
+    for p in prov:
+        try:
+            page_no = int(p.get("page_no") or 0)
+        except (TypeError, ValueError):
+            continue
+        if page_no:
+            pages.add(page_no)
+        bbox = p.get("bbox")
+        if isinstance(bbox, dict):
+            bboxes.append(
+                {
+                    "page": page_no or None,
+                    "left": bbox.get("l"),
+                    "top": bbox.get("t"),
+                    "right": bbox.get("r"),
+                    "bottom": bbox.get("b"),
+                    "coord_origin": str(bbox.get("coord_origin") or "TOPLEFT"),
+                    "coord_system": "page",
+                }
+            )
+    return {
+        "pages": sorted(pages),
+        "bboxes": bboxes,
+        "element_refs": [str(e) for e in (block.get("element_refs") or [])],
+    }
+
+
+def _merge_locations(units: list[ChunkUnit]) -> dict[str, Any]:
+    """Merge per-unit locations into one chunk-level location record."""
+    pages: set[int] = set()
+    bboxes: list[dict[str, Any]] = []
+    refs: list[str] = []
+    for u in units:
+        pages.update(u.location.get("pages", []))
+        bboxes.extend(u.location.get("bboxes", []))
+        refs.extend(u.location.get("element_refs", []))
+    return {
+        "pages": sorted(pages),
+        "bboxes": bboxes,
+        "element_refs": sorted(set(refs)),
+    }
 
 
 def normalize_blocks(canonical: dict[str, Any]) -> list[ChunkUnit]:
@@ -65,35 +134,74 @@ def normalize_blocks(canonical: dict[str, Any]) -> list[ChunkUnit]:
     for b in blocks:
         btype = b.get("type", "paragraph")
         heading_path = list(b.get("heading_path") or [])
+        location = _block_location(b)
         if btype == "heading":
-            units.append(ChunkUnit(b.get("text", ""), "heading", heading_path, kind="heading"))
+            units.append(
+                ChunkUnit(
+                    b.get("text", ""), "heading", heading_path, kind="heading", location=location
+                )
+            )
         elif btype == "list_item":
-            units.append(ChunkUnit(b.get("text", ""), "list_item", heading_path, kind="list_item"))
+            units.append(
+                ChunkUnit(
+                    b.get("text", ""),
+                    "list_item",
+                    heading_path,
+                    kind="list_item",
+                    location=location,
+                )
+            )
         elif btype in ("table", "table_cell"):
-            units.append(ChunkUnit(b.get("text", ""), "table", heading_path, kind="table"))
+            units.append(
+                ChunkUnit(b.get("text", ""), "table", heading_path, kind="table", location=location)
+            )
         elif btype == "caption":
-            units.append(ChunkUnit(b.get("text", ""), "caption", heading_path, kind="caption"))
+            units.append(
+                ChunkUnit(
+                    b.get("text", ""), "caption", heading_path, kind="caption", location=location
+                )
+            )
         else:
-            units.append(ChunkUnit(b.get("text", ""), "paragraph", heading_path, kind="text"))
+            units.append(
+                ChunkUnit(
+                    b.get("text", ""), "paragraph", heading_path, kind="text", location=location
+                )
+            )
     return units
 
 
 def _extract_docling_blocks(docling: dict[str, Any]) -> list[dict[str, Any]]:
-    """Best-effort extraction from a Docling export_to_dict() document."""
+    """Best-effort extraction from a Docling export_to_dict() document.
+
+    Docling provenance (page numbers + bounding boxes) is carried through on
+    every block so chunks/spans can claim exact-page/bbox precision honestly
+    (defect 3.7).
+    """
     blocks: list[dict[str, Any]] = []
-    for item in docling.get("main_text", []):
+    for idx, item in enumerate(docling.get("main_text", [])):
         text = item.get("text", "")
         label = item.get("label", "text").lower()
         if not text:
             continue
+        element_ref = f"docling#/main_text/{idx}"
+        common = {"element_refs": [element_ref]}
+        prov = item.get("prov") or []
         if label == "title" or label.startswith("heading"):
-            blocks.append({"type": "heading", "text": text, "heading_path": []})
+            blocks.append(
+                {"type": "heading", "text": text, "heading_path": [], "prov": prov, **common}
+            )
         elif label == "table":
-            blocks.append({"type": "table", "text": text, "heading_path": []})
+            blocks.append(
+                {"type": "table", "text": text, "heading_path": [], "prov": prov, **common}
+            )
         elif label == "list_item":
-            blocks.append({"type": "list_item", "text": text, "heading_path": []})
+            blocks.append(
+                {"type": "list_item", "text": text, "heading_path": [], "prov": prov, **common}
+            )
         else:
-            blocks.append({"type": "paragraph", "text": text, "heading_path": []})
+            blocks.append(
+                {"type": "paragraph", "text": text, "heading_path": [], "prov": prov, **common}
+            )
     return blocks
 
 
@@ -125,6 +233,7 @@ def chunk_document(canonical: dict[str, Any], cfg: ChunkCfg) -> list[ChunkResult
                 heading_path=heading_path,
                 boundary_reasons=reasons,
                 units=group,
+                location=_merge_locations(group),
             )
         )
     return results

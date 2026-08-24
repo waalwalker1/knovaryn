@@ -1,5 +1,7 @@
 %% Knovaryn — end-to-end pipeline flow
 %% Every training example is traced back to its source document.
+%% v0.2.1 (contract 6.2/6.3): semantic + preference + information-gain
+%% validation, planner constraints, and durable-stage checkpoints shown.
 flowchart LR
     subgraph INPUT["1 · Intake — permitted documents"]
         direction TB
@@ -18,14 +20,15 @@ flowchart LR
     subgraph SPLIT["3 · Split + chunk with provenance"]
         direction TB
         S1["Split at source group"] --> S2["Structure-aware chunking"]
-        S2 --> S3["Heading paths · spans · source_span_ids · sha256"]
+        S2 --> S3["Heading paths · spans · source_span_ids · sha256<br/>location precision recorded per span"]
     end
 
-    subgraph GEN["4 · Generate examples"]
+    subgraph GEN["4 · Generate examples (durable stage)"]
         direction TB
-        G1["Planner: task + difficulty map"] --> G2["Prompt library"]
+        G1["Planner: task + difficulty map<br/>budget · profile · target-size constraints"] --> G2["Prompt library"]
         G2 --> G3["SFT · Preference · KTO · Eval"]
         G3 --> G4["Model gateway — fake offline or LiteLLM"]
+        G4 --> G5["Provider-call cache<br/>(idempotent retries, no double cost)"]
     end
 
     subgraph VAL["5 · Validate — gates quarantine failures"]
@@ -33,26 +36,33 @@ flowchart LR
         V1["Schema / Grounding / Completeness"]
         V2["Format / Refusal / Dedupe"]
         V3["Contamination / Privacy / License"]
-        V1 --> V4{"All gates pass?"}
-        V2 --> V4
-        V3 --> V4
-        V4 -- fail --> V5["Quarantine"]
-        V4 -- pass --> V6["Review state"]
+        V4a["Semantic consistency<br/>offline-fast deterministic · certified-semantic judge"]
+        V4b["Preference signal (pairs)<br/>+ information gain"]
+        V1 --> V5{"All gates pass?"}
+        V2 --> V5
+        V3 --> V5
+        V4a --> V5
+        V4b --> V5
+        V5 -- fail --> V6["Quarantine / review routing"]
+        V5 -- pass --> V7["Review state"]
     end
 
     subgraph OUT["6 · Version + export + publish"]
         direction TB
-        O1["Dataset version"] --> O2["Release bundle: card · manifest · reports · checksums"]
-        O2 --> O3["Exporters — JSONL + variations"]
+        O1["Dataset version (immutable)"] --> O2["Release bundle: card · manifest · reports · checksums"]
+        O2 --> O3["Exporters — provenance gate re-resolves every citation"]
         O2 --> O4["Publish to Hugging Face — dry-run by default"]
     end
 
     A5 --> P1
     P3 --> S1
     S3 --> G1
-    G4 --> V1
-    V6 --> O1
+    G5 --> V1
+    V7 --> O1
 
-    style V5 fill:#fbe3e3,stroke:#b3261e
+    style V6 fill:#fbe3e3,stroke:#b3261e
     style A5 fill:#e8f0fe,stroke:#1a73e8
     style O4 fill:#e8f0fe,stroke:#1a73e8
+    style V4a fill:#fef7e0,stroke:#b06000
+    style V4b fill:#fef7e0,stroke:#b06000
+    style G5 fill:#e6f4ea,stroke:#188038

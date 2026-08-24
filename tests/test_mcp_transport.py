@@ -515,7 +515,8 @@ def test_streamable_http_client_round_trip(tmp_path: Path) -> None:
 
     Mirrors the stdio subprocess test: spawn the actual ``knovaryn-mcp`` server
     (``python -m knovaryn.interfaces.mcp --transport streamable-http``) as a
-    subprocess on a loopback port and connect with ``streamablehttp_client``.
+    subprocess on a loopback port and connect with the cross-major
+    ``open_streamable_http`` helper.
     The server is hosted with uvicorn over FastMCP's Starlette app.
     """
     import socket
@@ -528,6 +529,9 @@ def test_streamable_http_client_round_trip(tmp_path: Path) -> None:
         port = sock.getsockname()[1]
 
     db_url = f"sqlite+aiosqlite:///{tmp_path}/shttp.db"
+    # capture the server's stderr: if it dies before listening, the failure
+    # must name WHY (a bare "did not start" would be undebuggable)
+    server_err = (tmp_path / "shttp-server.err").open("wb")
     proc = subprocess.Popen(
         [
             sys.executable,
@@ -544,12 +548,13 @@ def test_streamable_http_client_round_trip(tmp_path: Path) -> None:
         ],
         env={**os.environ},
         stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        stderr=server_err,
     )
 
     try:
-        anyio.run(_shttp_drive, port)
+        anyio.run(_shttp_drive, port, proc, tmp_path / "shttp-server.err")
     finally:
+        server_err.close()
         proc.terminate()
         try:
             proc.wait(timeout=10)
@@ -557,35 +562,58 @@ def test_streamable_http_client_round_trip(tmp_path: Path) -> None:
             proc.kill()
 
 
-async def _shttp_drive(port: int) -> None:
-    # wait for the server to accept connections
+async def _shttp_drive(port: int, proc: subprocess.Popen[bytes], err_path: Path) -> None:
+    # wait for the server to accept connections. Budget is generous (120 s):
+    # cold module imports on a synced/slow filesystem can take tens of
+    # seconds, and a slow start is NOT a defect — an early exit is.
     import socket
 
     import anyio
-    from mcp.client.streamable_http import streamablehttp_client
 
+    from knovaryn.interfaces.mcp._compat import open_streamable_http
     from mcp import ClientSession
 
-    for _ in range(300):
+    def _err_tail() -> str:
+        try:
+            return err_path.read_text(encoding="utf-8", errors="replace")[-600:]
+        except OSError:
+            return "<unreadable>"
+
+    for _ in range(1800):
+        rc = proc.poll()
+        if rc is not None:
+            raise RuntimeError(
+                f"streamable-http server exited rc={rc} before listening; "
+                f"stderr tail:\n{_err_tail()}"
+            )
         try:
             with socket.create_connection(("127.0.0.1", port), timeout=0.5):
                 break
         except OSError:
             await anyio.sleep(0.1)
     else:
-        raise RuntimeError("streamable-http server did not start listening")
+        raise RuntimeError(
+            f"streamable-http server did not start listening within 180 s; "
+            f"stderr tail:\n{_err_tail()}"
+        )
 
-    async with streamablehttp_client(f"http://127.0.0.1:{port}/mcp") as streams:
-        read, write, _get_session_id = streams
-        async with ClientSession(read, write) as session:
-            await session.initialize()
-            tools = await session.list_tools()
-            names = {t.name for t in tools.tools}
-            assert "health" in names
-            assert "knovaryn_list_jobs" in names
-            res = await session.call_tool("health", {})
-            text = "\n".join(t for b in res.content if (t := _block_text(b)))
-            assert '"status": "ok"' in text
+    # cross-SDK-major client helper (defect 3.1): yields the (read, write)
+    # pair on both mcp 1.x and 2.x without the deprecated 1.x alias.
+    async with (
+        open_streamable_http(f"http://127.0.0.1:{port}/mcp") as (
+            read,
+            write,
+        ),
+        ClientSession(read, write) as session,
+    ):
+        await session.initialize()
+        tools = await session.list_tools()
+        names = {t.name for t in tools.tools}
+        assert "health" in names
+        assert "knovaryn_list_jobs" in names
+        res = await session.call_tool("health", {})
+        text = "\n".join(t for b in res.content if (t := _block_text(b)))
+        assert '"status": "ok"' in text
 
 
 def test_stdio_graceful_shutdown(tmp_path: Path) -> None:

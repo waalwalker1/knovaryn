@@ -1,24 +1,39 @@
-%% Knovaryn — A typical MCP agent session (23-tool suite)
-%% From an empty workspace to a published dataset version
-flowchart LR
-    A["knovaryn_create_project"] --> B["knovaryn_add_source"]
-    B --> C["knovaryn_inspect_source"]
-    C --> D["knovaryn_license_report"]
-    D --> E["knovaryn_estimate_run"]
-    E --> F{"budget OK?"}
-    F -->|"yes"| G["knovaryn_start_pipeline"]
-    F -->|"no / tune"| E
-    G --> H["knovaryn_get_job / run_job<br/>(poll progress)"]
-    H --> I["knovaryn_preview_examples"]
-    I --> J["knovaryn_review_example"]
-    J --> K["knovaryn_validate_dataset"]
-    K --> L["knovaryn_compare_runs"]
-    L --> M["knovaryn_create_dataset_version"]
-    M --> N["knovaryn_export_dataset"]
-    N --> O["knovaryn_publish_dataset<br/>(dry-run → confirm)"]
-    O --> P["knovaryn_doctor (health check)"]
+%% Knovaryn — A typical MCP agent session (contract 6.3 #8)
+%% Redesigned as vertical phases so it fits a standard documentation
+%% viewport; the full catalogue lives on the generated MCP-tools page.
+%% Count-free by policy: no hard-coded tool totals in diagrams.
+flowchart TD
+    subgraph PHASE1["Phase 1 · Set up"]
+        direction TB
+        A["knovaryn_create_project"] --> B["knovaryn_add_source"]
+        B --> C["knovaryn_inspect_source · knovaryn_license_report"]
+    end
 
-    style A fill:#e8f0fe,stroke:#1a73e8
-    style O fill:#e6f4ea,stroke:#188038
+    subgraph PHASE2["Phase 2 · Estimate & run"]
+        direction TB
+        E["knovaryn_estimate_run (dry-run cost)"] --> F{"budget OK?"}
+        F -- "yes" --> G["knovaryn_start_pipeline"]
+        F -- "no / tune" --> E
+        G --> H["knovaryn_get_job / run_job — poll progress"]
+    end
+
+    subgraph PHASE3["Phase 3 · Inspect & review"]
+        direction TB
+        I["knovaryn_preview_examples"] --> J["knovaryn_review_example<br/>(immutable revisions)"]
+        J --> K["knovaryn_validate_dataset · knovaryn_compare_runs"]
+    end
+
+    subgraph PHASE4["Phase 4 · Ship"]
+        direction TB
+        L["knovaryn_create_dataset_version"] --> M["knovaryn_export_dataset"]
+        M --> N["knovaryn_publish_dataset<br/>(dry-run → confirm)"]
+    end
+
+    P["knovaryn_doctor — health check, anytime"]
+
+    PHASE1 --> PHASE2 --> PHASE3 --> PHASE4
+    P -.-> PHASE1
+
     style E fill:#fef7e0,stroke:#b06000
+    style N fill:#e6f4ea,stroke:#188038
     style P fill:#f3e8fd,stroke:#8e24aa

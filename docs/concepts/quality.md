@@ -57,8 +57,8 @@ silently dropped or, worse, included. Quarantined rows:
 
 - carry a `quality_status` of `rejected` (or `blocked`);
 - are excluded from every export path;
-- can be listed and inspected: `knovaryn review list --status rejected
-  --reason grounding<0.9`.
+- are listed with their reason codes by the validation/preview surfaces
+  (REST, MCP `knovaryn_validate_dataset` / `knovaryn_preview_examples`).
 
 This is the difference between "we generated N examples" and "N-k examples met
 the policy, and here is why the other k did not." Quarantine is a *policy
@@ -68,11 +68,12 @@ decision*, not a claim that a rejected example is provably wrong.
 
 Examples that need a human (initially `review` status, judge disagreement, or
 any policy-configured sample fraction — default `0.05`) are surfaced through
-the review surface:
+the REST API / MCP preview tools with their evidence attached; the CLI records
+the decision as an immutable revision:
 
 ```bash
-knovaryn review list --project <p> --status review --topology sft
-knovaryn review show --project <p> --example <id>
+knovaryn review <ex_handle> approve --reviewer alice --note "grounded"
+knovaryn review <ex_handle> reject  --reviewer alice --note "grounding<0.9"
 ```
 
 A reviewer sees the example plus its evidence block

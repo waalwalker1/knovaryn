@@ -1,9 +1,10 @@
 # Deployment — Profiles
 
 Knovaryn ships with built-in **profiles** that shift the default configuration
-for a given operating context. A profile is selected with `--profile <name>`
-(or `profile:` in config) and influences providers, quality floors, storage,
-and security posture.
+for a given operating context. A profile is selected with the `profile:` config
+key (or the `KNOVARYN_PROFILE` environment variable); `knovaryn run` also takes
+`--profile` as a per-invocation override. The profile influences providers,
+quality floors, storage, and security posture.
 
 | Profile | Intent | Provider | Storage | Notes |
 |---|---|---|---|---|
@@ -17,7 +18,7 @@ and security posture.
 ## The laptop profile
 
 ```bash
-uv run knovaryn mcp --profile offline-demo      # quick start
+KNOVARYN_PROFILE=offline-demo uv run knovaryn mcp   # quick start
 uv run knovaryn run --project <p> --profile fast-local
 ```
 
@@ -28,7 +29,7 @@ experimentation, and single-user production against a local model.
 ## The team profile
 
 ```bash
-uv run knovaryn mcp --profile enterprise
+KNOVARYN_PROFILE=enterprise uv run knovaryn mcp
 ```
 
 Team deployments move storage up the stack:
@@ -43,7 +44,7 @@ and repository ports back SQLite + local CAS or PostgreSQL + S3.
 ## The air-gapped profile
 
 ```bash
-uv run knovaryn mcp --profile air-gapped
+KNOVARYN_PROFILE=air-gapped uv run knovaryn mcp
 ```
 
 For environments with no network:
@@ -59,8 +60,8 @@ adapters are used, but network-exposed ones are disabled.
 
 Profiles are starting points. You can override any value in a project or user
 config file **without** weakening admin-enforced protected keys. Run
-`knovaryn config validate` after editing to confirm what resolved and from
-where.
+`knovaryn doctor` after editing to confirm the environment resolved as
+expected.
 
 ## Choosing
 

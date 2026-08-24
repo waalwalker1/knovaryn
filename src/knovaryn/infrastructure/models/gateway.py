@@ -247,6 +247,133 @@ class ModelGateway:
     def estimated_cost_accumulated(self) -> float:
         return self._budget.spent_cost_usd if self._budget is not None else 0.0
 
+    # -- judge (defects 3.8/3.9) ---------------------------------------------
+    async def judge(
+        self,
+        *,
+        system: str,
+        user: str,
+        prompt_template_version: str,
+        schema_hash: str,
+        stage: str = "judge",
+        max_output_tokens: int | None = None,
+        model: str | None = None,
+    ) -> dict[str, Any]:
+        """Cited-evidence-only judge call (defects 3.8/3.9).
+
+        Verifier/judge completions share the exact plumbing of generation —
+        fingerprinting, durable cache, budget accounting, and the model-call
+        ledger — but differ in three ways: temperature is pinned to 0.0, the
+        fake provider is NEVER used (a fake judge would fabricate "verified"
+        verdicts), and a missing live provider raises instead of degrading.
+        Returns the provider result dict with ``_fingerprint``/``_latency_ms``.
+        """
+        requested_model = model or self.verifier_model
+        if requested_model in ("fake", ""):
+            raise UnsupportedOperationError(
+                "judge calls refuse the fake provider: a fabricated verdict can "
+                "never certify quality. Configure a live verifier model."
+            )
+        if self._real is None:
+            raise UnsupportedOperationError(
+                f"judge model '{requested_model}' requested but no live provider "
+                "is configured; refusing to fabricate judge verdicts."
+            )
+        resolved = requested_model
+        if self._budget is not None:
+            self._budget.check(model=resolved, stage=stage)
+
+        messages = [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ]
+        sampling = {
+            "temperature": 0.0,
+            "max_output_tokens": max_output_tokens or 1024,
+        }
+        fp = make_fingerprint(
+            messages=messages,
+            prompt_template_version=prompt_template_version,
+            model=resolved,
+            sampling=sampling,
+            schema_hash=schema_hash,
+            source_hashes=[],
+        )
+        cached = await self._cache.get(fp)
+        if cached is not None:
+            return cast(dict[str, Any], cached)
+
+        start = time.monotonic()
+        result = await self._real.complete(
+            model=resolved,
+            messages=messages,
+            temperature=0.0,
+            max_output_tokens=sampling["max_output_tokens"],
+            schema_hash=schema_hash,
+        )
+        latency = int((time.monotonic() - start) * 1000)
+        result["_fingerprint"] = fp
+        result["_latency_ms"] = latency
+
+        provider_label = getattr(self._real, "name", "configured")
+        usage = result.get("usage") or {}
+        entry = build_cost_entry(
+            provider=provider_label,
+            model=resolved,
+            usage=usage,
+            profile=self.price_profile,
+            latency_ms=latency,
+            provider_request_id=usage.get("provider_request_id"),
+        )
+        if self._budget is not None:
+            self._budget.account_call(
+                cost_usd=entry["estimated_cost"],
+                input_tokens=entry["input_tokens"],
+                output_tokens=entry["output_tokens"],
+                model=resolved,
+                stage=stage,
+            )
+            self._budget.reconcile(model=resolved, stage=stage)
+        if self._cost_repo is not None:
+            with suppress(Exception):
+                await self._cost_repo.record(
+                    {
+                        **entry,
+                        "job_id": self._job_id,
+                        "project_id": self._project_id,
+                        "stage": stage,
+                    }
+                )
+        if self._model_call_repo is not None:
+            with suppress(Exception):
+                await self._model_call_repo.record(
+                    {
+                        "job_id": self._job_id,
+                        "project_id": self._project_id,
+                        "stage": stage,
+                        "provider": provider_label,
+                        "requested_model": requested_model,
+                        "resolved_model": resolved,
+                        "profile": self._profile,
+                        "prompt_template_hash": prompt_template_version,
+                        "request_fingerprint": fp,
+                        "schema_hash": schema_hash,
+                        "sampling_params": sampling,
+                        "input_tokens": entry["input_tokens"],
+                        "cached_input_tokens": entry.get("cached_input_tokens", 0),
+                        "output_tokens": entry["output_tokens"],
+                        "estimated_cost": entry["estimated_cost"],
+                        "provider_request_id": usage.get("provider_request_id"),
+                        "latency_ms": latency,
+                        "retry_count": 0,
+                        "result_artifact_id": None,
+                        "result_payload": result,
+                        "status": "ok",
+                    }
+                )
+        await self._cache.put(fp, result)
+        return cast("dict[str, Any]", result)
+
 
 class _NullStore:
     """Best-effort placeholder store that never holds data (tests without CAS)."""

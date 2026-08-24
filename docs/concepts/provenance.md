@@ -1,9 +1,11 @@
 # Concepts — Provenance and the Canonical Data Model
 
 Provenance is the reason Knovaryn exists. Every accepted training example can
-be walked backward, hop by hop, to the exact page and section of a permitted
-source document. This page defines the canonical chain and the fields that make
-it enforceable.
+be walked backward, hop by hop, to the source spans of a permitted source
+document — at whatever location precision the parser actually recorded
+(page/bounding-box for Docling-parsed PDFs, section/chunk for markdown or plain
+text). This page defines the canonical chain and the fields that make it
+enforceable.
 
 ## The provenance chain
 

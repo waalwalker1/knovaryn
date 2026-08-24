@@ -9,6 +9,54 @@ yet guaranteed (see [ROADMAP.md](ROADMAP.md)).
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2026-08-22
+
+### Fixed
+- **MCP SDK support contract**: declared range is now `mcp>=1.28,<3` and an
+  official acceptance matrix runs the full MCP lifecycle against both `1.x`
+  and `2.x` pins (stdio + authenticated streamable HTTP + bind-refusal),
+  wired into CI as a required job.
+- **Async shutdown hygiene**: SQLite/aiosqlite connections now use `NullPool`
+  and engine disposal is shielded, eliminating post-loop
+  `RuntimeError('Event loop is closed')` worker-thread noise when lifespans
+  tear down inside a cancelled anyio scope; regression tests plus a
+  warnings-as-errors policy (`PytestUnhandledThreadExceptionWarning`,
+  `PytestUnraisableExceptionWarning`, incomplete pydantic field definitions).
+- **Provenance location precision**: every source span carries a
+  machine-verifiable `precision` derived from stored parser evidence
+  (`exact_bbox` / `exact_page` / `page_range` / `section` / `chunk` /
+  `unknown`) via `SourceSpan.with_derived_precision`; Docling page/bbox
+  provenance flows through chunker to spans to lineage (REST + MCP) and
+  export manifests; markdown/text sources honestly report lower precision
+  instead of fabricating page numbers.
+- **Schema evolution**: `create_all` now performs idempotent additive column
+  migration so databases created by older versions upgrade in place; a new
+  Alembic revision (`b81d4f6a2c39`) matches the ORM metadata exactly.
+- **Version synchronization**: single authoritative `__version__` feeds
+  CITATION.cff, codemeta.json, MkDocs config, container labels, REST/MCP
+  servers and the README marker (`scripts/check_version_sync.py --check`).
+
+### Added
+- **Semantic validation profiles** (`quality.semantic_profile`): explicit
+  `offline-fast` (deterministic-only, network-free) and `certified-semantic`
+  (deterministic first, cited-evidence-only judge second via fingerprinted,
+  cached, budget-accounted `ModelGateway.judge`). Deterministic
+  contradictions can never be overridden; unavailable judges yield
+  `unverified`, never `verified`. Adversarial benchmark with false-accept /
+  false-reject rates and Wilson confidence intervals.
+- **Certified pairwise preference profile** (`preference.profile`):
+  two-order evidence-cited judge with randomized presentation, minimum
+  preference margin, length/style signature detection, classified
+  rejected-defect requirement, and fail-closed lineage recording.
+- CLI reference generated from the real Typer command tree
+  (`scripts/generate_cli_reference.py`) with CI drift checks and a command
+  tree snapshot test.
+
+### Changed
+- REST API reports the real application version (`__version__`) instead of a
+  stale literal; MCP health tool exposes `server_version`.
+- CITATION.cff no longer carries a placeholder DOI pending real registration.
+
 ## [Unreleased]
 
 ### Added

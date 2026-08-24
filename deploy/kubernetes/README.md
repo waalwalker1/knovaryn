@@ -44,7 +44,7 @@ kubectl -n knovaryn wait --for=condition=complete job/minio-init --timeout=120s
 kubectl -n knovaryn get deploy,pods
 ```
 
-All images are **pinned to a tagged/digest build** (`…:0.1.0`) — never `latest`
+All images are **pinned to a tagged/digest build** (`…:0.2.1`) — never `latest`
 (K3). Pin the app image to a digest in a hardening pass:
 `image: ghcr.io/knovaryn/knovaryn@sha256:<digest>`.
 

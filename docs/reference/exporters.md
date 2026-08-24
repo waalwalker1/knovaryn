@@ -21,20 +21,37 @@ directory.
 
 ## Format adapters
 
-| `--format` | Target | Notes |
-|---|---|---|
-| `canonical-jsonl` | Knovaryn canonical JSONL | Round-trip lossless form of the version; carries evidence refs and metadata. |
-| `parquet` | Apache Parquet | Columnar, good for analysis and large corpora; requires the `parquet` extra. |
-| `trl-conversational` | TRL / HF `trl` conversational messages | SFT + DPO `conversational`/`text` format; requires `hub` for HF targets. |
-| `llamafactory-sharegpt` | LLaMA-Factory ShareGPT | `conversations`-style JSONL used by LLaMA-Factory. |
-| `openai-chat` | OpenAI chat messages | `messages`-array training JSONL. |
-| `sharegpt` | ShareGPT | Generic ShareGPT-style JSONL (separate from the LLaMA-Factory variant). |
-| `alpaca` | Alpaca | Alpaca-style `instruction/input/output` JSON. |
-| `huggingface` | Hugging Face Hub | Push a version to the Hub (requires `hub` extra and an approved/verifiable public path). |
+<!-- BEGIN GENERATED EXPORT FORMATS -->
 
-`exports.formats` defaults to `[canonical-jsonl, parquet, trl-conversational,
-llamafactory-sharegpt]`. Other adapters (`openai-chat`, `sharegpt`, `alpaca`,
-`huggingface`) are selectable on the same canonical version.
+Format ids are generated from `pipeline.export.formats.SUPPORTED_FORMATS`
+— this table cannot drift from what `--format` accepts:
+
+| Format | Media type |
+|---|---|
+| `alpaca` | `application/jsonl` |
+| `evaluation` | `application/jsonl` |
+| `huggingface_layout` | `application/jsonl` |
+| `kto` | `application/jsonl` |
+| `openai_chat` | `application/jsonl` |
+| `sharegpt` | `application/jsonl` |
+| `trl_preference` | `application/jsonl` |
+| `trl_sft` | `application/jsonl` |
+| `jsonl` | `application/jsonl` |
+
+`jsonl` is the canonical passthrough (accepted by `--format` alongside
+the ids above). Parquet is **not** a `--format` id: it is produced by
+the SDK function `knovaryn.pipeline.export.export_parquet` (requires the
+`parquet` extra) and by the release bundle's split files when that extra
+is installed.
+
+<!-- END GENERATED EXPORT FORMATS -->
+
+Every format is a projection of the same frozen `DatasetVersion`; rows keep
+explicit lineage fields (`source_document_ids`, `source_span_ids`,
+`content_hash`) so provenance stays machine-checkable in every layout.
+Parquet output requires the `parquet` extra; Hugging Face Hub upload
+(`knovaryn dataset publish`) requires the `hub` extra and a passing
+publication gate.
 
 ## What each row carries (config-dependent)
 
@@ -64,10 +81,9 @@ release/
 ├── privacy-report.json        # PII findings (redacted), actions
 ├── data/
 │   ├── canonical.jsonl
-│   ├── train.parquet  valid.parquet  test.parquet
-│   ├── trl-conversational.jsonl
-│   ├── llamafactory-sharegpt.jsonl
-│   └── ... (per selected format)
+│   ├── openai_chat.jsonl
+│   ├── sharegpt.jsonl  alpaca.jsonl  … (per selected format)
+│   └── splits.parquet (train/validation/test when parquet extra installed)
 └── lineage/                   # per-example evidence pointers (example -> span ids)
 ```
 

@@ -30,98 +30,95 @@ uv run knovaryn doctor
 ## 2. Create the project
 
 ```bash
-uv run knovaryn project create \
+uv run knovaryn project create support-config \
   --name "Support-Config Dataset" \
-  --slug support-config \
   --description "SFT + preference from internal runbooks (company-permitted)"
 ```
+
+Use the printed project handle (`proj_…`) below as `<proj_handle>`.
 
 ## 3. Add documents with declared licenses
 
 Add each file you are permitted to use, declaring the license:
 
 ```bash
-uv run knovaryn source add --project support-config ./docs/runbook-a.pdf --declared-license "internal" --kind local_path
-uv run knovaryn source add --project support-config ./docs/runbook-b.md  --declared-license "internal" --kind local_path
-uv run knovaryn source inspect --project support-config --source <id>
+uv run knovaryn source add <proj_handle> ./docs/runbook-a.pdf --license internal --privacy internal
+uv run knovaryn source add <proj_handle> ./docs/runbook-b.md  --license internal --privacy internal
+uv run knovaryn source list <proj_handle>
 ```
 
-`source inspect` shows the preflight: SHA-256, size, page count, license status,
-privacy classification. If a license is `blocked` or `unknown`, content is
-gated from public export but (per policy) can still be used for a
-non-public path.
+`source list` shows the ingested sources with their preflight: SHA-256, size,
+license status, privacy classification. If a license is `blocked` or
+`unknown`, content is gated from public export but (per policy) can still be
+used for a non-public path.
 
-## 4. Plan and estimate against the real provider
+## 4. Estimate before you spend
+
+The dry-run **cost estimate** is exposed over MCP (`knovaryn_estimate_run`)
+and REST before anything is generated. On the CLI, go straight to `run` and
+set a hard spend cap:
 
 ```bash
-uv run knovaryn plan \
-  --project support-config \
-  --topologies sft preference \
+uv run knovaryn run \
+  --project <proj_handle> \
   --target 800 \
-  --dry-run-cost
+  --budget-usd 50
 ```
 
-The dry run uses your price profile. Because generation is now real and
-billable (tokens against a live model), pay attention to estimated cost vs
-`budget.maximum_cost_usd` (default 50.00 USD).
+Generation is now real and billable (tokens against a live model); keep
+`budget.maximum_cost_usd` (default `50.0` in `domain/config.py`) aligned with
+your intent.
 
-## 5. Run
+## 5. Watch progress
 
 ```bash
-uv run knovaryn run --project support-config --profile balanced --topologies sft preference
+uv run knovaryn job list --project <proj_handle>
+uv run knovaryn job status <job_handle>
 ```
 
-In a second terminal, watch progress:
-
-```bash
-uv run knovaryn job events --project support-config --job <id> --follow
-uv run knovaryn job status --project support-config --job <id>
-```
-
-Kill the worker mid-run (Ctrl-C or `kill -TERM`) to see checkpointed resume:
-
-```bash
-uv run knovaryn run --resume support-config --job <id>
-```
-
-`actual_cost` versus `estimated_cost` is recorded per job, so your spend is
-auditable.
+Jobs are durable: leases, heartbeats, checkpoints, idempotency keys, and a
+provider-call dedup cache. Interrupting a run and retrying resumes from the
+persisted checkpoint instead of redoing paid work; actual versus estimated
+cost is recorded per job so spend stays auditable.
 
 ## 6. Review with evidence
 
+Example handles (`ex_…`) appear in validation output and in the REST/MCP
+listings. Record decisions as immutable revisions:
+
 ```bash
-uv run knovaryn review list --project support-config --status review --limit 10
-uv run knovaryn review show --project support-config --example <id>
-# reject weak rows explicitly; accept the good ones
-uv run knovaryn review accept --project support-config --example <id>
-uv run knovaryn review reject --project support-config --example <id> --reason "grounding<0.9"
+uv run knovaryn review <ex_handle> approve --reviewer alice --note "grounded"
+uv run knovaryn review <ex_handle> reject --reviewer alice \
+  --note "grounding<0.9" 
 ```
 
-Examples that failed policy already landed in `rejected` with reason codes and
-are excluded from export. Human review refines the `review` set.
+Examples that failed policy already landed in quarantine with reason codes and
+are excluded from export. Human review refines the remainder; every decision
+is recorded as a new revision — nothing is mutated in place.
 
 ## 7. Version and export
 
 ```bash
-uv run knovaryn dataset validate --project support-config
-uv run knovaryn dataset version  --project support-config --semantic 0.1.0
-uv run knovaryn export \
-  --project support-config --version 0.1.0 \
-  --format trl-conversational --format llamafactory-sharegpt --format parquet
+uv run knovaryn dataset validate <proj_handle>
+uv run knovaryn dataset version <proj_handle> --set 1.0.0
+uv run knovaryn dataset export <proj_handle> \
+  --version <ver_handle> --format trl_sft --out ./export/sft
+uv run knovaryn dataset export <proj_handle> \
+  --version <ver_handle> --format parquet --out ./export/parquet
 ```
 
-`dataset validate` re-checks provenance minimums and quality before versioning.
+`dataset validate` re-checks provenance minimums and quality gates before
+versioning; format ids are the generated table in the
+[exporter reference](../reference/exporters.md).
 
-## 8. Inspect lineage and the dataset card
+## 8. Inspect lineage
 
-```bash
-uv run knovaryn compare        # side-by-side candidate/example comparison
-uv run knovaryn dataset card   --project support-config --version 0.1.0
-uv run knovaryn dataset lineage --project support-config --example <id>
-```
-
-The lineage walks example → generation candidate → chunk → parsed document →
-source document → original page/section: the definition of "traceable."
+Lineage is served over REST
+(`GET /v1/projects/{id}/examples/{eid}/lineage`) and MCP (`knovaryn_lineage`),
+returning the full walk example → generation candidate → chunk → parsed
+document → source document, with each span's machine-reported location
+precision. The exported release bundle includes the dataset card, manifest,
+and reports.
 
 ## Notes and honesty
 
@@ -129,5 +126,4 @@ source document → original page/section: the definition of "traceable."
   passes is not a guarantee it improves your model.
 - The local endpoint must actually accept the OpenAI-compatible chat schema;
   `knovaryn doctor` surface-tests wiring but not model quality.
-- Real runs bill against your provider; keep `budget.maximum_cost_usd` set, and
-  never run `--resume` against a billable provider unless you intend to spend.
+- Real runs bill against your provider; keep the budget cap set.

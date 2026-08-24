@@ -40,15 +40,55 @@ class TestNoPrivateBuildDisclosure:
     """The public surface carries none of the private build process."""
 
     def test_tracked_tree_has_zero_forbidden_patterns(self):
-        tracked, _wheel, _sdist, _site = collect_all_findings()
-        assert tracked == [], "forbidden patterns in tracked files:\n" + "\n".join(tracked)
+        results = collect_all_findings()
+        assert results["tracked"] == [], "forbidden patterns in tracked files:\n" + "\n".join(
+            results["tracked"]
+        )
 
     def test_built_artifacts_have_zero_forbidden_patterns(self):
-        _tracked, wheel, sdist, site = collect_all_findings()
+        results = collect_all_findings()
         # empty lists also cover "artifact not present" — nothing to leak
-        assert wheel == [], "\n".join(wheel)
-        assert sdist == [], "\n".join(sdist)
-        assert site == [], "\n".join(site)
+        for surface in ("wheel", "sdist", "site"):
+            assert results[surface] == [], f"{surface}:\n" + "\n".join(results[surface])
+
+    def test_generated_schema_and_tool_descriptions_are_clean(self):
+        """Defect 3.6: the GENERATED OpenAPI schema and MCP descriptions are
+        public surface too — they are scanned live, not just their sources."""
+        results = collect_all_findings()
+        assert results["openapi"] == [], "\n".join(results["openapi"])
+        assert results["mcp-descriptions"] == [], "\n".join(results["mcp-descriptions"])
+
+    def test_release_body_and_container_scans_wired(self, monkeypatch, tmp_path):
+        import scripts.public_surface_audit as audit
+
+        clean = tmp_path / "notes.md"
+        clean.write_text("Knovaryn 0.2.1 release notes.\n", encoding="utf-8")
+        monkeypatch.setenv(audit.RELEASE_BODY_ENV, str(clean))
+        rootfs = tmp_path / "rootfs"
+        (rootfs / "app").mkdir(parents=True)
+        (rootfs / "app" / "card.md").write_text("# dataset card\n", encoding="utf-8")
+        dirty = rootfs / "app" / "leak.md"
+        # literal split via EXPLICIT concatenation (`+`, not adjacency): this
+        # FILE is itself scanned by the tracked-tree gate, and the raw path
+        # shape must exist only in the runtime fixture value, never in committed
+        # source text. Adjacent-string splitting is NOT enough — ruff format
+        # merges implicit concatenation and would re-introduce the pattern.
+        dirty.write_text("contact: /Use" + "rs/someone/private\n", encoding="utf-8")
+        monkeypatch.setenv(audit.CONTAINER_ROOTFS_ENV, str(rootfs))
+
+        results = collect_all_findings()
+        assert results["release-body"] == []
+        assert len(results["container-rootfs"]) == 1
+        assert "container-rootfs:app/leak.md" in results["container-rootfs"][0]
+
+    def test_missing_configured_targets_fail_closed(self, monkeypatch, tmp_path):
+        import scripts.public_surface_audit as audit
+
+        monkeypatch.setenv(audit.RELEASE_BODY_ENV, str(tmp_path / "nope.md"))
+        monkeypatch.setenv(audit.CONTAINER_ROOTFS_ENV, str(tmp_path / "nope-dir"))
+        results = collect_all_findings()
+        assert any("configured but missing" in f for f in results["release-body"])
+        assert any("configured but missing" in f for f in results["container-rootfs"])
 
     def test_private_process_logs_not_at_repo_root(self):
         for name in PRIVATE_LOGS_AT_ROOT:
@@ -89,6 +129,13 @@ class TestGatePatternTiers:
             assert ".knovaryn" not in pat.pattern, (
                 "generic gate must not name the private directory"
             )
+
+    def test_no_path_allowlist_after_defect_36(self):
+        """Defect 3.6 closed by REMOVING exempted paths; the gate must stay
+        exemption-free so private material can never hide behind an entry."""
+        import scripts.public_surface_audit as audit
+
+        assert audit.ALLOWED_CONTEXTS == []
 
     def test_extra_patterns_load_from_env(self, monkeypatch, tmp_path):
         import scripts.public_surface_audit as audit

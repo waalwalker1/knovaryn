@@ -1,0 +1,58 @@
+# Dependency-compatibility matrix (contract §8.3–§8.5, v0.2.1).
+#
+# Normal CI proves the LOCKED resolution works; Dependabot PRs prove the
+# latest end of every range as bumps land. What nothing else proves is the
+# *minimum* support claim — the floors declared in pyproject.toml. This
+# scheduled/dispatch-gated workflow does exactly that:
+#
+#   1. lowest-direct resolution smoke: install every dependency at its
+#      lowest allowed version (UV_RESOLUTION=lowest-direct, throwaway venv,
+#      uv.lock untouched) and run the offline unit tier against it;
+#   2. per-group floor matrix: scripts/compat_matrix.py pins each watched
+#      breaking-change-prone package (MCP SDK, FastAPI/httpx stack,
+#      SQLAlchemy/aiosqlite, Docling) to its declared floor inside an
+#      isolated venv and runs a real integration probe.
+#
+# A failure here means the published version range is wider than reality.
+name: Dependency compatibility
+
+on:
+  schedule:
+    - cron: "23 4 * * 1" # weekly Monday, deliberately off the :00/:30 marks
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  lowest-direct-resolution:
+    name: Lowest supported resolution smoke (§8.3)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.11"
+      - name: Install the lowest allowed resolution into a throwaway venv
+        run: |
+          uv venv /tmp/lowest-venv --python 3.11
+          UV_RESOLUTION=lowest-direct uv pip install \
+            --python /tmp/lowest-venv/bin/python ".[mcp]" pytest pytest-asyncio
+      - name: Run offline unit tier against the floor resolution
+        run: |
+          /tmp/lowest-venv/bin/python -m pytest tests/unit tests/public -q
+
+  compatibility-matrix:
+    name: Breaking-dependency floor matrix (§8.4)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.11"
+      - name: Floor-pinned probes for mcp / rest / database / docling groups
+        run: uv run python scripts/compat_matrix.py

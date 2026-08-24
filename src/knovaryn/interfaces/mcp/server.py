@@ -23,26 +23,33 @@ from ...domain.errors import ConfigurationError, NotFoundError
 from ...infrastructure.models.profiles import DEFAULT_RUNTIME_PROFILE
 
 if TYPE_CHECKING:
-    from mcp.server.fastmcp import Context
-
     from ...application.workspace import Workspace
+    from ._compat import mcp_sdk_major  # noqa: F401  (re-exported for tests)
+
+    Context = Any  # type alias for type checking - actual class varies by MCP major
 else:
-    # FastMCP inspects tool signatures with ``eval_str=True``, so ``Context``
-    # and ``Workspace`` must be real, resolvable names in this module's
-    # namespace at runtime — a TYPE_CHECKING-only import is not enough
-    # (FastMCP ``eval_str`` evaluates annotations against the module globals).
-    # Import them for real when mcp is installed; ``Workspace`` is our own
-    # module and always importable. If mcp is absent, fall back to a placeholder
-    # so the module still imports for callers that only want ``SERVER_ID`` or
-    # the availability flag.
+    # The high-level SDK server inspects tool signatures with ``eval_str``,
+    # so ``Context`` and ``Workspace`` must be real, resolvable names in this
+    # module's namespace at runtime — a TYPE_CHECKING-only import is not
+    # enough (annotations are evaluated against the module globals).
+    # ``_compat`` resolves the right Context for the installed SDK major; if
+    # mcp is absent, fall back to a placeholder so the module still imports
+    # for callers that only want ``SERVER_ID`` or the availability flag.
     try:
-        from mcp.server.fastmcp import Context
+        from ._compat import _context_class, mcp_sdk_major
+
+        Context = _context_class()  # type: ignore[assignment]
     except ImportError:  # pragma: no cover - mcp unavailable
-        from typing import Any as Context  # type: ignore[assignment]
+        Context = Any  # type: ignore[assignment, misc]
+        mcp_sdk_major = None  # type: ignore[assignment]
 
     from ...application.workspace import Workspace
 
 SERVER_ID = "knovaryn_mcp"
+# Authoritative product version surfaced through MCP server metadata (defect
+# 3.5); kept equal to knovaryn.__version__ by scripts/check_version_sync.py,
+# enforced by tests/public/test_version_sync.py.
+from ... import __version__ as SERVER_VERSION  # noqa: E402
 
 
 def _mcp_available() -> bool:
@@ -158,12 +165,11 @@ def build_server(database_url: str | None = None) -> Any:
             "The MCP server requires the 'mcp' package. Install it (e.g. pip install mcp) "
             "or run Knovaryn via the CLI/REST instead."
         )
-    from mcp.server.fastmcp import FastMCP
-
     from ...application.workspace import Workspace
+    from ._compat import build_mcp_server
 
     @asynccontextmanager
-    async def _lifespan(mcp_server: FastMCP[Workspace]) -> AsyncIterator[Workspace]:
+    async def _lifespan(mcp_server: Any) -> AsyncIterator[Workspace]:
         ws = Workspace(principal="mcp", database_url=database_url)
         await ws.open()
         try:
@@ -171,7 +177,7 @@ def build_server(database_url: str | None = None) -> Any:
         finally:
             await ws.close()
 
-    mcp = FastMCP[Workspace](
+    mcp = build_mcp_server(
         "Knovaryn",
         instructions="Training-data foundry pipeline tools.",
         lifespan=_lifespan,
@@ -182,7 +188,12 @@ def build_server(database_url: str | None = None) -> Any:
     async def health(ctx: Context) -> dict[str, Any]:
         """Health / identity check for the Knovaryn MCP server."""
         _get_workspace(ctx)  # fail closed if the lifespan workspace is not open
-        return {"status": "ok", "server_id": SERVER_ID, "product": "knovaryn"}
+        return {
+            "status": "ok",
+            "server_id": SERVER_ID,
+            "server_version": SERVER_VERSION,
+            "product": "knovaryn",
+        }
 
     @mcp.tool()
     async def knovaryn_doctor() -> dict[str, Any]:
@@ -494,12 +505,18 @@ def build_server(database_url: str | None = None) -> Any:
         data = await ws.list_examples(project_id=project_id, limit=10000)
         for e in data.get("examples", []):
             if e.get("id") == example_id:
+                span_ids = e.get("source_span_ids", [])
+                # defect 3.7: surface the *stored* location precision for every
+                # cited span so clients can verify provenance claims instead of
+                # trusting a bare ID list.
+                locations = await ws.get_span_locations(span_ids)
                 return {
                     "example_id": example_id,
                     "project_id": project_id,
                     "source_document_ids": e.get("source_document_ids", []),
                     "source_group_ids": e.get("source_group_ids", []),
-                    "source_span_ids": e.get("source_span_ids", []),
+                    "source_span_ids": span_ids,
+                    "source_spans": locations.get("spans", []),
                     "chunk_id": e.get("chunk_id"),
                     "topology": e.get("topology"),
                     "lineage_uri": (

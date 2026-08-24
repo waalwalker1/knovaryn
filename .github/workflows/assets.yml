@@ -1,0 +1,39 @@
+# Diagram render-drift gate (contract §6.5).
+#
+# ci.yml's docs job runs the cheap python-only asset checks on every push.
+# This workflow adds the byte-exact check: re-render every Mermaid source
+# with a PINNED mermaid-cli and fail if any committed PNG no longer matches
+# its source. Scheduled + dispatch-gated because the render toolchain is too
+# heavy for per-push CI; the mtime-drift signal still guards ordinary pushes
+# via scripts/check_assets.py.
+name: Asset render drift
+
+on:
+  schedule:
+    - cron: "41 3 * * 1" # weekly Monday, off the :00/:30 marks
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  render-drift:
+    name: Mermaid renders match sources (§6.5)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      # Pinned renderer version = deterministic bytes across runs.
+      - name: Install pinned mermaid-cli
+        run: npm install -g @mermaid-js/mermaid-cli@11.4.2
+      - uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.11"
+      - name: Render and byte-compare all diagrams
+        run: uv run python scripts/render_diagrams.py --check
+      - name: Full python-only asset suite (belt and braces)
+        run: uv run scripts/check_assets.py --render

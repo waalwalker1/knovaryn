@@ -1,6 +1,9 @@
 [project]
 name = "knovaryn"
-version = "0.2.0"
+# Single authoritative version source (defect 3.5): the literal lives in
+# src/knovaryn/__init__.py and hatchling consumes it at build time, so
+# pyproject cannot drift from the package metadata.
+dynamic = ["version"]
 description = "Open, MCP-native training-data foundry: turn permitted documents into traceable, quality-gated SFT and preference datasets."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -51,7 +54,11 @@ dependencies = [
     "fastapi>=0.110",
     "uvicorn>=0.29",
     "jinja2>=3.1",
-    "sqlalchemy[asyncio]>=2.0",
+    # Floor is 3.13-verified: 2.0.30 and below fail at import on CPython 3.13
+    # (TypingOnly vs PEP-649 class attrs); 2.0.31 passes the async round-trip
+    # probe in scripts/compat_matrix.py. Floors must hold on every supported
+    # interpreter, not just the oldest one.
+    "sqlalchemy[asyncio]>=2.0.31",
     "aiosqlite>=0.20",
     "asyncpg>=0.29; platform_system != 'Windows'",
     "alembic>=1.13",
@@ -88,9 +95,23 @@ hub = [
     "huggingface-hub>=0.23",
 ]
 mcp = [
-    "mcp>=1.0,<3",
+    "mcp>=1.28,<3",
 ]
 ml = [
+    "scikit-learn>=1.4",
+    "numpy>=1.26",
+]
+# Contract §8.9: one extra pulling in every documented production feature,
+# so a full-runtime deployment is a single, CI-tested installation profile
+# (see the `extras` job and scripts/profile_smoke.py).
+full = [
+    "docling>=2.26",
+    "docetl>=0.1",
+    "litellm>=1.45",
+    "aioboto3>=13",
+    "pyarrow>=16",
+    "huggingface-hub>=0.23",
+    "mcp>=1.28,<3",
     "scikit-learn>=1.4",
     "numpy>=1.26",
 ]
@@ -101,7 +122,7 @@ dev = [
     "hypothesis>=6.100",
     "ruff>=0.4",
     "mypy>=1.10",
-    "mcp>=1.0,<3",
+    "mcp>=1.28,<3",
     "pre-commit>=3.7",
     "mkdocs-material>=9.5",
     "mkdocs>=1.6",
@@ -124,6 +145,9 @@ Security = "https://github.com/waalwalker1/knovaryn/blob/main/SECURITY.md"
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+[tool.hatch.version]
+path = "src/knovaryn/__init__.py"
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/knovaryn"]
 
@@ -132,7 +156,10 @@ packages = ["src/knovaryn"]
 # Hatchling's VCS filter honors .gitignore but not local-only excludes
 # (.git/info/exclude), so working-tree dot-dirs would otherwise ride into the
 # sdist. Cut them generically — this file names no private path.
-exclude = [".*", ".gitignore"]
+# `knovaryn-demo` is runtime output of the offline demo command (logs,
+# result JSON, release zip): generated state, never package content, even
+# when present and untracked at build time.
+exclude = [".*", ".gitignore", "knovaryn-demo"]
 
 [tool.ruff]
 line-length = 100
@@ -186,13 +213,39 @@ module = [
 ]
 ignore_missing_imports = true
 
+[tool.uv]
+# Contract §8.1: pin the resolution-toolchain policy. Lockfile format and
+# resolution semantics are uv-generation-dependent; letting CI and
+# contributors drift across major uv versions makes `uv.lock` silently
+# non-reproducible. Bump deliberately, together with `uv.lock`.
+required-version = ">=0.12"
+
 [tool.pytest.ini_options]
 minversion = "7.0"
 testpaths = ["tests"]
 pythonpath = ["."]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
-addopts = "-ra --strict-markers"
+# importlib import mode: tests/ has no __init__.py (intentionally), and two
+# same-basename modules exist at different depths
+# (tests/test_version_sync.py, tests/public/test_version_sync.py) — the
+# default prepend mode collides them in sys.modules ("import file mismatch",
+# whole-suite collection error). importlib resolves each by its path-derived
+# name and is the pytest-documented layout for this tree shape.
+addopts = "-ra --strict-markers --import-mode=importlib"
+# §9 warnings-as-errors policy (v0.2.1): the async-shutdown defect class
+# (leaked aiosqlite worker threads resolving futures against closed event
+# loops, unraisable exceptions during teardown) must fail tests loudly, never
+# scroll past as warnings. The one ignore below is a third-party shim outside
+# Knovaryn's control: fastapi re-exports starlette's TestClient and starlette
+# deprecates whichever httpx line it finds installed — decided by the SDK
+# closure, not by our code.
+filterwarnings = [
+    "error::pytest.PytestUnhandledThreadExceptionWarning",
+    "error::pytest.PytestUnraisableExceptionWarning",
+    "error::pydantic_settings.exceptions.IncompleteFieldDefinitionWarning",
+    "ignore:Using `httpx` with `starlette.testclient` is deprecated:starlette.exceptions.StarletteDeprecationWarning",
+]
 markers = [
     "unit: fast semantic unit tests (no external services)",
     "integration: integration tests across repositories/pipeline",

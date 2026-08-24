@@ -1,12 +1,26 @@
-%% Knovaryn — Security & privacy flow
-%% Offline-first, secrets from env only, everything dry-run until approved
+%% Knovaryn — Security & privacy boundaries (contract 6.3 #6)
+%% Local trust · remote authentication · tenant authorization · intake
+%% boundary · secrets · publication authorization · release attestation.
 flowchart TD
-    subgraph TRUST["Untrusted input boundary"]
+    subgraph INTAKE["Untrusted input boundary"]
         T1["Local file / archive / URL"]
         T2["Path-traversal + symlink checks"]
         T3["Verified archives · SSRF defense · URL ingest OFF by default"]
         T1 --> T2 --> T3
-        T3 --> T4["Preflight: SHA-256 · size · license · privacy class"]
+        T4["Preflight: SHA-256 · size · license · privacy class"]
+        T3 --> T4
+    end
+
+    subgraph LOCAL["Local trust (default)"]
+        L1["Deterministic fake provider — no keys, no network"]
+        L2["Loopback HTTP binding · Host/Origin checks"]
+    end
+
+    subgraph REMOTE["Remote access (opt-in)"]
+        R1["MCP streamable-http / REST behind bearer token"]
+        R2["Least-privilege scopes per principal<br/>(read · write · review · publish)"]
+        R3["Tenant isolation — principals only see their own projects"]
+        R1 --> R2 --> R3
     end
 
     subgraph SECRETS["Secrets handling"]
@@ -16,14 +30,14 @@ flowchart TD
         S1 --> S2 --> S3
     end
 
-    subgraph LOCAL["Offline-first by default"]
-        L1["Deterministic fake provider — no keys, no network"]
-        L2["Loopback HTTP binding · Host/Origin checks"]
-        L3["Bearer token + scopes when KNOVARYN_API_TOKEN set"]
-        L1 --> L2 --> L3
+    subgraph ARTIFACTS["Artifact integrity"]
+        A1["Content-addressed artifact store (SHA-256)"]
+        A2["Export re-resolves every citation + recomputes hashes"]
+        A3["Release bundle: detached checksums + per-file manifest<br/>verified by knovaryn verify-release"]
+        A1 --> A2 --> A3
     end
 
-    subgraph GATE["Publication gate"]
+    subgraph PUBLISH["Publication authorization"]
         G1["License approval required"]
         G2["Privacy report must pass"]
         G3["Confirmation token required"]
@@ -31,10 +45,23 @@ flowchart TD
         G1 --> G2 --> G3 --> G4
     end
 
-    T4 --> LOCAL
-    LOCAL --> GATE
+    subgraph RELEASE["Release attestation (supply chain)"]
+        N1["PyPI Sigstore provenance from OIDC trusted publishing"]
+        N2["CycloneDX SBOM + SHA256SUMS attached to the GitHub Release"]
+        N1 --- N2
+    end
 
-    style TRUST fill:#fbe3e3,stroke:#b3261e
+    T4 --> LOCAL
+    LOCAL --> REMOTE
+    REMOTE --> SECRETS
+    T4 --> ARTIFACTS
+    ARTIFACTS --> PUBLISH
+    PUBLISH --> RELEASE
+
+    style INTAKE fill:#fbe3e3,stroke:#b3261e
+    style REMOTE fill:#fef7e0,stroke:#b06000
     style SECRETS fill:#fef7e0,stroke:#b06000
     style LOCAL fill:#e6f4ea,stroke:#188038
-    style GATE fill:#e8f0fe,stroke:#1a73e8
+    style ARTIFACTS fill:#e8f0fe,stroke:#1a73e8
+    style PUBLISH fill:#e8f0fe,stroke:#1a73e8
+    style RELEASE fill:#f3e8fd,stroke:#8e24aa

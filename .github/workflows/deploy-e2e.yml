@@ -1,0 +1,62 @@
+# Reusable exact-SHA deployment E2E (§3.10, defect v0.2.1).
+#
+# Boots the REAL production topology (PostgreSQL, MinIO, migration service,
+# API, worker, Caddy reverse proxy — all from the locally built full runtime
+# image at whatever SHA checked this out) and runs tests/deployment against it
+# through the proxy: migrations from empty DB, authenticated project creation,
+# binary PDF upload, artifact persistence to object storage, queue → claim →
+# pipeline, provenance/lineage precision, versioning, export checksums, worker
+# restart recovery, FOR UPDATE SKIP LOCKED claim exclusivity, backup, restore
+# into a clean database, and post-restore lineage verification.
+#
+# Used by BOTH scheduled CI (ci.yml) AND release preparation (publish.yml), so
+# release governance never depends on a deployment job that "may be absent or
+# skipped on the exact release commit". The no-skip enforcement step fails if
+# any deployment test was skipped or deselected: for release candidates there
+# is no such thing as a skipped deployment test.
+name: Deployment E2E
+
+on:
+  workflow_call: {}
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    name: Compose topology E2E (exact SHA)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.11"
+      - name: Install test deps
+        run: uv sync --extra dev --extra mcp
+      - name: Boot the stack and run the E2E suite
+        env:
+          KNOVARYN_E2E_COMPOSE: "1"
+        run: |
+          uv run pytest tests/deployment -q -p no:cacheprovider \
+            --junitxml=e2e-report.xml -rs
+      # No skipped deployment tests: a skip here is a silent hole in exactly
+      # the surface releases rely on. Parse the junit XML and fail closed.
+      - name: Enforce zero-skipped / zero-deselected
+        run: |
+          uv run python - <<'PY'
+          import sys, xml.etree.ElementTree as ET
+          root = ET.parse("e2e-report.xml").getroot()
+          suite = next(iter(root)) if root.tag == "testsuites" else root
+          total = int(suite.get("tests", "0"))
+          skipped = int(suite.get("skipped", "0")) + int(suite.get("errors", "0")) + int(suite.get("failures", "0"))
+          print(f"deployment E2E: {total} tests, {skipped} skipped/errored/failed")
+          if total < 8:
+              sys.exit(f"FAIL: only {total} deployment tests ran (expected >= 8)")
+          if skipped:
+              sys.exit("FAIL: deployment tests may never be skipped for release governance")
+          print("OK")
+          PY

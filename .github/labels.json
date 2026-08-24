@@ -1,0 +1,22 @@
+[
+  {
+    "name": "dependencies",
+    "color": "0366d6",
+    "description": "Dependency update PRs (Dependabot or manual)"
+  },
+  {
+    "name": "python",
+    "color": "3572A5",
+    "description": "Python runtime/dev dependency changes"
+  },
+  {
+    "name": "github-actions",
+    "color": "0C8B6C",
+    "description": "GitHub Actions workflow dependency changes"
+  },
+  {
+    "name": "breaking-major",
+    "color": "b60205",
+    "description": "Major-version bump — requires migration evidence and human review; never auto-merged"
+  }
+]
