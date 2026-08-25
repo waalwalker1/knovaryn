@@ -48,8 +48,12 @@ jobs:
         with:
           python-version: "3.11"
       - name: Check tag == project version
+        # Defect 3.5 moved the version literal out of pyproject.toml into
+        # src/knovaryn/__init__.py (dynamic = ["version"]). Importing the
+        # package reads the single authoritative source — and doubles as a
+        # pre-release import sanity check.
         run: |
-          VERSION="$(uv run python -c 'import tomllib;print(tomllib.load(open("pyproject.toml","rb"))["project"]["version"])')"
+          VERSION="$(uv run python -c 'from knovaryn import __version__;print(__version__)')"
           REF="${GITHUB_REF#refs/tags/v}"
           echo "tag=v${REF}  project=${VERSION}"
           test "$REF" = "$VERSION" || { echo "tag does not match project version"; exit 1; }
