@@ -10,9 +10,11 @@ CLI, MCP, and SDK — no interface reimplements its own review semantics
 
 from __future__ import annotations
 
+import base64
+import binascii
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 Decision = Literal["approve", "reject", "needs_work"]
 
@@ -45,6 +47,28 @@ class SourceAdd(BaseModel):
     media_type: str | None = None
     content: str | None = None
     raw: bytes | None = None
+    declared_license: str | None = None
+
+    @field_validator("raw", mode="before")
+    @classmethod
+    def _decode_raw_b64(cls, v: object) -> object:
+        """Decode the JSON carrier into the true bytes.
+
+        Over HTTP ``raw`` always arrives as a base64 string; neither pydantic
+        lax coercion (str → UTF-8 bytes) nor JSON-mode validation decodes it,
+        so without this validator intake would hash and store the base64
+        *text* while the caller meant the binary — corrupting sha256,
+        byte_size, media sniffing, and the stored original artifact.
+        """
+        if v is None or isinstance(v, (bytes, bytearray, memoryview)):
+            return v
+        if isinstance(v, str):
+            try:
+                return base64.b64decode(v.encode("ascii"), validate=True)
+            except (binascii.Error, UnicodeEncodeError, ValueError) as exc:
+                raise ValueError("raw must be standard base64-encoded bytes") from exc
+        return v
+
     declared_license: str | None = None
     privacy: str | None = Field(
         default=None,
