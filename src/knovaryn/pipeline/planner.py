@@ -68,24 +68,45 @@ def plan(
     if target_examples is not None and budget_cap is not None:
         target_examples = int(min(target_examples, budget_cap))
 
+    base_total = target_examples if target_examples is not None else chunk_count
+
+    cells: list[tuple[str, str, str, float]] = []
     for topology, topo_weight in topology_weights:
         for family, fam_weight in families.items():
             for diff, diff_weight in difficulty.items():
-                if target_examples is not None:
-                    # target-driven allocation: the cell's share of the target
-                    # (a total across all chunks, consistent with how
-                    # total_expected_examples sums the per-spec counts)
-                    count = int(round(target_examples * topo_weight * fam_weight * diff_weight))
-                else:
-                    count = int(round(chunk_count * topo_weight * fam_weight * diff_weight))
-                if count <= 0:
-                    continue
-                out.specs.append(
-                    AssignmentSpec(
-                        topology=topology, task_family=family, difficulty=diff, per_chunk=count
-                    )
+                weight = topo_weight * fam_weight * diff_weight
+                if weight > 0:
+                    cells.append((topology, family, diff, weight))
+
+    # Largest-remainder (Hamilton) apportionment. Rounding each cell
+    # independently silently plans ZERO examples whenever the composition is
+    # spread across families/difficulties but the material is thin: with the
+    # default 0.5/0.3/0.2 proportions on a two-chunk document every cell rounds
+    # down (banker's rounding even drops exact .5), the job then "succeeds"
+    # with an empty dataset (v0.2.1 deployment-E2E defect). Floor every cell,
+    # then hand the leftover units to the largest fractional remainders so the
+    # integer plan tracks the requested proportions as closely as whole
+    # examples allow and never collapses to nothing while there is material.
+    if base_total > 0 and cells:
+        exact = [base_total * weight for _, _, _, weight in cells]
+        floors = [int(e) for e in exact]
+        leftover = int(base_total) - sum(floors)  # >= 0: floors never exceed the total
+        order = sorted(
+            range(len(cells)),
+            key=lambda i: (-(exact[i] - floors[i]), -cells[i][3], i),
+        )
+        counts = list(floors)
+        for idx in order[:leftover]:
+            counts[idx] += 1
+        for (topology, family, diff, _weight), count in zip(cells, counts, strict=True):
+            if count <= 0:
+                continue
+            out.specs.append(
+                AssignmentSpec(
+                    topology=topology, task_family=family, difficulty=diff, per_chunk=count
                 )
-                out.distribution_matrix[f"{topology}/{family}/{diff}"] = count
+            )
+            out.distribution_matrix[f"{topology}/{family}/{diff}"] = count
     out.total_expected_examples = sum(s.per_chunk for s in out.specs)
     return out
 
