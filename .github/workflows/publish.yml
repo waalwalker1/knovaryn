@@ -175,6 +175,8 @@ jobs:
             dist/*.whl dist/*.tar.gz dist/SHA256SUMS sbom.cdx.json --clobber
           gh release edit "${GITHUB_REF_NAME}" --notes-file release-notes.md
       - name: Warn on non-prerelease 0.x (alpha maturity)
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           MAJOR="${VERSION%%.*}"
