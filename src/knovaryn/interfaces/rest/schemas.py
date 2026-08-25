@@ -69,7 +69,6 @@ class SourceAdd(BaseModel):
                 raise ValueError("raw must be standard base64-encoded bytes") from exc
         return v
 
-    declared_license: str | None = None
     privacy: str | None = Field(
         default=None,
         description="operator declaration, e.g. 'public' / 'internal'; advisory only",
