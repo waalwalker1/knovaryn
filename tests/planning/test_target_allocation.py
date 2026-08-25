@@ -40,6 +40,35 @@ class TestTargetAllocation:
             f"{r_large.total_expected_examples}"
         )
 
+    def test_default_spread_never_plans_zero_on_small_corpus(self):
+        """Defect (v0.2.1 deployment E2E): the default 0.5/0.3/0.2 proportions
+        spread across families × difficulties × topologies used to round EVERY
+        cell to zero on a two-chunk document — the job then "succeeded" with an
+        empty dataset. Largest-remainder apportionment must keep the planned
+        total equal to the material available."""
+        default = DatasetPlan()
+        for chunks in (1, 2, 3, 5):
+            r = plan(default, chunk_count=chunks)
+            assert r.total_expected_examples == chunks, (
+                f"chunk_count={chunks} planned {r.total_expected_examples} examples "
+                f"(specs={[(s.topology, s.task_family, s.per_chunk) for s in r.specs]})"
+            )
+            assert r.specs, "a positive chunk count must yield at least one assignment spec"
+
+    def test_target_driven_total_tracks_target(self):
+        """The apportioned integer plan sums to the requested target."""
+        p = DatasetPlan()
+        for target in (1, 7, 10, 23):
+            r = plan(p, chunk_count=50, target_examples=target)
+            assert r.total_expected_examples == target, (
+                f"target={target} planned {r.total_expected_examples}"
+            )
+
+    def test_empty_corpus_plans_nothing(self):
+        """No parsed chunks → no specs (generation has nothing to ground in)."""
+        r = plan(DatasetPlan(), chunk_count=0)
+        assert r.total_expected_examples == 0 and not r.specs
+
     def test_unsupported_field_validation_error(self):
         """Unsupported field must raise a validation/422 error."""
         from pydantic import ValidationError

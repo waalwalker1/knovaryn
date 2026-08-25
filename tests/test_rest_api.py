@@ -233,3 +233,39 @@ def test_example_lineage_endpoint(client):
     # unknown example -> typed NotFoundError mapping (J2), not a 500
     r = client.get(f"/v1/projects/{proj['id']}/examples/ex_does_not_exist/lineage")
     assert r.status_code == 404, r.text
+
+
+def test_binary_source_upload_hashes_decoded_bytes(client):
+    """Regression (compose E2E first-run): ``raw`` arrives over JSON as a
+    base64 *string*, which pydantic does not decode — intake must see the
+    decoded binary, or sha256/byte_size/media-type and the stored original
+    artifact all describe the base64 text instead of the document."""
+    import base64
+    import hashlib
+
+    pdf = b"%PDF-1.4\n%binary probe \x00\x01\xff endobj\n%%EOF\n"
+    proj = client.post("/v1/projects", json={"slug": "bin", "display_name": "Bin"}).json()
+    r = client.post(
+        f"/v1/projects/{proj['id']}/sources",
+        json={
+            "original_name": "handbook.pdf",
+            "raw": base64.b64encode(pdf).decode("ascii"),
+            "declared_license": "CC-BY-4.0",
+            "privacy": "public",
+        },
+    )
+    assert r.status_code == 201, r.text
+    src = r.json()
+    # binary truth, not the caller's declaration and not the base64 text
+    assert src["sha256"] == hashlib.sha256(pdf).hexdigest()
+    assert src["byte_size"] == len(pdf)
+    assert "pdf" in (src.get("media_type") or "")
+    assert src["artifact_id_original"]
+
+    # malformed base64 is a typed 422, never a silently-mangled upload
+    r = client.post(
+        f"/v1/projects/{proj['id']}/sources",
+        json={"original_name": "bad.pdf", "raw": "definitely!!not@@base64"},
+    )
+    assert r.status_code == 422, r.text
+    assert "base64" in r.text

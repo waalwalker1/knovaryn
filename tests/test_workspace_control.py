@@ -113,6 +113,44 @@ def test_project_slug_uniqueness(workspace: Workspace):
         run(workspace.create_project(slug="dup", display_name="Second"))
 
 
+HANDBOOK = """# Field Handbook
+
+## Calibration
+
+Calibrate the sensor before every deployment. The calibration routine takes
+about two minutes and requires the reference target to be at least three
+meters away.
+"""
+
+
+def test_default_plan_pipeline_persists_examples_on_thin_source(workspace: Workspace):
+    """Defect (v0.2.1 deployment E2E): a pipeline queued with NO explicit plan
+    (the compose E2E posts ``json={}``) on a single-section document used to
+    plan zero candidates and still report success — an empty dataset shipped
+    as "succeeded". The default-spread planner must yield accepted examples
+    even from the thinnest realistic source, through BOTH execution paths
+    (in-process runner and the standalone worker stage share this service)."""
+    proj = run(workspace.create_project(slug="thin", display_name="Thin Docs"))
+    run(
+        workspace.add_source(
+            project_id=proj.id,
+            original_name="handbook.md",
+            media_type="text/markdown",
+            content=HANDBOOK,
+        )
+    )
+    job = run(workspace.start_pipeline(project_id=proj.id))  # no proportions → defaults
+    result = run(workspace.run_job(job.id))
+    assert result["state"] == "succeeded", result
+    examples = run(workspace.list_examples(project_id=proj.id, limit=100))
+    assert len(examples["examples"]) > 0, (
+        "default-plan pipeline must persist examples from a thin source; "
+        f"got {len(examples['examples'])}"
+    )
+    report = run(workspace.validate_dataset(project_id=proj.id))
+    assert report.get("total_examples", 0) > 0
+
+
 def test_idempotent_pipeline_start(workspace: Workspace):
     proj = run(workspace.create_project(slug="idem", display_name="Idem"))
     run(

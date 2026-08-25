@@ -360,11 +360,15 @@ class TestComposeE2E:
             assert state == "succeeded", f"job ended in {state}"
 
             # semantic quality validation ran as part of the pipeline and is
-            # re-runnable over the persisted examples (step 8)
+            # re-runnable over the persisted examples (step 8). The report
+            # shape is the documented quality-report contract — same fields
+            # Workspace.validate_dataset returns and every offline suite
+            # asserts (total_examples + status_counts), not an ad-hoc shape.
             r = c.post(f"/v1/projects/{pid}/validate")
             assert r.status_code == 200, r.text
             report = r.json()
-            assert "summary" in report or "counts" in report or "checks" in report
+            assert report.get("total_examples", 0) > 0, report
+            assert report.get("status_counts", {}).get("accepted", 0) > 0, report
 
             # examples carry provenance; lineage resolves to spans with a
             # machine-verifiable precision vocabulary (steps 9 + 16)

@@ -475,78 +475,7 @@ class Workspace:
             return job.model_dump(mode="json")
 
     async def _persist_pipeline_result(self, session: Any, job: Job, stash: dict[str, Any]) -> None:
-        from ..domain.schemas import (
-            Chunk,
-            GenerationCandidate,
-            ParsedDocument,
-            SourceSpan,
-            TrainingExample,
-        )
-
-        # Persist the full provenance graph (WP A) so every exported example
-        # resolves to its real ParsedDocument -> SourceSpan -> SourceDocument and
-        # GenerationCandidate. Order matters for FK references: parsed docs ->
-        # spans -> chunks -> candidates -> examples. Explicit flush boundaries
-        # guarantee FK-dependency ordering (no ORM relationship() here, so an
-        # autoflush cannot be relied on to topologically sort inserts).
-        parsed_repo = ParsedRepository(session)
-        for d in stash.get("parsed", []):
-            await parsed_repo.add(ParsedDocument(**d))
-        span_repo = SpanRepository(session)
-        for d in stash.get("spans", []):
-            await span_repo.add(SourceSpan(**d))
-        await session.flush()
-        chunk_repo = ChunkRepository(session)
-        for d in stash.get("chunks", []):
-            await chunk_repo.add(Chunk(**d))
-        await session.flush()
-        cand_repo = CandidateRepository(session)
-        for d in stash.get("candidates", []):
-            await cand_repo.add(GenerationCandidate(**d))
-        await session.flush()
-
-        ex_repo = ExampleRepository(session)
-        examples: list[TrainingExample] = []
-        for d in stash["examples"]:
-            ex = TrainingExample(**d)
-            ex.project_id = job.project_id
-            # provenance is explicit data from run_pipeline; never overwrite with
-            # the project id (P0-1). source_document_ids / generation_candidate_ids
-            # are carried through the stash so every example stays resolvable to
-            # its real SourceDocument and GenerationCandidate.
-            examples.append(ex)
-            await ex_repo.add(ex)
-        await session.flush()
-        version = stash.get("version")
-        if version is None and examples:
-            version = {
-                "id": self._ids.new_handle("ver"),
-                "project_id": job.project_id,
-                "semantic_version": "0.1.0",
-                "train_count": sum(1 for e in examples if e.split == "train"),
-                "validation_count": sum(1 for e in examples if e.split == "validation"),
-                "test_count": sum(1 for e in examples if e.split == "test"),
-                "content_hash": ContentHasher.cfg_hash([e.content_hash for e in examples]),
-            }
-        if version is not None:
-            # immutable membership snapshot (WP H3) — always persisted with the
-            # version row so a later review cannot silently change its contents.
-            version["member_example_ids"] = [e.id for e in examples]
-            ver_repo = VersionRepository(session)
-            await ver_repo.add(DatasetVersion(**version))
-            await ex_repo.assign_version(job.project_id, version["id"])
-        audit = AuditRepository(session, self._ids)
-        await audit.record(
-            principal=job.owner_principal,
-            event_type="pipeline.completed",
-            project_id=job.project_id,
-            summary=f"pipeline job {job.id} completed with {len(examples)} accepted examples",
-            payload={
-                "job_id": job.id,
-                "accepted": len(examples),
-                "sha256": stash.get("release_sha256", ""),
-            },
-        )
+        await persist_pipeline_result(session, self._ids, job, stash)
 
     async def get_job(self, job_id: str) -> JobSummary:
         async with self._db.session() as session:
@@ -1103,6 +1032,82 @@ class _ExportResolver:
     spans: Any
     parsed: Any
     candidates: Any
+
+
+async def persist_pipeline_result(session: Any, ids: Any, job: Job, stash: dict[str, Any]) -> None:
+    """Persist a completed pipeline result inside ``session``'s transaction.
+
+    Shared by every execution path (the in-process runner and the standalone
+    durable worker): without this the deployed worker marked jobs "succeeded"
+    while NO example rows ever landed — the compose E2E saw an empty dataset
+    behind a green job. Stash layout matches ``_make_pipeline_stage``.
+    """
+    from ..domain.schemas import Chunk, GenerationCandidate, ParsedDocument, SourceSpan
+
+    # Persist the full provenance graph (WP A) so every exported example
+    # resolves to its real ParsedDocument -> SourceSpan -> SourceDocument and
+    # GenerationCandidate. Order matters for FK references: parsed docs ->
+    # spans -> chunks -> candidates -> examples. Explicit flush boundaries
+    # guarantee FK-dependency ordering (no ORM relationship() here, so an
+    # autoflush cannot be relied on to topologically sort inserts).
+    parsed_repo = ParsedRepository(session)
+    for d in stash.get("parsed", []):
+        await parsed_repo.add(ParsedDocument(**d))
+    span_repo = SpanRepository(session)
+    for d in stash.get("spans", []):
+        await span_repo.add(SourceSpan(**d))
+    await session.flush()
+    chunk_repo = ChunkRepository(session)
+    for d in stash.get("chunks", []):
+        await chunk_repo.add(Chunk(**d))
+    await session.flush()
+    cand_repo = CandidateRepository(session)
+    for d in stash.get("candidates", []):
+        await cand_repo.add(GenerationCandidate(**d))
+    await session.flush()
+
+    ex_repo = ExampleRepository(session)
+    examples: list[TrainingExample] = []
+    for d in stash["examples"]:
+        ex = TrainingExample(**d)
+        ex.project_id = job.project_id
+        # provenance is explicit data from run_pipeline; never overwrite with
+        # the project id (P0-1). source_document_ids / generation_candidate_ids
+        # are carried through the stash so every example stays resolvable to
+        # its real SourceDocument and GenerationCandidate.
+        examples.append(ex)
+        await ex_repo.add(ex)
+    await session.flush()
+    version = stash.get("version")
+    if version is None and examples:
+        version = {
+            "id": ids.new_handle("ver"),
+            "project_id": job.project_id,
+            "semantic_version": "0.1.0",
+            "train_count": sum(1 for e in examples if e.split == "train"),
+            "validation_count": sum(1 for e in examples if e.split == "validation"),
+            "test_count": sum(1 for e in examples if e.split == "test"),
+            "content_hash": ContentHasher.cfg_hash([e.content_hash for e in examples]),
+        }
+    if version is not None:
+        # immutable membership snapshot (WP H3) — always persisted with the
+        # version row so a later review cannot silently change its contents.
+        version["member_example_ids"] = [e.id for e in examples]
+        ver_repo = VersionRepository(session)
+        await ver_repo.add(DatasetVersion(**version))
+        await ex_repo.assign_version(job.project_id, version["id"])
+    audit = AuditRepository(session, ids)
+    await audit.record(
+        principal=job.owner_principal,
+        event_type="pipeline.completed",
+        project_id=job.project_id,
+        summary=f"pipeline job {job.id} completed with {len(examples)} accepted examples",
+        payload={
+            "job_id": job.id,
+            "accepted": len(examples),
+            "sha256": stash.get("release_sha256", ""),
+        },
+    )
 
 
 def _make_pipeline_stage(
