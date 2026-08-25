@@ -443,6 +443,7 @@ async def worker_async(
 
     from ...application.service import ProjectService
     from ...domain.ids import IdGenerator
+    from ...infrastructure.artifacts.__factory import build_artifact_store
     from ...infrastructure.database.repositories import ProjectRepository, SourceRepository
     from ...infrastructure.database.session import Database
     from ...pipeline.jobs.engine import JobEngine
@@ -481,6 +482,18 @@ async def worker_async(
                 task_family_proportions=pipeline_cfg.get("task_family_proportions")
                 or {"factual_explanation": 0.5, "procedure": 0.3, "comparison": 0.2}
             )
+            # Binary / ZIP / office sources carry no text content — resolve
+            # their parser input from the content-addressed artifact store,
+            # exactly like the in-process runner (WP G3). Without this the
+            # deployed worker silently parsed nothing for artifact-backed
+            # sources and still reported success.
+            from ...application.workspace import _resolve_raw_bytes
+
+            storage = cfg.get("storage", {}) or {}
+            store = build_artifact_store(
+                backend=storage.get("artifact_backend", "local"), config=storage
+            )
+            raw_contents = await _resolve_raw_bytes(store, sources, contents)
             # crash-safe generation (spec §11.5, §12/E5): the profile-aware
             # factory keeps the CallCache + model_calls ledger wired on every
             # profile — a resumed job is served from cache/ledger instead of
@@ -488,7 +501,35 @@ async def worker_async(
             gateway = build_pipeline_gateway(cfg, db=db, ids=ids, job=job)
             svc = ProjectService(ids=ids, gateway=gateway)
             result = await svc.run_pipeline(
-                project=project, sources=sources, contents=contents, plan=plan
+                project=project,
+                sources=sources,
+                contents=contents,
+                raw_contents=raw_contents,
+                plan=plan,
+            )
+            # Persist INSIDE this stage's transaction (v0.2.1 deployment-E2E
+            # defect): the durable worker is the only executor in production,
+            # and without this the job reported success while zero example
+            # rows existed. Same full provenance graph as the in-process
+            # runner's post-engine persistence; a crash rolls the whole stage
+            # back so resume never double-inserts.
+            from ...application.workspace import persist_pipeline_result
+
+            await persist_pipeline_result(
+                session,
+                ids,
+                job,
+                {
+                    "examples": [e.model_dump(mode="json") for e in result.examples],
+                    "parsed": [p.model_dump(mode="json") for p in result.parsed],
+                    "spans": [s.model_dump(mode="json") for s in result.spans],
+                    "chunks": [c.model_dump(mode="json") for c in result.chunks],
+                    "candidates": [c.model_dump(mode="json") for c in result.candidates],
+                    "version": result.version.model_dump(mode="json") if result.version else None,
+                    "release_sha256": result.release_sha256,
+                    "quality": result.quality,
+                    "notes": result.notes,
+                },
             )
         stash = {
             "examples": [e.model_dump(mode="json") for e in result.examples],

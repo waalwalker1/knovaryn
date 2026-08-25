@@ -253,3 +253,74 @@ async def test_cli_worker_command_once_drains_queued_job(
 
         final = await JobRepository(session, ids).get(job.id)
         assert final is not None and final.state == JobState.succeeded
+
+
+async def test_cli_worker_persists_examples_and_provenance(
+    workspace: Workspace, monkeypatch
+) -> None:
+    """Defect (v0.2.1 deployment E2E): the durable worker is production's ONLY
+    executor, yet it reported success while persisting ZERO example rows —
+    datasets were empty behind green jobs. The worker stage must land the full
+    provenance graph (parsed → spans → chunks → candidates → examples →
+    version) transactionally with stage completion, and it must do so for a
+    DEFAULT-plan job (the compose E2E posts ``json={}``), which the planner
+    used to allocate down to nothing."""
+    from knovaryn.domain.ids import IdGenerator
+    from knovaryn.infrastructure.database.repositories import (
+        CandidateRepository,
+        ExampleRepository,
+        JobRepository,
+        ParsedRepository,
+        VersionRepository,
+    )
+    from knovaryn.interfaces.cli import commands as cli_commands
+
+    proj = await workspace.create_project(slug="daemon-persist", display_name="Daemon")
+    await workspace.add_source(
+        project_id=proj.id,
+        original_name="handbook.md",
+        media_type="text/markdown",
+        content=(
+            "# Field Handbook\n\n## Calibration\n\n"
+            "Calibrate the sensor before every deployment. The calibration routine "
+            "takes about two minutes and requires the reference target to be at "
+            "least three meters away.\n"
+        ),
+    )
+    job = await workspace.start_pipeline(project_id=proj.id)  # no explicit plan → defaults
+    database_url = workspace._database_url
+
+    from knovaryn.domain.config import Configuration
+
+    cfg = Configuration()
+    cfg.set("storage.database_url", database_url)
+    monkeypatch.setattr(cli_commands, "load_config", lambda **kw: cfg)
+
+    await cli_commands.worker_async(
+        worker_id="w-persist",
+        poll_interval_s=0.05,
+        lease_seconds=300,
+        once=True,
+        database_url=database_url,
+    )
+
+    ids = IdGenerator()
+    async with workspace._db.session() as session:
+        final = await JobRepository(session, ids).get(job.id)
+        assert final is not None and final.state == JobState.succeeded
+
+        examples = (await ExampleRepository(session).list_by_project(proj.id, limit=100))[0]
+        assert len(examples) > 0, "worker must persist accepted example rows"
+        # full provenance graph landed with them (WP A lineage resolvability)
+        first = examples[0]
+        assert first.source_document_ids, "example lineage must resolve to its source"
+        parsed = await ParsedRepository(session).list_by_source(first.source_document_ids[0])
+        assert parsed, "parsed document provenance must be persisted by the worker"
+        candidates = await CandidateRepository(session).get_many(
+            list(first.generation_candidate_ids)
+        )
+        assert all(c is not None for c in candidates), (
+            "candidate provenance must be persisted by the worker"
+        )
+        version = await VersionRepository(session).latest(proj.id)
+        assert version is not None, "worker must persist the dataset version snapshot"
