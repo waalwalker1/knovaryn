@@ -131,6 +131,9 @@ dev = [
     "build>=1.2",
     "twine>=5.0",
     "pip-audit>=2.7",
+    # Required by the visual-asset governance tests (PNG metadata/dimension
+    # scans) that run in the offline CI tier — keeps the gate unskipped.
+    "pillow>=10.0",
 ]
 # Visual/brand asset pipeline and browser verification (scripts/visuals/,
 # scripts/check_visual_assets.py, tests/browser/). Dev-only: never installed
