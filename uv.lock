@@ -2467,6 +2467,7 @@ dev = [
     { name = "mkdocs" },
     { name = "mkdocs-material" },
     { name = "mypy" },
+    { name = "pillow" },
     { name = "pip-audit" },
     { name = "pre-commit" },
     { name = "pytest" },
@@ -2515,6 +2516,7 @@ s3 = [
     { name = "aioboto3" },
 ]
 visuals = [
+    { name = "pillow" },
     { name = "playwright" },
 ]
 
@@ -2548,6 +2550,8 @@ requires-dist = [
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.10" },
     { name = "numpy", marker = "extra == 'full'", specifier = ">=1.26" },
     { name = "numpy", marker = "extra == 'ml'", specifier = ">=1.26" },
+    { name = "pillow", marker = "extra == 'dev'", specifier = ">=10.0" },
+    { name = "pillow", marker = "extra == 'visuals'", specifier = ">=10.0" },
     { name = "pip-audit", marker = "extra == 'dev'", specifier = ">=2.7" },
     { name = "playwright", marker = "extra == 'visuals'", specifier = ">=1.49" },
     { name = "pre-commit", marker = "extra == 'dev'", specifier = ">=3.7" },

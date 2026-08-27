@@ -17,7 +17,7 @@ S3-compatible storage) as a configuration change.
 
 ## Version and maturity
 
-Current release: 0.2.1 — **alpha**. Interfaces may change before 1.0; pin
+Current release: 0.2.2 — **alpha**. Interfaces may change before 1.0; pin
 versions and read the changelog before upgrading.
 
 ## Installation

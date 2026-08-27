@@ -194,7 +194,7 @@ must be visible, not implied.
 
 ```bash
 # full current-release benchmark (writes benchmarks/results/<version>/)
-uv run python benchmarks/run_report.py --version 0.2.1 --runs 3
+uv run python benchmarks/run_report.py --version 0.2.2 --runs 3
 
 # quick single-pass suite (stdout summary)
 uv run python benchmarks/bench_suite.py

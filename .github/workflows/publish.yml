@@ -206,6 +206,7 @@ jobs:
     environment: pypi
     permissions:
       id-token: write   # OIDC trusted publishing — NO stored token/password
+      attestations: write # PyPI stores the Sigstore provenance attestations produced here
       contents: read
     steps:
       - uses: actions/download-artifact@v8
@@ -216,6 +217,7 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           verify-metadata: true
+          attestations: true
           # OIDC trusted publishing: the `environment: pypi` deployment must be
           # mapped to the `knovaryn` PyPI project in PyPI's trusted publishers
           # settings. No PYPI_API_TOKEN secret is stored or referenced.
