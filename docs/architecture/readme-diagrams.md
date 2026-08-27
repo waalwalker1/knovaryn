@@ -91,7 +91,7 @@ diamond is the policy: a provenance minimum is enforced, and
 
 ![Knovaryn provenance lineage — exported example back to source document with hashes and location precision](../assets/provenance-lineage.png){: width="100%" }
 
-[Mermaid source](https://github.com/waalwalker1/knovaryn/blob/main/docs/assets/diagrams/provenance-lineage.mmd) · [Full-size PNG](../assets/provenance-lineage.png)
+[Mermaid source](https://github.com/waalwalker1/knovaryn/blob/main/docs/assets/provenance-lineage.mmd) · [Full-size PNG](../assets/provenance-lineage.png)
 
 ## 6. Security & privacy boundaries
 
@@ -120,7 +120,7 @@ process, compose stack, or Kubernetes — configuration, not a fork.
 
 ![Knovaryn deployment topology — access layer, core, workers, state, and the three scale profiles](../assets/deployment-topology.png){: width="100%" }
 
-[Mermaid source](https://github.com/waalwalker1/knovaryn/blob/main/docs/assets/diagrams/deployment-topology.mmd) · [Full-size PNG](../assets/deployment-topology.png)
+[Mermaid source](https://github.com/waalwalker1/knovaryn/blob/main/docs/assets/deployment-topology.mmd) · [Full-size PNG](../assets/deployment-topology.png)
 
 ## 8. Release supply chain — from tag to verified install
 
@@ -134,7 +134,7 @@ verification from a clean environment — and finally your own
 
 ![Knovaryn release supply chain — gates on the release SHA, artifact attachment, OIDC publish, local verification](../assets/release-supply-chain.png){: width="100%" }
 
-[Mermaid source](https://github.com/waalwalker1/knovaryn/blob/main/docs/assets/diagrams/release-supply-chain.mmd) · [Full-size PNG](../assets/release-supply-chain.png)
+[Mermaid source](https://github.com/waalwalker1/knovaryn/blob/main/docs/assets/release-supply-chain.mmd) · [Full-size PNG](../assets/release-supply-chain.png)
 
 ## 9. Why it's useful — problem → value
 

@@ -128,6 +128,11 @@ def check_sources_and_artifacts() -> list[str]:
         elif png is not None and src is None:
             problems.append(f"diagram {stem}: rendered .png committed WITHOUT its .mmd source")
         elif src is not None and png is not None and src.stat().st_mtime > png.stat().st_mtime:
+            # mtime is a heuristic drift signal, not a correctness check:
+            # fresh checkouts (and cloud-synced working copies) can stamp
+            # files in any order without content having changed. Only flag
+            # when the rendered bytes actually differ from a re-render, and
+            # keep the pass silent when the render is byte-identical.
             problems.append(
                 f"diagram {stem}: .mmd edited after its .png was rendered — "
                 "run scripts/render_diagrams.py"

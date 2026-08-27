@@ -107,7 +107,7 @@ by design; the palette is documented in the
         <li>Parser configuration is hashed, so re-parses are comparable.</li>
         <li>License and privacy classification happen at intake, before parsing.</li>
       </ul>
-      <p><a href="https://github.com/waalwalker1/knovaryn/blob/main/docs/assets/diagrams/provenance-lineage.mmd">Canonical Mermaid source</a> · <a href="../../concepts/provenance/">Provenance concepts</a></p>
+      <p><a href="https://github.com/waalwalker1/knovaryn/blob/main/docs/assets/provenance-lineage.mmd">Canonical Mermaid source</a> · <a href="../../concepts/provenance/">Provenance concepts</a></p>
     </section>
 
     <section class="kn-panel">
@@ -159,7 +159,7 @@ by design; the palette is documented in the
         <li>Kubernetes base includes a migration Job, NetworkPolicies, and PDBs.</li>
         <li>Providers are reached only by worker outbound calls.</li>
       </ul>
-      <p><a href="https://github.com/waalwalker1/knovaryn/blob/main/docs/assets/diagrams/deployment-topology.mmd">Canonical Mermaid source</a> · <a href="../../deployment/profiles/">Deployment profiles</a></p>
+      <p><a href="https://github.com/waalwalker1/knovaryn/blob/main/docs/assets/deployment-topology.mmd">Canonical Mermaid source</a> · <a href="../../deployment/profiles/">Deployment profiles</a></p>
     </section>
 
     <section class="kn-panel">
@@ -177,7 +177,7 @@ by design; the palette is documented in the
         <li>Publishing uses OIDC trusted publishing — no long-lived tokens.</li>
         <li>0.x tags are enforced as pre-releases.</li>
       </ul>
-      <p><a href="https://github.com/waalwalker1/knovaryn/blob/main/docs/assets/diagrams/release-supply-chain.mmd">Canonical Mermaid source</a> · <a href="../../security/governance-and-ci/">Governance and CI</a></p>
+      <p><a href="https://github.com/waalwalker1/knovaryn/blob/main/docs/assets/release-supply-chain.mmd">Canonical Mermaid source</a> · <a href="../../security/governance-and-ci/">Governance and CI</a></p>
     </section>
 
   </div>
