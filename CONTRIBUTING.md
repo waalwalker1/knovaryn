@@ -164,7 +164,7 @@ expected output rather than only fuzzy assertions.
 - Use the **issue templates** (bug report, feature request, parser regression,
   new exporter) — they ask for exactly the information their reviewers need.
 - **Security issues** must NOT be filed as public issues. Use the private path in
-  [SECURITY.md](SECURITY.md) (`security@knovaryn.dev`).
+  [SECURITY.md](SECURITY.md) (GitHub private vulnerability reporting).
 - Be responsive to review feedback; if a PR goes stale for 30+ days without
   activity it may be closed to keep the queue healthy. You can always reopen it.
 

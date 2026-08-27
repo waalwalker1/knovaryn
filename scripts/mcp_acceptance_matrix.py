@@ -35,18 +35,36 @@ DRIVER = Path(__file__).resolve().parent / "mcp_acceptance_driver.py"
 
 # The intended matrix. Must stay in lockstep with SUPPORTED_MCP_MAJORS in
 # src/knovaryn/interfaces/mcp/_compat.py and the pyproject range mcp>=1.28,<3.
-MATRIX: tuple[str, ...] = ("1.29.0", "2.0.0")
+#
+# Contract §7.2 (v0.2.2): four explicit cells, each with a stated role —
+#   * lower supported boundary of the declared range;
+#   * latest supported 1.x under the declared range;
+#   * a representative tested 2.x minor line;
+#   * latest supported 2.x under the declared range.
+# WIDENING past `<3` requires adding a major-version acceptance cell FIRST
+# (see docs/adr/0007-dual-major-mcp-sdk-compatibility.md).
+MATRIX: tuple[str, ...] = (
+    "1.28.0",  # lower supported boundary (pyproject floor)
+    "1.29.1",  # latest supported 1.x under `mcp<2`
+    "2.0.0",  # representative tested 2.x
+    "2.1.0",  # latest supported 2.x under `mcp<3`
+)
 
 
 def _bin(venv_dir: Path) -> Path:
     return venv_dir / ("Scripts" if os.name == "nt" else "bin")
 
 
-def _run(cmd: list[str], *, timeout: float, env: dict[str, str] | None = None,
-         cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
+def _run(
+    cmd: list[str], *, timeout: float, env: dict[str, str] | None = None, cwd: Path | None = None
+) -> subprocess.CompletedProcess[str]:
     proc = subprocess.run(  # noqa: S603
-        cmd, capture_output=True, text=True, timeout=timeout,
-        env=env, cwd=str(cwd) if cwd else None,
+        cmd,
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+        env=env,
+        cwd=str(cwd) if cwd else None,
     )
     return proc
 
@@ -55,10 +73,13 @@ def build_wheel(outdir: Path) -> Path:
     print(f"[matrix] building wheel into {outdir} ...", flush=True)
     proc = _run(
         [sys.executable, "-m", "build", "--wheel", "--outdir", str(outdir)],
-        timeout=600, cwd=REPO_ROOT,
+        timeout=600,
+        cwd=REPO_ROOT,
     )
     if proc.returncode != 0:
-        raise SystemExit(f"[matrix] wheel build failed:\n{proc.stdout[-2000:]}\n{proc.stderr[-2000:]}")
+        raise SystemExit(
+            f"[matrix] wheel build failed:\n{proc.stdout[-2000:]}\n{proc.stderr[-2000:]}"
+        )
     wheels = sorted(outdir.glob("knovaryn-*.whl"))
     if not wheels:
         raise SystemExit("[matrix] wheel build produced no wheel")
@@ -74,8 +95,7 @@ def make_venv(parent: Path, name: str, wheel: Path, pin: str) -> Path:
     py = _bin(venv_dir) / "python"
     print(f"[matrix] venv {name}: installing {wheel.name} + mcp=={pin} ...", flush=True)
     proc = _run(
-        [str(py), "-m", "pip", "install", "--quiet", "--no-input",
-         str(wheel), f"mcp=={pin}"],
+        [str(py), "-m", "pip", "install", "--quiet", "--no-input", str(wheel), f"mcp=={pin}"],
         timeout=600,
     )
     if proc.returncode != 0:
@@ -85,8 +105,13 @@ def make_venv(parent: Path, name: str, wheel: Path, pin: str) -> Path:
     return venv_dir
 
 
-def run_phase(venv_dir: Path, phase: str, extra: list[str], timeout: float,
-              env_overrides: dict[str, str] | None = None) -> dict:
+def run_phase(
+    venv_dir: Path,
+    phase: str,
+    extra: list[str],
+    timeout: float,
+    env_overrides: dict[str, str] | None = None,
+) -> dict:
     py = str(_bin(venv_dir) / "python")
     env = {**os.environ}
     if env_overrides:
@@ -101,10 +126,36 @@ def run_phase(venv_dir: Path, phase: str, extra: list[str], timeout: float,
         return {"ok": False, "error": f"unparseable driver output: {proc.stdout[-500:]}"}
 
 
+def record_environment(venv_dir: Path) -> dict:
+    """Record the exact per-cell environment (contract §7.2): Python version,
+    installed knovaryn wheel version — alongside the SDK pin recorded by the
+    ``version`` phase."""
+    py = _bin(venv_dir) / "python"
+    proc = _run(
+        [
+            str(py),
+            "-c",
+            "import json, sys, knovaryn;"
+            "print(json.dumps({'python': sys.version.split()[0],"
+            "'knovaryn': knovaryn.__version__}))",
+        ],
+        timeout=60,
+    )
+    if proc.returncode != 0:
+        return {"ok": False, "error": (proc.stderr or "")[-500:]}
+    try:
+        return {"ok": True, **json.loads(proc.stdout.strip().splitlines()[-1])}
+    except (ValueError, IndexError):
+        return {"ok": False, "error": f"unparseable env output: {proc.stdout[-300:]}"}
+
+
 def run_cell(pin: str, wheel: Path, parent: Path, port: int) -> dict:
     name = f"mcp-{pin}"
     venv_dir = make_venv(parent, name, wheel, pin)
-    cell: dict = {"pin": pin, "venv": str(venv_dir), "phases": {}}
+    cell: dict = {"pin": pin, "wheel": wheel.name, "venv": str(venv_dir), "phases": {}}
+
+    # Phase 0: record exact python + knovaryn versions inside this clean venv.
+    cell["phases"]["environment"] = record_environment(venv_dir)
 
     # Phase 1: record the installed SDK version; fail on mismatch (contract:
     # "record the installed mcp version and fail when it differs").
@@ -119,14 +170,19 @@ def run_cell(pin: str, wheel: Path, parent: Path, port: int) -> dict:
     # Phase 2: full stdio lifecycle on a fresh sqlite database.
     db = parent / f"{name}.db"
     stdio = run_phase(
-        venv_dir, "stdio",
-        ["--database-url", f"sqlite+aiosqlite:///{db}"], 420,
+        venv_dir,
+        "stdio",
+        ["--database-url", f"sqlite+aiosqlite:///{db}"],
+        420,
     )
     cell["phases"]["stdio"] = stdio
 
     # Phase 3: authenticated streamable-http round trip + 401 refusal.
     http = run_phase(
-        venv_dir, "http", ["--port", str(port), "--token", f"tok-{pin}"], 180,
+        venv_dir,
+        "http",
+        ["--port", str(port), "--token", f"tok-{pin}"],
+        180,
     )
     cell["phases"]["http"] = http
 
@@ -140,12 +196,12 @@ def run_cell(pin: str, wheel: Path, parent: Path, port: int) -> dict:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--matrix", nargs="*", default=list(MATRIX),
-                        help="Pins to test (default: full matrix).")
+    parser.add_argument(
+        "--matrix", nargs="*", default=list(MATRIX), help="Pins to test (default: full matrix)."
+    )
     parser.add_argument("--skip-build", action="store_true")
     parser.add_argument("--wheel-path", type=Path, default=None)
-    parser.add_argument("--keep", action="store_true",
-                        help="Keep the scratch venvs for debugging.")
+    parser.add_argument("--keep", action="store_true", help="Keep the scratch venvs for debugging.")
     args = parser.parse_args()
 
     scratch = Path(tempfile.mkdtemp(prefix="knovaryn-mcp-matrix-"))
@@ -172,7 +228,14 @@ def main() -> int:
         for cell in cells:
             status = "PASS" if cell.get("ok") else "FAIL"
             all_ok &= bool(cell.get("ok"))
-            print(f"  mcp=={cell['pin']}: {status}")
+            env = cell.get("phases", {}).get("environment", {})
+            env_note = ""
+            if env.get("ok"):
+                env_note = (
+                    f" [python {env.get('python')}, "
+                    f"knovaryn {env.get('knovaryn')}, wheel {cell.get('wheel')}]"
+                )
+            print(f"  mcp=={cell['pin']}: {status}{env_note}")
             if not cell.get("ok") and not cell.get("phases"):
                 # cell-level failure (venv/pip/build) before any phase ran
                 print("      " + str(cell.get("error", "unknown error"))[-1200:])
@@ -182,10 +245,12 @@ def main() -> int:
                 if phase == "version" and result.get("ok"):
                     line += f" (installed {result.get('mcp')}, match={result.get('version_match')})"
                 if phase == "stdio" and result.get("ok"):
-                    line += (f" (tools={result.get('tool_count')}, "
-                             f"templates={result.get('resource_templates')}, "
-                             f"examples={result.get('example_count')}, "
-                             f"leaked={result.get('leaked_threads')})")
+                    line += (
+                        f" (tools={result.get('tool_count')}, "
+                        f"templates={result.get('resource_templates')}, "
+                        f"examples={result.get('example_count')}, "
+                        f"leaked={result.get('leaked_threads')})"
+                    )
                 print(line)
                 if not result.get("ok"):
                     print("      " + (result.get("error") or "")[-1200:].replace("\n", "\n      "))

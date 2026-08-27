@@ -1,3 +1,10 @@
+---
+description: >-
+  Deployment profiles: from single-machine SQLite + filesystem to
+  PostgreSQL + S3 team deployments — what each profile assumes,
+  scales, and limits.
+---
+
 # Deployment — Profiles
 
 Knovaryn ships with built-in **profiles** that shift the default configuration
@@ -14,6 +21,11 @@ quality floors, storage, and security posture.
 | `high-quality` | Stricter quality | hosted | SQLite / PG + S3 | Raises floors, more review, higher budget. |
 | `air-gapped` | No network at all | fake / local | SQLite + local | Everything local; no provider egress, telemetry off. |
 | `enterprise` | Governed team | hosted via gateway | **PostgreSQL + S3** | Scope-based auth, admin policy enforced, heavier audit/retention. |
+
+The profiles move the *same* application core between scales — configuration,
+not a fork:
+
+![Knovaryn deployment topology — one access/core/worker/state stack, external model providers, and the three scale profiles](../assets/deployment-topology.png){: width="100%" }
 
 ## The laptop profile
 

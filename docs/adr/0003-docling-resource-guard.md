@@ -1,3 +1,10 @@
+---
+description: >-
+  How Docling document parsing produces canonical artifacts under
+  memory/time guardrails so untrusted PDFs cannot exhaust
+  resources.
+---
+
 # ADR 0003 — Docling canonical artifacts and resource guard
 
 - **Date:** 2026-08-07 · **Status:** Accepted

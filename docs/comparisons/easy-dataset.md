@@ -1,3 +1,10 @@
+---
+description: >-
+  Honest comparison of Knovaryn against Easy Dataset: local LLM
+  fine-tune prep vs source-evidenced, quality-gated training-data
+  pipelines.
+---
+
 # Comparison — Knovaryn vs Easy Dataset
 
 _Factual capability comparison, reviewed 2026-08. Capabilities are "documented

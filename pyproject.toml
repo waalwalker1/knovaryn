@@ -132,6 +132,15 @@ dev = [
     "twine>=5.0",
     "pip-audit>=2.7",
 ]
+# Visual/brand asset pipeline and browser verification (scripts/visuals/,
+# scripts/check_visual_assets.py, tests/browser/). Dev-only: never installed
+# by end users.
+visuals = [
+    "playwright>=1.49",
+    # Animated-GIF assembly (offline-demo.gif) and PNG optimization
+    # (scripts/visuals/optimize_assets.py). Dev-only asset tooling.
+    "pillow>=10.0",
+]
 
 [project.urls]
 Homepage = "https://waalwalker1.github.io/knovaryn/"

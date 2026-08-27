@@ -1,0 +1,17 @@
+{#-
+  §16.2/§19 override of material/partials/source.html.
+
+  Upstream marks this anchor `data-md-component="source"`, which attaches
+  Material's repository controller in the page bundle: on every page view it
+  fetches api.github.com for stars/forks/latest-release. That is a third-party
+  request the site must not make (§19: zero third-party requests by design),
+  and a live popularity counter would signal adoption the project does not
+  claim. This override renders the identical header icon+name link, minus the
+  component hook — the request code then never engages.
+-#}
+<a href="{{ config.repo_url }}" title="{{ lang.t('source') }}" class="md-source">
+  <div class="md-source__icon md-icon">
+    {% set icon = config.theme.icon.repo or "fontawesome/brands/git-alt" %}
+    {% include ".icons/" ~ icon ~ ".svg" %}
+  </div>
+</a>

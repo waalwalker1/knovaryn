@@ -1,0 +1,33 @@
+%% Knovaryn — Provenance lineage chain (contract §12.7, feeds §11.7/§11.8)
+%% Every hop is a persisted entity with stable identifiers — walkable and
+%% verifiable, not decorative. Field vocabulary mirrors
+%% docs/concepts/provenance.md exactly.
+%% ----------------------------------------------------------------
+%% Brand palette per docs/design-system/tokens.css (Trace/Ink/amber/slate).
+%%{init: {"theme": "base", "themeVariables": {"primaryColor": "#ffffff", "primaryBorderColor": "#909ea6", "primaryTextColor": "#1c2b33", "lineColor": "#4c5b61", "secondaryColor": "#e0f0ec", "tertiaryColor": "#f1efe8", "clusterBkg": "#f7f6f2", "clusterBorder": "#d3dadd", "fontFamily": "-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif", "fontSize": "15px"}, "flowchart": {"nodeSpacing": 34, "rankSpacing": 42}}}%%
+flowchart LR
+    EX["<b>TrainingExample</b><br/><code>source_document_ids · source_span_ids<br/>generation_candidate_ids · content_hash<br/>quality_status · split · defect_taxonomy</code>"]
+    CAND["<b>GenerationCandidate</b><br/>typed per topology (SFT / preference /<br/>KTO / evaluation) with evidence refs"]
+    CH["<b>Chunk</b><br/><code>heading_path · structural_type · token_count<br/>source_span_ids · chunker config hash</code>"]
+    SP["<b>SourceSpan</b> — the unit of evidence<br/><code>page_number · section_path<br/>character_start/end · bounding box<br/>quoted_text + its own sha256</code>"]
+    PD["<b>ParsedDocument</b><br/>parser name/version · <code>parser_config_hash</code><br/>canonical Docling JSON + derived text"]
+    SD["<b>SourceDocument</b> — the permitted original<br/><code>sha256 · byte_size · media_type<br/>declared/detected license · privacy class · group_key</code>"]
+
+    EX -->|"carries"| CAND
+    CAND -->|"grounded in"| CH
+    CH -->|"groups via source_span_ids"| SP
+    SP -->|"slice of"| PD
+    PD -->|"one pass over"| SD
+
+    QP{"Provenance minimum enforced:<br/><code>source_document_ids</code> · <code>source_span_ids</code> ·<br/><code>content_hash</code> · candidate IDs · accepted/review status"}
+    EX -.->|"export gate"| QP
+
+    WALK["Walk it: <code>knovaryn_lineage</code> (MCP) · REST/console lineage view"]
+    EX -.-> WALK
+
+    classDef entity fill:#e0f0ec,stroke:#0e7c6b,color:#1c2b33
+    classDef gate fill:#fdeedd,stroke:#b45309,color:#1c2b33
+    classDef tool fill:#e8edf0,stroke:#404d55,color:#1c2b33
+    class EX,CAND,CH,SP,PD,SD entity
+    class QP gate
+    class WALK tool

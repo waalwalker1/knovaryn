@@ -1,68 +1,38 @@
-%% Knovaryn — end-to-end pipeline flow
-%% Every training example is traced back to its source document.
-%% v0.2.1 (contract 6.2/6.3): semantic + preference + information-gain
-%% validation, planner constraints, and durable-stage checkpoints shown.
-flowchart LR
-    subgraph INPUT["1 · Intake — permitted documents"]
-        direction TB
-        A1["Local files"] --> A2["Path + symlink checks"]
-        A3["Archives zip / tar"] --> A2
-        A4["URLs — opt-in"] --> A2
-        A2 --> A5["Preflight: SHA-256 · size · pages · license"]
+%% Knovaryn — end-to-end pipeline flow (contract §12.1)
+%% Two rows of four stages: readable at README width and in a docs column.
+%% Facts preserved: provenance precision · plan/budget/profile/targets ·
+%% semantic + preference validation · information gain · review routing ·
+%% release/export integrity. Count-free by policy.
+%% Brand palette (docs/design-system/tokens.css): Trace #0e7c6b,
+%% Ink #1c2b33, Signal amber #b45309, error #b3261e, info slate #404d55.
+%%{init: {"theme": "base", "themeVariables": {"primaryColor": "#ffffff", "primaryBorderColor": "#909ea6", "primaryTextColor": "#1c2b33", "lineColor": "#4c5b61", "secondaryColor": "#e0f0ec", "tertiaryColor": "#f1efe8", "clusterBkg": "#f7f6f2", "clusterBorder": "#d3dadd", "fontFamily": "-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif", "fontSize": "15px"}, "flowchart": {"nodeSpacing": 30, "rankSpacing": 40}}}%%
+flowchart TB
+    subgraph ROW1["Prepare — documents to plan"]
+        direction LR
+        I["<b>1 · Intake</b><br/>permitted documents, untrusted<br/>SHA-256 · size · license · privacy"]
+        P["<b>2 · Parse</b><br/>Docling canonical JSON (PDF/office)<br/>built-in Markdown/text"]
+        C["<b>3 · Split &amp; chunk</b><br/>source-group splits · structure-aware<br/><code>source_span_ids</code> + location precision"]
+        PL["<b>4 · Plan</b> — dry run, no model calls<br/>topologies · task/difficulty mix · target<br/>cost estimate vs budget cap"]
+        I --> P --> C --> PL
     end
 
-    subgraph PARSE["2 · Parse → canonical representation"]
-        direction TB
-        P1["Docling canonical JSON"] --> P2["Diagnostics + quality summary"]
-        P2 --> P3["Markdown — derivative output"]
+    subgraph ROW2["Produce — plan to verified dataset"]
+        direction LR
+        G["<b>5 · Generate</b> — durable stage<br/>ModelGateway: fake offline or real endpoints<br/>provider-call cache: no double spend"]
+        V["<b>6 · Validate</b><br/>schema · grounding · completeness<br/>semantic consistency · preference signal<br/>information gain · dedupe · privacy/license"]
+        RV["<b>7 · Review</b><br/>human approve/reject<br/>immutable revisions with evidence"]
+        E["<b>8 · Version &amp; export</b><br/>immutable version + reports + checksums<br/>exporters re-resolve citations<br/>publish: dry-run by default"]
+        G --> V
+        V -- "fail → quarantine<br/>(reason codes, never exported)" --> RV
+        V -- "pass" --> RV
+        RV --> E
     end
 
-    subgraph SPLIT["3 · Split + chunk with provenance"]
-        direction TB
-        S1["Split at source group"] --> S2["Structure-aware chunking"]
-        S2 --> S3["Heading paths · spans · source_span_ids · sha256<br/>location precision recorded per span"]
-    end
+    ROW1 --> ROW2
 
-    subgraph GEN["4 · Generate examples (durable stage)"]
-        direction TB
-        G1["Planner: task + difficulty map<br/>budget · profile · target-size constraints"] --> G2["Prompt library"]
-        G2 --> G3["SFT · Preference · KTO · Eval"]
-        G3 --> G4["Model gateway — fake offline or LiteLLM"]
-        G4 --> G5["Provider-call cache<br/>(idempotent retries, no double cost)"]
-    end
-
-    subgraph VAL["5 · Validate — gates quarantine failures"]
-        direction TB
-        V1["Schema / Grounding / Completeness"]
-        V2["Format / Refusal / Dedupe"]
-        V3["Contamination / Privacy / License"]
-        V4a["Semantic consistency<br/>offline-fast deterministic · certified-semantic judge"]
-        V4b["Preference signal (pairs)<br/>+ information gain"]
-        V1 --> V5{"All gates pass?"}
-        V2 --> V5
-        V3 --> V5
-        V4a --> V5
-        V4b --> V5
-        V5 -- fail --> V6["Quarantine / review routing"]
-        V5 -- pass --> V7["Review state"]
-    end
-
-    subgraph OUT["6 · Version + export + publish"]
-        direction TB
-        O1["Dataset version (immutable)"] --> O2["Release bundle: card · manifest · reports · checksums"]
-        O2 --> O3["Exporters — provenance gate re-resolves every citation"]
-        O2 --> O4["Publish to Hugging Face — dry-run by default"]
-    end
-
-    A5 --> P1
-    P3 --> S1
-    S3 --> G1
-    G5 --> V1
-    V7 --> O1
-
-    style V6 fill:#fbe3e3,stroke:#b3261e
-    style A5 fill:#e8f0fe,stroke:#1a73e8
-    style O4 fill:#e8f0fe,stroke:#1a73e8
-    style V4a fill:#fef7e0,stroke:#b06000
-    style V4b fill:#fef7e0,stroke:#b06000
-    style G5 fill:#e6f4ea,stroke:#188038
+    classDef stage fill:#e0f0ec,stroke:#0e7c6b,color:#1c2b33
+    classDef plain fill:#ffffff,stroke:#909ea6,color:#1c2b33
+    classDef gate fill:#fdeedd,stroke:#b45309,color:#1c2b33
+    class I,P,C,G,E stage
+    class V gate
+    class PL,RV plain

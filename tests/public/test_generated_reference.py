@@ -43,30 +43,46 @@ def _block(path: Path, tag: str) -> str:
     return m.group(0).strip()
 
 
+def _full_page(renderer_name: str, filename: str) -> None:
+    """Full-file page = renderer body + the §17 front matter wrapper.
+
+    build_all() wraps render_*() output with _with_front_matter() before
+    writing, so the committed page equals the *wrapped* content; compare
+    against exactly that (the script's own wrapper — drift in either the
+    body or the description still fails).
+    """
+    import io
+    from contextlib import redirect_stdout
+
+    committed = (REF / filename).read_text(encoding="utf-8")
+    render = getattr(gen, renderer_name)
+    # importing the REST/MCP apps prints banner noise; keep stdout clean
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        rendered = render()
+    expected = gen._with_front_matter(gen._PAGE_DESCRIPTIONS[filename], rendered)
+    assert expected == committed
+
+
 def test_rest_api_reference_matches_openapi() -> None:
-    committed = (REF / "rest-api.md").read_text(encoding="utf-8")
-    assert gen.render_rest_api() == committed
+    _full_page("render_rest_api", "rest-api.md")
 
 
 def test_mcp_catalogue_matches_registration() -> None:
-    committed = (REF / "mcp-tools.md").read_text(encoding="utf-8")
-    assert gen.render_mcp_catalogue() == committed
+    _full_page("render_mcp_catalogue", "mcp-tools.md")
 
 
 def test_quality_gates_match_validators() -> None:
-    committed = (REF / "quality-gates.md").read_text(encoding="utf-8")
-    assert gen.render_quality_gates() == committed
+    _full_page("render_quality_gates", "quality-gates.md")
 
 
 def test_profiles_reference_matches_registry() -> None:
-    committed = (REF / "profiles.md").read_text(encoding="utf-8")
-    assert gen.render_profiles() == committed
+    _full_page("render_profiles", "profiles.md")
 
 
 def test_claim_matrix_matches_registry() -> None:
     """§10: the claim-to-evidence page is generated, not hand-maintained."""
-    committed = (REF / "claim-matrix.md").read_text(encoding="utf-8")
-    assert gen.render_claim_matrix() == committed
+    _full_page("render_claim_matrix", "claim-matrix.md")
 
 
 def test_export_formats_block_matches_registry() -> None:

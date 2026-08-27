@@ -1,3 +1,10 @@
+---
+description: >-
+  Privacy and licensing in depth: preflight classifications,
+  declared licenses, PII handling choices, takedown posture, and
+  evidence retention windows.
+---
+
 # Privacy & Licensing
 
 Knovaryn is a training-data foundry: it ingests documents, cleans and labels
@@ -63,6 +70,23 @@ controls and the responsibilities that remain with the operator. See
   source corpus permits the intended use (training, redistribution, commercial)
   under its own terms, and record that decision in the manifest or an operator
   policy.
+
+## Telemetry & analytics policy
+
+- **No telemetry, no analytics.** The package collects nothing: no usage
+  metrics, error reporting, or phone-home behavior in any mode. Runtime
+  network calls go only to the provider endpoint and storage backends the
+  operator configures.
+- **The documentation site makes zero third-party requests.** No webfonts
+  (system font stack), no analytics scripts, no embedded trackers; even the
+  repository star widget was replaced with a plain same-origin link so page
+  views never touch GitHub's API. This property is enforced by automated
+  browser checks that fail the build on any cross-origin request.
+- **Adding analytics later** requires, before any implementation: a written
+  proposal covering provider, cookies, personal data processed, retention,
+  consent implications, CSP changes, privacy-policy impact, opt-out
+  mechanism, and whether a privacy-preserving alternative would suffice —
+  plus an explicit maintainer decision recorded in the changelog.
 
 ## Operator responsibilities
 

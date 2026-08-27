@@ -1,3 +1,10 @@
+---
+description: >-
+  Exporter reference: all dataset export formats (TRL
+  SFT/preference, KTO, ShareGPT, Alpaca, OpenAI chat, HF layout,
+  evaluation, JSONL, Parquet) and release bundles with checksums.
+---
+
 # Reference — Exporters and Release Bundle
 
 Exporters adapt one **canonical `DatasetVersion`** to trainer-native formats.

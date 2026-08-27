@@ -44,3 +44,7 @@ site/
 # enumerate names; local-only build/audit material never gets committed)
 .knovaryn-build*/
 knovaryn-demo/
+
+# Private maintainer workspace: local-only working notes. Never committed
+# or packaged.
+.knovaryn-maintainer/

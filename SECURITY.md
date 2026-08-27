@@ -5,9 +5,10 @@
 Knovaryn takes security seriously. **Please do not open a public issue** for a
 security vulnerability.
 
-Report privately to the security maintainers at **`security@knovaryn.dev`**
-(or use the private security reporting path once the repository is public, such
-as GitHub private vulnerability reporting).
+Report privately through **GitHub private vulnerability reporting**:
+open the repository's **Security** tab → **Report a vulnerability**. Reports
+arrive directly and privately to the maintainers — please do not email
+personal addresses or open a public issue.
 
 Include:
 

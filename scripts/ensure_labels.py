@@ -53,7 +53,7 @@ def main() -> int:
     wanted = json.loads(LABELS_FILE.read_text(encoding="utf-8"))
     existing = _existing_labels(args.repo)
 
-    missing = [l["name"] for l in wanted if l["name"] not in existing]
+    missing = [w["name"] for w in wanted if w["name"] not in existing]
     if args.check:
         if missing:
             print(f"FAIL: labels not present in the repository: {missing}", file=sys.stderr)

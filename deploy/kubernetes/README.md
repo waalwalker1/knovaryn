@@ -46,7 +46,12 @@ kubectl -n knovaryn get deploy,pods
 
 All images are **pinned to a tagged/digest build** (`…:0.2.1`) — never `latest`
 (K3). Pin the app image to a digest in a hardening pass:
-`image: ghcr.io/knovaryn/knovaryn@sha256:<digest>`.
+`image: <your-registry>/knovaryn@sha256:<digest>`.
+
+> There is no official Knovaryn registry image: build and push your own
+> (`docker build -f deploy/docker/Dockerfile …`) or point the manifests at a
+> local build. The pinned tags in these manifests are pin placeholders, not
+> published images.
 
 ## Horizontal scaling (K3 guidance)
 

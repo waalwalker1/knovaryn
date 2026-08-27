@@ -1,3 +1,10 @@
+---
+description: >-
+  Running Knovaryn with Docker / Compose: profile selection,
+  volumes, migrations, worker and API services, and smoke-
+  verifying the stack locally.
+---
+
 # Deployment — Docker / Compose
 
 Knovaryn ships container assets under `deploy/`. This page documents the two
@@ -10,6 +17,13 @@ PostgreSQL + MinIO (S3-compatible) + Knovaryn.
 > `deploy/kubernetes/`). All four interfaces — CLI, MCP server, REST + web
 > console, SDK — are available in the container image. The `deploy/` files are
 > authoritative for your build.
+>
+> **No prebuilt images are published.** There is no official registry image to
+> pull — build locally with the commands on this page (CI builds the same
+> Dockerfile on every main-branch commit to keep the recipe working, but does
+> not push). The production Compose/Kubernetes manifests pin an
+> `image:` field as a placeholder showing *how* to pin; replace it with your
+> own registry path (or a `build:` block) before deploying.
 
 ## Conventions
 

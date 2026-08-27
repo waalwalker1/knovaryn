@@ -1,3 +1,11 @@
+---
+description: >-
+  The product statement and mental model: what Knovaryn is, the
+  promises it makes per stage, and an architecture-at-a-glance of
+  the whole loop.
+title: "Concepts overview"
+---
+
 # Concepts — Overview
 
 This page is the product statement, the promises Knovaryn makes, and an

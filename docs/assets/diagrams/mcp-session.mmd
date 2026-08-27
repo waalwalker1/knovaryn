@@ -1,39 +1,44 @@
-%% Knovaryn — A typical MCP agent session (contract 6.3 #8)
-%% Redesigned as vertical phases so it fits a standard documentation
-%% viewport; the full catalogue lives on the generated MCP-tools page.
+%% Knovaryn — A typical MCP agent session (contract §12.4)
+%% Four panels left to right: Setup · Estimate & generate · Inspect &
+%% review · Version & release. The full tool catalogue lives on the
+%% generated MCP-tools reference page, never in one crowded image.
 %% Count-free by policy: no hard-coded tool totals in diagrams.
-flowchart TD
-    subgraph PHASE1["Phase 1 · Set up"]
+%% Brand palette per docs/design-system/tokens.css (Trace/Ink/amber/slate).
+%%{init: {"theme": "base", "themeVariables": {"primaryColor": "#ffffff", "primaryBorderColor": "#909ea6", "primaryTextColor": "#1c2b33", "lineColor": "#4c5b61", "secondaryColor": "#e0f0ec", "tertiaryColor": "#f1efe8", "clusterBkg": "#f7f6f2", "clusterBorder": "#d3dadd", "fontFamily": "-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif", "fontSize": "15px"}, "flowchart": {"nodeSpacing": 30, "rankSpacing": 46}}}%%
+flowchart LR
+    subgraph PHASE1["Phase 1 · Setup"]
         direction TB
         A["knovaryn_create_project"] --> B["knovaryn_add_source"]
-        B --> C["knovaryn_inspect_source · knovaryn_license_report"]
+        B --> C["knovaryn_inspect_source<br/>knovaryn_license_report"]
     end
 
-    subgraph PHASE2["Phase 2 · Estimate & run"]
+    subgraph PHASE2["Phase 2 · Estimate &amp; generate"]
         direction TB
-        E["knovaryn_estimate_run (dry-run cost)"] --> F{"budget OK?"}
+        E["knovaryn_estimate_run<br/>(dry-run cost)"] --> F{"budget OK?"}
         F -- "yes" --> G["knovaryn_start_pipeline"]
-        F -- "no / tune" --> E
-        G --> H["knovaryn_get_job / run_job — poll progress"]
+        F -- "no / tune plan" --> E
+        G --> H["knovaryn_get_job<br/>knovaryn_run_job"]
     end
 
-    subgraph PHASE3["Phase 3 · Inspect & review"]
+    subgraph PHASE3["Phase 3 · Inspect &amp; review"]
         direction TB
-        I["knovaryn_preview_examples"] --> J["knovaryn_review_example<br/>(immutable revisions)"]
-        J --> K["knovaryn_validate_dataset · knovaryn_compare_runs"]
+        I["knovaryn_preview_examples<br/>knovaryn_lineage"] --> J["knovaryn_review_example<br/>(immutable revisions)"]
+        J --> K["knovaryn_validate_dataset<br/>knovaryn_compare_runs"]
     end
 
-    subgraph PHASE4["Phase 4 · Ship"]
+    subgraph PHASE4["Phase 4 · Version &amp; release"]
         direction TB
         L["knovaryn_create_dataset_version"] --> M["knovaryn_export_dataset"]
         M --> N["knovaryn_publish_dataset<br/>(dry-run → confirm)"]
     end
 
-    P["knovaryn_doctor — health check, anytime"]
+    P["knovaryn_doctor<br/>health check — anytime"]
 
     PHASE1 --> PHASE2 --> PHASE3 --> PHASE4
-    P -.-> PHASE1
 
-    style E fill:#fef7e0,stroke:#b06000
-    style N fill:#e6f4ea,stroke:#188038
-    style P fill:#f3e8fd,stroke:#8e24aa
+    classDef est fill:#fdeedd,stroke:#b45309,color:#1c2b33
+    classDef ship fill:#e0f0ec,stroke:#0e7c6b,color:#1c2b33
+    classDef health fill:#e8edf0,stroke:#404d55,color:#1c2b33
+    class E est
+    class N ship
+    class P health

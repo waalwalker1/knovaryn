@@ -4,8 +4,6 @@
 # reproduce CI locally without pushing. See CONTRIBUTING.md and the Makefile
 # `check` target for the canonical gate.
 #
-# NOTE: reconstructed after the OneDrive outage dehydrated the original.
-# Reconcile against the cloud copy once it re-hydrates.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."

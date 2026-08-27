@@ -451,7 +451,9 @@ async def review_example(
 
     Shares the single application-service path with the CLI/MCP/SDK — no
     interface-specific review logic. A stale ``concurrency_token`` / base
-    ``revision_id`` returns ``409``.
+    ``revision_id`` returns ``409``. An omitted ``revision_id`` targets the
+    example's latest revision (CLI parity), so a client can review an
+    example more than once without tracking the revision chain.
     """
     try:
         await _ws().require_project_access(
@@ -459,7 +461,7 @@ async def review_example(
         )
         return await _ws().review_example(
             example_id=example_id,
-            revision_id=body.revision_id or 1,
+            revision_id=body.revision_id,
             reviewer=principal.name,
             decision=body.decision,
             note=body.note,

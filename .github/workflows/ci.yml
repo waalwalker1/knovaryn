@@ -142,8 +142,8 @@ jobs:
       - uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.11"
-      - name: Install mkdocs + material
-        run: uv sync --extra dev
+      - name: Install mkdocs + material + pillow (§15 gate)
+        run: uv sync --extra dev --extra visuals
       - name: Generate reference docs from code
         run: uv run python scripts/generate_reference_docs.py
       - name: Build docs site
@@ -160,6 +160,12 @@ jobs:
       # count-free diagrams. Byte-exact render drift runs in assets.yml.
       - name: Asset consistency checks (§6.5)
         run: uv run scripts/check_assets.py
+      # §15: visual-asset governance — required brand assets, SVG hygiene
+      # (no external fonts, no font binaries, no private paths), image
+      # dimensions, file-size budgets, reference integrity, favicon wiring,
+      # motion-token allowlist. Blocking.
+      - name: Visual-asset governance (§15)
+        run: uv run --no-sync python scripts/check_visual_assets.py
 
   container:
     name: Build container

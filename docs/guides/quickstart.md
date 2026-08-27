@@ -1,3 +1,10 @@
+---
+description: >-
+  Ten-minute offline quickstart: install the lean wheel, run the
+  bundled demo, inspect provenance evidence, and export a real
+  dataset version — no model spend.
+---
+
 # Guides — 10-Minute Offline Quickstart
 
 This guide gets a full pipeline running in about ten minutes with **no API keys
@@ -15,7 +22,7 @@ Knovaryn in a virtualenv:
 
 ```bash
 cd knovaryn
-uv sync --dev            # lean core + dev tooling (no heavy ML extras)
+uv sync --extra dev            # lean core + dev tooling (no heavy ML extras)
 ```
 
 The `uv sync` creates `.venv`. Prepend commands with `uv run` (or activate the
@@ -74,6 +81,10 @@ untrusted input. Inspect what was ingested:
 uv run knovaryn source list <proj_handle>
 ```
 
+![Web console sources panel: the intake form with project id, source name, file chooser, markdown content field, declared-license and privacy-declaration inputs, and the Add source button](../assets/screenshots/project-source-view.png){: width="1028" height="1852" loading=lazy }
+*The same intake in the console's Sources panel — the preflight fields map
+one-to-one to the `source add` flags.*
+
 ### Run generation
 
 Nothing is spent until you ask for generation. The dry-run **cost estimate**
@@ -126,6 +137,24 @@ the [exporter reference](../reference/exporters.md) is authoritative). Repeat
 permitted document → preflight → generation on the fake provider → validated,
 reviewed examples with evidence → one versioned dataset exported to a
 trainer-ready format. And it ran entirely offline.
+
+The same loop also runs in a browser: `knovaryn server` serves a local web
+console with the same controls.
+
+![Web console overview in the browser: the header reports the live health check (server healthy in local mode), and the projects panel lists the demo project with its id, slug, and metadata](../assets/screenshots/web-console-overview.png){: width="1280" height="1700" loading=lazy }
+*The console served by `knovaryn server` — every section drives the same REST
+control plane used in this guide.*
+
+The console adapts to the device and theme you already have — no settings of
+its own:
+
+![The same console on a 375-pixel phone viewport: the panels stack in a single column with full-size touch targets](../assets/screenshots/mobile-overview.png){: width="588" height="4570" loading=lazy }
+*375 px viewport: panels stack in one column; nothing is clipped or
+collapsed away.*
+
+![The console in dark mode: ink-deep surfaces with the same panels and a bright trace accent](../assets/screenshots/dark-mode-overview.png){: width="1280" height="1700" loading=lazy }
+*Dark scheme (`prefers-color-scheme: dark`): the same console, ink surfaces
+and brightened accents.*
 
 ## Next
 

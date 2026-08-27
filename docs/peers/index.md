@@ -1,3 +1,10 @@
+---
+description: >-
+  The peer landscape for open-source LLM training-data tooling:
+  where synthetic-data kits, pipeline frameworks, and parsing SDKs
+  sit next to a provenance-first foundry.
+---
+
 # Peer Landscape
 
 How Knovaryn sits among related open-source tools for document-to-training-data

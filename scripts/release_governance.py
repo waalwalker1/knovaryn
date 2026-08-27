@@ -81,9 +81,7 @@ def ci_job_ids(workflow_path: Path | str | None = None) -> frozenset[str]:
     jobs = data.get("jobs")
     if not isinstance(jobs, dict) or not jobs:
         raise ConfigurationError(f"CI workflow {path} defines no jobs")
-    return frozenset(
-        str(j) for j, cfg in jobs.items() if _job_required_on_push(cfg)
-    )
+    return frozenset(str(j) for j, cfg in jobs.items() if _job_required_on_push(cfg))
 
 
 def governance_workflows() -> list[Path]:

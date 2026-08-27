@@ -1,6 +1,16 @@
+---
+description: >-
+  How the MCP tool layer stays isolated behind FastMCP adapters,
+  keeping protocol types out of the domain core and clients
+  swappable.
+---
+
 # ADR 0002 — MCP 2026-07-28 and FastMCP adapter isolation
 
-- **Date:** 2026-08-07 · **Status:** Accepted
+- **Date:** 2026-08-07 · **Status:** Accepted — adapter guidance amended by
+  [ADR-0007](0007-dual-major-mcp-sdk-compatibility.md) (2026-08-25), which
+  records the tested dual-major (`mcp>=1.28,<3`) reality; the isolation
+  rationale below remains in force.
 
 ## Context
 

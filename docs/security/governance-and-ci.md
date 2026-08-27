@@ -1,3 +1,10 @@
+---
+description: >-
+  Governance, CI, and supply-chain security: branch protection,
+  pinned workflows, SBOM generation, dependency scanning,
+  reproducible releases, and verify-release.
+---
+
 # Governance, CI & supply-chain security (WP L)
 
 This page documents how Knovaryn is built, tested, released, and governed —
@@ -17,7 +24,7 @@ operational counterpart to the [hardening](hardening.md) and
   datasets from a plain `main` commit. Publishing only happens on an explicit
   GitHub Release tag (`vX.Y.Z`), and only when the full package CI passed.
 - **Private build process, public product.** Build tooling, prompts, and
-  `.knovaryn-build/` artifacts are never committed into the public repo.
+  local build/audit artifacts are never committed into the public repo.
 
 ## CI layers
 
@@ -58,10 +65,20 @@ composes the WP L release safeguards:
    clean-env install, and CLI / MCP / REST smoke from the installed wheel.
 2. **`tag-version-consistency`** — the `vX.Y.Z` tag must equal `pyproject.toml`
    `project.version`.
-3. **`build`** — rebuilds and uploads the `dist/` artifact.
-4. **`publish`** — uploads to PyPI via **OIDC trusted publishing** (`environment:
+3. **`ci-gate`** — the release SHA must have passing CI and security workflows.
+4. **`deploy-e2e`** — the compose stack runs the image built from the exact
+   published tag.
+5. **`build`** — rebuilds and uploads the `dist/` artifact.
+6. **`release-assets`** — attaches detached `SHA256SUMS`, a CycloneDX SBOM
+   from the locked resolution, notes generated from `CHANGELOG.md`, and
+   enforces that `0.x` tags are marked pre-release.
+7. **`publish`** — uploads to PyPI via **OIDC trusted publishing** (`environment:
    pypi`, `id-token: write`). The `pypi` environment must be mapped to the
    `knovaryn` project in PyPI's trusted-publishers settings.
+8. **`post-publish-verify`** — a clean environment resolves the just-published
+   version from the public index.
+
+![Knovaryn release supply chain — gates on the release SHA, artifact attachment, OIDC publish, post-publish verification, and local verify-release](../assets/release-supply-chain.png){: width="100%" }
 
 Release artifacts are reproducible: `ReleaseBundle` uses fixed zip timestamps,
 stable sorted file order, `JSON sort_keys`, and detached `.sha256` checksums,

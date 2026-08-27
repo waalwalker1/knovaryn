@@ -31,6 +31,9 @@ TARGETS = {
     "mcp-session": ASSETS / "mcp-session.png",
     "security": ASSETS / "security.png",
     "value-proposition": ASSETS / "value-proposition.png",
+    "provenance-lineage": ASSETS / "provenance-lineage.png",
+    "deployment-topology": ASSETS / "deployment-topology.png",
+    "release-supply-chain": ASSETS / "release-supply-chain.png",
 }
 
 
@@ -59,11 +62,7 @@ def main() -> int:
         for stem, target in TARGETS.items():
             # sources live under diagrams/, except pipeline-flow at assets root
             src = next(
-                (
-                    p
-                    for p in (DIAGRAMS / f"{stem}.mmd", ASSETS / f"{stem}.mmd")
-                    if p.is_file()
-                ),
+                (p for p in (DIAGRAMS / f"{stem}.mmd", ASSETS / f"{stem}.mmd") if p.is_file()),
                 None,
             )
             if src is None:
@@ -90,7 +89,9 @@ def main() -> int:
     if failures:
         print("\n".join(f"FAIL: {f}" for f in failures), file=sys.stderr)
         return 1
-    print("diagrams are in sync with their Mermaid sources" if args.check else "all diagrams rendered")
+    print(
+        "diagrams are in sync with their Mermaid sources" if args.check else "all diagrams rendered"
+    )
     return 0
 
 

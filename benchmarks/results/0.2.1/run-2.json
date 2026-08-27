@@ -1,0 +1,201 @@
+{
+  "corpus_sha256": {
+    "multilingual.txt": "415cb3612705c68766b417ef83eeb930acc1e2decc9ea4f848664db63572e9b8",
+    "numbered-headings.md": "a8f2598cf1eb1841198eaa3abf17ed3eea5f083c968fa17cbb61ca0acbad8b20",
+    "sample.csv": "e7a3929e0913e80f475f937db1615bfa29484299e93ea55d8c87e92770c8078d",
+    "sample.json": "a2c35a8a1e57b6d0f2a4453153a37aebbb862bc811014bed102b95e7773a4171"
+  },
+  "provider": "fake (deterministic)",
+  "sources": 4,
+  "parsed": 4,
+  "chunks": 6,
+  "spans": 6,
+  "candidates": 6,
+  "examples": 3,
+  "parse_success_rate": 1.0,
+  "chunk_heading_coverage": 0.5,
+  "lineage_resolution": {
+    "numerator": 3,
+    "denominator": 3,
+    "rate": 1.0,
+    "ci95_low": 0.4385,
+    "ci95_high": 1.0
+  },
+  "precision_distribution": {
+    "chunk": 3,
+    "section": 3
+  },
+  "quality_status_counts": {
+    "accepted": 3
+  },
+  "quality_duplicate_rejects": 0,
+  "quality_contamination_rejects": 0,
+  "quality_grounding_rejects": 0,
+  "elapsed_s": 0.0448,
+  "examples_per_second": 66.9029,
+  "peak_allocated_bytes": 577866,
+  "release_bundle_bytes": 3054,
+  "release_bundle_sha256": "8be41bc0a4470379c873f6cbfc080f59fed908d5181aee6a8b5d8cedc5037c1a",
+  "release_sha256_present": true,
+  "export_round_trip": {
+    "alpaca": "ok",
+    "evaluation": "ok",
+    "huggingface_layout": "ok",
+    "kto": "ok",
+    "openai_chat": "ok",
+    "sharegpt": "ok",
+    "trl_preference": "ok",
+    "trl_sft": "ok"
+  },
+  "semantic_adversarial": {
+    "layer": "deterministic (offline-fast); certified judge requires live provider",
+    "cases": 14,
+    "false_accept": {
+      "numerator": 0,
+      "denominator": 9,
+      "rate": 0.0,
+      "ci95_low": 0.0,
+      "ci95_high": 0.2992
+    },
+    "false_reject": {
+      "numerator": 0,
+      "denominator": 3,
+      "rate": 0.0,
+      "ci95_low": 0.0,
+      "ci95_high": 0.5615
+    },
+    "unverified_on_entailment": {
+      "numerator": 3,
+      "denominator": 3,
+      "rate": 1.0,
+      "ci95_low": 0.4385,
+      "ci95_high": 1.0
+    },
+    "per_case": [
+      {
+        "category": "causal_reversal",
+        "expected": "contradicted",
+        "observed": "contradicted"
+      },
+      {
+        "category": "entity_role_reversal",
+        "expected": "contradicted",
+        "observed": "contradicted"
+      },
+      {
+        "category": "negation",
+        "expected": "contradicted",
+        "observed": "contradicted"
+      },
+      {
+        "category": "number_change",
+        "expected": "contradicted",
+        "observed": "contradicted"
+      },
+      {
+        "category": "date_change",
+        "expected": "contradicted",
+        "observed": "contradicted"
+      },
+      {
+        "category": "unit_conversion",
+        "expected": "entailed",
+        "observed": "unverified"
+      },
+      {
+        "category": "unit_error",
+        "expected": "contradicted",
+        "observed": "contradicted"
+      },
+      {
+        "category": "percentage_base",
+        "expected": "contradicted",
+        "observed": "contradicted"
+      },
+      {
+        "category": "unsupported_synthesis",
+        "expected": "contradicted",
+        "observed": "contradicted"
+      },
+      {
+        "category": "incomplete_enum_wrong_total",
+        "expected": "unverified",
+        "observed": "unverified"
+      },
+      {
+        "category": "paraphrase_entailment",
+        "expected": "entailed",
+        "observed": "unverified"
+      },
+      {
+        "category": "multi_sentence_evidence",
+        "expected": "entailed",
+        "observed": "unverified"
+      },
+      {
+        "category": "distractor_spans",
+        "expected": "contradicted",
+        "observed": "contradicted"
+      },
+      {
+        "category": "cross_document_conflict",
+        "expected": "unverified",
+        "observed": "contradicted"
+      }
+    ]
+  },
+  "preference_quality": {
+    "judge": "CertifiedPairwiseJudge over deterministic scripted scores (live-judge certification not measured here)",
+    "order_consistency": {
+      "numerator": 10,
+      "denominator": 10,
+      "rate": 1.0,
+      "ci95_low": 0.7225,
+      "ci95_high": 1.0
+    },
+    "both_good_routed_to_review": {
+      "numerator": 3,
+      "denominator": 3,
+      "rate": 1.0,
+      "ci95_low": 0.4385,
+      "ci95_high": 1.0
+    },
+    "identical_pair_rejection": {
+      "numerator": 3,
+      "denominator": 3,
+      "rate": 1.0,
+      "ci95_low": 0.4385,
+      "ci95_high": 1.0
+    },
+    "near_duplicate_rejection": {
+      "numerator": 3,
+      "denominator": 3,
+      "rate": 1.0,
+      "ci95_low": 0.4385,
+      "ci95_high": 1.0
+    },
+    "information_gain_no_signal_rejection": {
+      "numerator": 3,
+      "denominator": 3,
+      "rate": 1.0,
+      "ci95_low": 0.4385,
+      "ci95_high": 1.0
+    },
+    "information_gain_substantive_retention": {
+      "numerator": 2,
+      "denominator": 2,
+      "rate": 1.0,
+      "ci95_low": 0.3424,
+      "ci95_high": 1.0
+    }
+  },
+  "crash_recovery": {
+    "crashed_mid_pipeline": true,
+    "crash_resume_success": 1,
+    "provider_invocations_total": 7,
+    "unique_request_fingerprints": 7,
+    "duplicate_provider_calls": 0,
+    "duplicate_cost_events": 0
+  },
+  "run": 2
+}

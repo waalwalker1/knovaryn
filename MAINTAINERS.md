@@ -20,8 +20,8 @@ kept roughly in sync.
 
 ## Group contacts
 
-- **Code of Conduct:** `maintainers@knovaryn.dev`
-- **Maintainers list:** `maintainers@knovaryn.dev`
+- **Code of Conduct:** `waalwalker12@gmail.com`
+- **Maintainers list:** `waalwalker12@gmail.com`
 - **Security:** see [SECURITY.md](SECURITY.md) — `security@knovaryn.dev`
 
 ## Responsibilities (summary)

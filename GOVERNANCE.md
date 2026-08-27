@@ -34,7 +34,7 @@ written decision record.
 | **Release manager** | Cuts `CHANGELOG.md`-driven releases, tags, and publishes artifacts; coordinates the release gate. | Appointed by maintainers, rotating. |
 
 The **Code of Conduct committee** is drawn from maintainers and handles
-[CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) reports at `maintainers@knovaryn.dev`.
+[CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) reports at `waalwalker12@gmail.com`.
 
 ## 3. The maintainer model in practice
 
@@ -103,7 +103,8 @@ a new record over editing history so the rationale stays legible.
 ## 6. Release process
 
 Releases follow the roadmap maturity labels in [ROADMAP.md](ROADMAP.md) and the
-release gate documented in `docs/marketing/release-gate.md`:
+release gate documented in
+[docs/security/governance-and-ci.md](docs/security/governance-and-ci.md):
 
 - A release is cut by the **release manager** from `main`,
   driven by `CHANGELOG.md` ([Keep a Changelog](https://keepachangelog.com/)).
@@ -135,7 +136,7 @@ public disclosure are reviewed by at least two maintainers before anything ships
 
 See [SECURITY.md](SECURITY.md) for the operational details. In summary:
 
-- Vulnerabilities are reported **privately** (`security@knovaryn.dev`, or the GitHub
+- Vulnerabilities are reported **privately** (the GitHub
   private reporting path once enabled), never through public issues.
 - The security maintainers acknowledge within **3 business days** and coordinate a
   fix before public disclosure.
@@ -174,5 +175,5 @@ versioned implicitly by git history, and substantive changes get a changelog ent
 
 ---
 
-_Questions about governance? Contact `maintainers@knovaryn.dev` or open a
+_Questions about governance? Open a
 Discussion. We are friendly._

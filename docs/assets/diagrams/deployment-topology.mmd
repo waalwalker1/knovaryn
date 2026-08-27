@@ -1,0 +1,65 @@
+%% Knovaryn — Deployment topology (contract §11.7 view; §12.7 companion)
+%% Same application core at three scales: single process · compose ·
+%% Kubernetes. Storage and workers scale by configuration, not fork.
+%% ----------------------------------------------------------------
+%% Brand palette per docs/design-system/tokens.css (Trace/Ink/amber/slate).
+%%{init: {"theme": "base", "themeVariables": {"primaryColor": "#ffffff", "primaryBorderColor": "#909ea6", "primaryTextColor": "#1c2b33", "lineColor": "#4c5b61", "secondaryColor": "#e0f0ec", "tertiaryColor": "#f1efe8", "clusterBkg": "#f7f6f2", "clusterBorder": "#d3dadd", "fontFamily": "-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif", "fontSize": "15px"}, "flowchart": {"nodeSpacing": 36, "rankSpacing": 44}}}%%
+flowchart TD
+    CLIENTS["Clients: CLI · MCP client · browser console"]
+
+    subgraph EDGE["Access layer"]
+        direction LR
+        API["API server (<code>knovaryn server</code>)<br/>REST control plane + web console<br/>auth scopes · tenancy · rate limiting"]
+        MCPS["MCP server<br/>stdio (local) or streamable-http"]
+        API ~~~ MCPS
+    end
+
+    CORE["Application-services core<br/>projects · sources · jobs · datasets"]
+
+    subgraph WORK["Worker pool — durable job engine"]
+        direction LR
+        W1["worker (leased stages,<br/>checkpoints, heartbeats)"]
+        W2["worker"]
+        W1 ~~~ W2
+    end
+
+    subgraph STORE["State"]
+        direction LR
+        DB[("Metadata store:<br/>SQLite (local) or PostgreSQL")]
+        OBJ[("Artifact/blob store:<br/>filesystem (local) or S3-compatible")]
+        DB ~~~ OBJ
+    end
+
+    subgraph EXT["External — reached only by worker outbound calls"]
+        direction LR
+        PROV["Model providers:<br/>fake offline · OpenAI-/Anthropic-compatible ·<br/>DeepSeek-compatible endpoints"]
+    end
+
+    subgraph DEPLOY["Scale profile — configuration, not a fork"]
+        direction LR
+        SCALE["Pick one:"]
+        L1["Local<br/>one process · SQLite + filesystem"]
+        L2["Compose<br/>api · worker(s) · postgres · minio · proxy"]
+        L3["Kubernetes<br/>kustomize base · migration Job ·<br/>api + worker · netpol · PDB"]
+        SCALE ~~~ L1 ~~~ L2 ~~~ L3
+    end
+
+    CLIENTS --> EDGE
+    EDGE --> CORE
+    CORE --> WORK
+    WORK --> STORE
+    WORK -.->|"outbound model calls only"| EXT
+    CORE -.->|"the same core, deployed one of three ways"| DEPLOY
+
+    classDef access fill:#e0f0ec,stroke:#0e7c6b,color:#1c2b33
+    classDef core fill:#ffffff,stroke:#909ea6,color:#1c2b33
+    classDef work fill:#f1efe8,stroke:#404d55,color:#1c2b33
+    classDef store fill:#e8edf0,stroke:#404d55,color:#1c2b33
+    classDef prov fill:#ffffff,stroke:#909ea6,color:#1c2b33
+    classDef dep fill:#e8edf0,stroke:#404d55,color:#1c2b33
+    class API,MCPS access
+    class CORE core
+    class W1,W2 work
+    class DB,OBJ store
+    class PROV prov
+    class SCALE,L1,L2,L3 dep

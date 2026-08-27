@@ -1,3 +1,10 @@
+---
+description: >-
+  Dataset provenance and lineage: every exported example links
+  back through candidate, chunk, source span, parsed document, and
+  original file with hashes.
+---
+
 # Concepts — Dataset Provenance and Lineage
 
 **Dataset provenance** is the property that every training example can be

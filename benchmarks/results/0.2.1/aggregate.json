@@ -1,0 +1,40 @@
+{
+  "runs": 3,
+  "elapsed_s": {
+    "median": 0.043,
+    "per_run": [
+      0.0427,
+      0.043,
+      0.0448
+    ]
+  },
+  "examples_per_second": {
+    "median": 69.7846,
+    "per_run": [
+      66.9029,
+      69.7846,
+      70.2092
+    ]
+  },
+  "peak_allocated_bytes": {
+    "median": 622822.0,
+    "per_run": [
+      577866.0,
+      622822.0,
+      656471.0
+    ]
+  },
+  "release_bundle_sha256_values": [
+    "8be41bc0a4470379c873f6cbfc080f59fed908d5181aee6a8b5d8cedc5037c1a"
+  ],
+  "digest_equality_H_R1_eq_H_R2_eq_H_R3": true,
+  "release_bundle_bytes": 3054,
+  "reproducible_mode": "deterministic fake provider; fixed seeds; committed corpus",
+  "not_measured": {
+    "live_provider_cost": "no live provider invoked by this runner",
+    "live_provider_quality": "no live provider invoked by this runner",
+    "docling_layout_ocr": "docling extra availability recorded in environment.json; layout/OCR corpus requires the extra",
+    "postgres_minio_e2e": "executed separately by deploy-e2e workflow / compose E2E; cited by the narrative report when run",
+    "mcp_dual_sdk_lifecycle": "executed separately by scripts/mcp_acceptance_matrix.py; cited by the narrative report"
+  }
+}

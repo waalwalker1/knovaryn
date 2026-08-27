@@ -1,0 +1,47 @@
+%% Knovaryn — Release supply chain (contract §12.7, feeds §11.7)
+%% Mirrors .github/workflows/publish.yml: gates on the release SHA, then
+%% build → attach (checksums + SBOM) → prerelease enforcement → PyPI OIDC →
+%% post-publish verification → local verify-release.
+%% ----------------------------------------------------------------
+%% Brand palette per docs/design-system/tokens.css (Trace/Ink/amber/slate).
+%%{init: {"theme": "base", "themeVariables": {"primaryColor": "#ffffff", "primaryBorderColor": "#909ea6", "primaryTextColor": "#1c2b33", "lineColor": "#4c5b61", "secondaryColor": "#e0f0ec", "tertiaryColor": "#f1efe8", "clusterBkg": "#f7f6f2", "clusterBorder": "#d3dadd", "fontFamily": "-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif", "fontSize": "15px"}, "flowchart": {"nodeSpacing": 36, "rankSpacing": 46}}}%%
+flowchart TD
+    TAG["Tag push <code>vX.Y.Z</code>"]
+
+    subgraph GATES["Gates — all on the exact release SHA"]
+        direction TB
+        G1["Package CI<br/>wheel/sdist build · twine/meta check<br/>secret scan · CLI/MCP/REST smoke"]
+        G2["Tag ↔ package version match"]
+        G3["CI + Security checks passed<br/>(tests with coverage floor · lint · strict typing<br/>pip-audit · Trivy container/IaC)"]
+        G4["Deployment E2E against the published tag<br/>(compose stack runs the real image)"]
+        G1 --> G2 --> G3 --> G4
+    end
+
+    BUILD["Build wheel + sdist from the tagged commit"]
+
+    subgraph ASSETS["Release artifacts attached to the GitHub Release"]
+        direction TB
+        A1["Detached <code>SHA256SUMS</code>"]
+        A2["SBOM — CycloneDX from the locked resolution"]
+        A3["Notes generated from CHANGELOG.md"]
+        A4["0.x tags enforced as <b>pre-release</b>"]
+    end
+
+    PYPI["Publish to PyPI — OIDC trusted publishing<br/>(no long-lived token)"]
+    POST["Post-PyPI verification:<br/>clean environment resolves from the public index"]
+
+    USER["You verify what you downloaded:<br/><code>knovaryn verify-release bundle.zip</code><br/>checks checksums + per-file manifest"]
+
+    TAG --> GATES --> BUILD --> ASSETS --> PYPI --> POST
+    ASSETS -.-> USER
+    POST -.-> USER
+
+    classDef gate fill:#fdeedd,stroke:#b45309,color:#1c2b33
+    classDef build fill:#ffffff,stroke:#909ea6,color:#1c2b33
+    classDef asset fill:#e8edf0,stroke:#404d55,color:#1c2b33
+    classDef pub fill:#e0f0ec,stroke:#0e7c6b,color:#1c2b33
+    class G1,G2,G3,G4 gate
+    class BUILD build
+    class A1,A2,A3,A4 asset
+    class PYPI,POST pub
+    class USER pub

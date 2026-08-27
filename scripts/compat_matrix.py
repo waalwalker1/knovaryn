@@ -145,7 +145,7 @@ def check_group(group: str, constraints: dict[str, str], tmp: Path) -> None:
     print(f"[{group}] installing project ({spec}) into {env_dir.name} …")
     _run([py, "-m", "pip", "install", "--quiet", "--no-input", spec])
 
-    for package, probe in packages.items():
+    for package, _probe in packages.items():
         pin = _floor(constraints[package], package)
         print(f"[{group}] pinning floor {pin}")
         _run([py, "-m", "pip", "install", "--quiet", "--no-input", pin])
@@ -163,8 +163,12 @@ def check_group(group: str, constraints: dict[str, str], tmp: Path) -> None:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--group", action="append", choices=sorted(GROUP_PROBES),
-                    help="restrict to one group (repeatable; default all)")
+    ap.add_argument(
+        "--group",
+        action="append",
+        choices=sorted(GROUP_PROBES),
+        help="restrict to one group (repeatable; default all)",
+    )
     args = ap.parse_args()
 
     constraints = _declared_constraints()

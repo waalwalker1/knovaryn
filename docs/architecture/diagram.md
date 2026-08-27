@@ -1,3 +1,10 @@
+---
+description: >-
+  Pipeline flow diagram: how a permitted document becomes parsed
+  chunks, generated candidates, gate verdicts, review decisions,
+  and an exported dataset version.
+---
+
 # Architecture — Pipeline Flow Diagram
 
 One picture of the end-to-end pipeline: from intake of a permitted document
@@ -6,6 +13,7 @@ job engine, so the whole graph is checkpointable and resumable (see
 [jobs.md](jobs.md)).
 
 ```mermaid
+%%{init: {"theme": "base", "themeVariables": {"primaryColor": "#ffffff", "primaryBorderColor": "#909ea6", "primaryTextColor": "#1c2b33", "lineColor": "#4c5b61", "clusterBkg": "#f7f6f2", "clusterBorder": "#d3dadd", "fontFamily": "-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif"}}}%%
 flowchart TD
     A["Intake<br/>(preflight: SHA-256, size, license, privacy)"] --> B["Parse<br/>(Docling → canonical DoclingDocument JSON)"]
     B --> C["Normalize<br/>(derive markdown/text/tables + spans)"]

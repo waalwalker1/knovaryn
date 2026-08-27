@@ -1,3 +1,10 @@
+---
+description: >-
+  Build DPO preference datasets from your own documents: pair
+  construction, grounded winners, validation profiles, and TRL-
+  ready export.
+---
+
 # Guide — Build DPO preference data
 
 This guide builds a **DPO/preference dataset** with Knovaryn: generate

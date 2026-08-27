@@ -159,7 +159,12 @@ HTML = """<!doctype html>
         <option value="reject">reject</option><option value="needs_work">needs_work</option></select>
       <label for="reviewNote">Note</label>
       <input id="reviewNote">
-      <button id="doReview" type="button">Apply review</button>
+      <div class="row">
+        <button id="doReview" type="button">Apply review</button>
+        <button id="viewLineage" type="button" class="sec">View lineage</button>
+      </div>
+      <p class="hint">View lineage walks the example's full provenance chain:
+        source document → span → chunk → candidate → example.</p>
       <div id="revOut"></div>
     </section>
   </div>
@@ -201,13 +206,23 @@ async function api(path, method="GET", body){
   let data; try { data = text ? JSON.parse(text) : {}; } catch { data = {raw: text}; }
   return {status:r.status, ok:r.ok, data};
 }
+function htmlEscape(s){
+  // proper HTML escaping — the deprecated global escape() percent-encodes,
+  // which rendered every output panel as unreadable %-sequences
+  return s.replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
 function out(el, obj){
   const isErr = el && obj && typeof obj==="object" && obj.ok===false;
-  el.innerHTML = '<pre class="'+(isErr?"err":"ok")+'">'+escape(JSON.stringify(obj&&obj.data?obj.data:obj,null,2))+'</pre>';
+  el.innerHTML = '<pre class="'+(isErr?"err":"ok")+'">'+htmlEscape(JSON.stringify(obj&&obj.data?obj.data:obj,null,2))+'</pre>';
 }
 function setStatus(){
   const s = $("status"); s.innerHTML = '<span class="dot"></span>server ' +
     (token ? "authenticated" : "local mode");
+}
+function setHealth(ok){
+  // health and auth are separate signals — one must not clobber the other
+  const s = $("status"); s.innerHTML = '<span class="dot"></span>server ' +
+    (ok ? "healthy" : "unreachable") + (token ? " · authenticated" : " · local mode");
 }
 $("saveToken").addEventListener("click", ()=>{
   token = $("token").value.trim();
@@ -264,8 +279,14 @@ $("listExamples").addEventListener("click", async ()=>{
   out($("exOut"), r);
 });
 $("doReview").addEventListener("click", async ()=>{
+  // revision_id omitted -> the API targets the example's latest revision
   const r = await api(`/v1/projects/${$("expid").value}/examples/${$("reviewEx").value}/review`,
     "POST",{decision:$("reviewDecision").value, note:$("reviewNote").value});
+  out($("revOut"), r);
+});
+$("viewLineage").addEventListener("click", async ()=>{
+  const r = await api(`/v1/projects/${$("expid").value}/examples/${$("reviewEx").value}/lineage`,
+    "GET");
   out($("revOut"), r);
 });
 $("validate").addEventListener("click", async ()=>{
@@ -298,8 +319,7 @@ document.querySelectorAll("[data-act=list-projects]").forEach(b=>{
 });
 
 // health check on load
-(async function(){ const r = await api("/v1/health","GET"); $("status").innerHTML =
-  '<span class="dot"></span>server ' + (r.ok? "healthy":"unreachable"); setStatus(); })();
+(async function(){ const r = await api("/v1/health","GET"); setHealth(r.ok); })();
 </script>
 </body>
 </html>

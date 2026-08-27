@@ -34,8 +34,7 @@ def upgrade() -> None:
     )
     op.add_column(
         "source_spans",
-        sa.Column("precision", sa.String(length=32), nullable=False,
-                  server_default="unknown"),
+        sa.Column("precision", sa.String(length=32), nullable=False, server_default="unknown"),
     )
 
 

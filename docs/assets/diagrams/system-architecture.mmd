@@ -1,70 +1,70 @@
-%% Knovaryn — System Architecture
-%% One application-services core, four interfaces, durable-job engine
-%% Count-free by policy (contract 6.2): surfaces say what they are, never
-%% how many — the live catalogue/reference pages carry the real numbers.
-flowchart LR
-    subgraph AGENTS["Host agents"]
-        MCPAG["MCP-capable agents"]
+%% Knovaryn — System Architecture (contract §12.2)
+%% Strict vertical layers, wired subgraph-to-subgraph so each layer keeps
+%% its horizontal layout: users & agents → interfaces → application core
+%% → durable pipeline → infrastructure → deployment profiles.
+%% Count-free by policy: surfaces say what they are, never how many —
+%% the live catalogue/reference pages carry the real numbers.
+%% Brand palette per docs/design-system/tokens.css (Trace/Ink/amber/slate).
+%%{init: {"theme": "base", "themeVariables": {"primaryColor": "#ffffff", "primaryBorderColor": "#909ea6", "primaryTextColor": "#1c2b33", "lineColor": "#4c5b61", "secondaryColor": "#e0f0ec", "tertiaryColor": "#f1efe8", "clusterBkg": "#f7f6f2", "clusterBorder": "#d3dadd", "fontFamily": "-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif", "fontSize": "15px"}, "flowchart": {"nodeSpacing": 30, "rankSpacing": 42}}}%%
+flowchart TB
+    subgraph USERS["Users and agents"]
+        direction LR
+        U1["You — terminal · editor agent · MCP client · browser"]
     end
 
-    subgraph INTERFACES["Four interfaces — same services"]
-        C["CLI<br/>(knovaryn)"]
-        M["MCP server<br/>(registered tool catalogue,<br/>generated reference page)"]
-        R["REST + web console<br/>(knovaryn server)"]
-        S["Python SDK"]
+    subgraph IFACE["Interfaces — one application core"]
+        direction LR
+        C["CLI<br/><code>knovaryn</code>"]
+        M["MCP server<br/><code>knovaryn-mcp</code><br/>registered tool catalogue"]
+        R["REST + web console<br/><code>knovaryn server</code><br/>auth scopes · tenancy · rate limits"]
+        S["Python SDK<br/><code>Workspace</code>"]
+        C ~~~ M ~~~ R ~~~ S
     end
 
     subgraph CORE["Application-services core (domain + application)"]
+        direction LR
         WS["Workspace control plane"]
         SRV["Services: projects · sources · jobs · datasets"]
-        POL["Domain policies & config"]
+        POL["Domain policies · dated acceptance config"]
+        WS ~~~ SRV ~~~ POL
     end
 
-    subgraph PIPELINE["Durable pipeline engine"]
-        IN["Intake & preflight"]
-        PA["Parse (Docling / fallbacks)"]
-        SP["Split & chunk"]
-        PL["Plan (dry-run cost)"]
-        GE["Generate (ModelGateway)"]
-        VA["Validate & quality gates"]
-        VE["Version & export"]
-        PU["Publish (dry-run)"]
-        IN --> PA --> SP --> PL --> GE --> VA --> VE --> PU
+    subgraph ENGINE["Durable pipeline engine — checkpointed stages"]
+        direction LR
+        IN["Intake &amp; preflight"] --> PA["Parse"] --> SP["Split &amp; chunk"] --> PL["Plan (dry-run cost)"] --> GE["Generate (ModelGateway)"] --> VA["Validate &amp; gates"] --> VE["Version &amp; export"] --> PU["Publish (dry-run default)"]
     end
 
     subgraph INFRA["Infrastructure"]
-        DB[("SQLite / Postgres")]
-        ART["Artifact store<br/>content-addressed, local / S3"]
-        MG["Model gateway<br/>fake offline · LiteLLM"]
-        AUTH["Auth / bearer + scopes + tenancy"]
-        SEC["Secrets: env-only, redacted"]
+        direction LR
+        DB[("Metadata: SQLite / PostgreSQL")]
+        ART[("Artifacts: content-addressed, local / S3")]
+        MGW["Model gateway: fake offline · LiteLLM profiles"]
+        DB ~~~ ART ~~~ MGW
     end
 
-    subgraph DEPLOY["Deployment profiles"]
-        D1["Local — single process"]
-        D2["Compose — api · worker · pg · minio · proxy"]
-        D3["Kubernetes — kustomize base"]
+    subgraph DEPLOY["Deployment profiles — same core, config not fork"]
+        direction LR
+        D1["Local — single process<br/>SQLite + filesystem"]
+        D2["Compose — api · worker(s) ·<br/>postgres · minio · proxy"]
+        D3["Kubernetes — kustomize base<br/>migration Job · api + worker"]
+        D1 ~~~ D2 ~~~ D3
     end
 
-    AGENTS --> MCPAG --> M
-    C --> WS
-    M --> WS
-    R --> WS
-    S --> WS
-    WS --> SRV --> POL
-    SRV --> PIPELINE
-    PIPELINE --> DB
-    PIPELINE --> ART
-    GE --> MG
-    WS --> AUTH
-    R --> AUTH
-    MG --> SEC
-    DB -.-> D2
-    ART -.-> D2
-    D2 -.-> D3
+    USERS --> IFACE
+    IFACE --> CORE
+    CORE --> ENGINE
+    ENGINE --> INFRA
+    INFRA --> DEPLOY
 
-    style CORE fill:#e8f0fe,stroke:#1a73e8
-    style PIPELINE fill:#e6f4ea,stroke:#188038
-    style INFRA fill:#fef7e0,stroke:#b06000
-    style MG fill:#fce8e6,stroke:#c5221f
-    style DEPLOY fill:#f3e8fd,stroke:#8e24aa
+    classDef iface fill:#e0f0ec,stroke:#0e7c6b,color:#1c2b33
+    classDef core fill:#ffffff,stroke:#909ea6,color:#1c2b33
+    classDef stage fill:#f1efe8,stroke:#404d55,color:#1c2b33
+    classDef gate fill:#fdeedd,stroke:#b45309,color:#1c2b33
+    classDef infra fill:#ffffff,stroke:#909ea6,color:#1c2b33
+    classDef dep fill:#e8edf0,stroke:#404d55,color:#1c2b33
+    class C,M,R,S iface
+    class WS,SRV,POL core
+    class IN,PA,SP,PL,GE,VE,PU stage
+    class VA gate
+    class DB,ART,MGW infra
+    class D1,D2,D3 dep

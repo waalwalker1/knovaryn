@@ -15,6 +15,21 @@ versioned release bundles (JSONL / Parquet, TRL, ShareGPT, Alpaca, OpenAI chat,
 HF layouts) with detached checksums. It scales to a team deployment (PostgreSQL +
 S3-compatible storage) as a configuration change.
 
+## Version and maturity
+
+Current release: 0.2.1 — **alpha**. Interfaces may change before 1.0; pin
+versions and read the changelog before upgrading.
+
+## Installation
+
+```bash
+pip install knovaryn          # lean core (offline fake provider works immediately)
+```
+
+With [uv](https://docs.astral.sh/uv/): `uv add knovaryn`. Extras add providers
+and integrations (`knovaryn"[mcp]"`, `[docling]`, `[hub]`, …) — see the
+installation docs. Python ≥ 3.11.
+
 ## Interfaces
 
 - CLI: `knovaryn` (demo, doctor, repair, backup, restore, server, worker, mcp,
@@ -35,6 +50,20 @@ S3-compatible storage) as a configuration change.
 - `knovaryn_export_dataset`, `knovaryn_publish_dataset` (dry-run),
   `knovaryn_compare_runs`, `knovaryn_doctor`
 
+## Limitations
+
+- Alpha software: CLI flags, REST shapes, and MCP tool signatures may change
+  between releases.
+- Quality gates measure groundedness and policy conformance relative to *your*
+  configured policy and corpus — a passing row is not a guarantee it improves
+  your model.
+- The bundled fake provider proves plumbing offline; real datasets need a real
+  (local or hosted) model endpoint, and real runs bill real tokens.
+- Location precision depends on the parser: PDFs record page + bounding box;
+  markdown honestly records section-level precision only.
+- Publication to the Hugging Face Hub and any spend require explicit
+  authorization; nothing is uploaded or billed by default.
+
 ## Documentation
 
 - Quickstart: https://waalwalker1.github.io/knovaryn/guides/quickstart/
@@ -52,6 +81,22 @@ S3-compatible storage) as a configuration change.
 - Reference — CLI: https://waalwalker1.github.io/knovaryn/reference/cli/
 - Reference — configuration: https://waalwalker1.github.io/knovaryn/reference/config/
 - Reference — exporters: https://waalwalker1.github.io/knovaryn/reference/exporters/
+- Reference — MCP tools: https://waalwalker1.github.io/knovaryn/reference/mcp-tools/
+- Reference — REST API: https://waalwalker1.github.io/knovaryn/reference/rest-api/
+- Benchmark methodology: https://waalwalker1.github.io/knovaryn/reference/benchmark-methodology/
+
+## Security
+
+Report vulnerabilities privately per
+[SECURITY.md](https://github.com/waalwalker1/knovaryn/blob/main/SECURITY.md) —
+please do not open public issues for suspected vulnerabilities.
+
+## Contributing
+
+Setup, conventions, and the review bar live in
+[CONTRIBUTING.md](https://github.com/waalwalker1/knovaryn/blob/main/CONTRIBUTING.md);
+decisions and roles in
+[GOVERNANCE.md](https://github.com/waalwalker1/knovaryn/blob/main/GOVERNANCE.md).
 
 ## Repositories
 

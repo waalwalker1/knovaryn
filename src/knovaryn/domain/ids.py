@@ -3,10 +3,21 @@
 Externally visible handles use UUIDv7 (sortable, cryptographically strong).
 Sequential DB ids are never exposed. A separate module keeps generation
 injectable behind the ``IdGenerator`` port.
+
+A generator may be constructed with ``seed=...`` for **reproducible-mode**
+runs (offline benchmarks, golden fixtures): handles are then derived from the
+seed via HMAC-SHA256 and a per-instance counter, so identical inputs produce
+byte-identical artifacts (release-bundle digests included). The default
+constructor stays wall-clock UUIDv7 — production identifiers remain
+unguessable, which deterministic mode must never be used to weaken.
+``new_token`` always uses ``secrets`` regardless of seed: confirmation/lease
+tokens are security material, never reproducible output.
 """
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import secrets
 import uuid
 from collections.abc import Callable
@@ -21,8 +32,20 @@ T = TypeVar("T")
 class IdGenerator:
     """Generate UUIDv7 handles and opaque single-use tokens."""
 
+    def __init__(self, *, seed: str | None = None) -> None:
+        self._seed = seed
+        self._counter = 0
+
     def new(self) -> str:
-        return str(uuid6.uuid7())
+        if self._seed is None:
+            return str(uuid6.uuid7())
+        self._counter += 1
+        digest = hmac.new(
+            self._seed.encode("utf-8"), str(self._counter).encode("ascii"), hashlib.sha256
+        ).hexdigest()
+        # Format as a canonical UUID string; version/variant bits are not
+        # meaningful here — seeded handles are opaque, stable test/bench IDs.
+        return str(uuid.UUID(digest[:32]))
 
     def new_handle(self, prefix: str) -> str:
         """A namespaced UUIDv7 handle, e.g. ``job_01H...``."""

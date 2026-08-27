@@ -1,3 +1,10 @@
+---
+description: >-
+  Run Knovaryn as an MCP training-data server so agents can create
+  projects, ingest sources, run gated generation, and pull
+  trainer-ready exports.
+---
+
 # Guide — Knovaryn as an MCP training-data server
 
 Knovaryn is an **MCP-native training-data server**: a Model Context Protocol

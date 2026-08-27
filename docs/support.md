@@ -1,3 +1,10 @@
+---
+description: >-
+  Support and FAQ: where to ask questions, what to include in a
+  bug report, private vulnerability reporting, and honest answers
+  to common setup questions.
+---
+
 # Support & FAQ
 
 ## Where to ask

@@ -1,3 +1,10 @@
+---
+description: >-
+  Why Knovaryn pins a minimal dependency baseline and manages
+  environments with uv — the record behind the locked Python 3.11+
+  toolchain.
+---
+
 # ADR 0001 — Dependency baseline and environment strategy
 
 - **Date:** 2026-08-07

@@ -1,3 +1,10 @@
+---
+description: >-
+  Why every model call routes through one ModelGateway with
+  LiteLLM underneath — provider choice without provider lock-in or
+  leaked spend.
+---
+
 # ADR 0005 — LiteLLM behind ModelGateway
 
 - **Date:** 2026-08-07 · **Status:** Accepted

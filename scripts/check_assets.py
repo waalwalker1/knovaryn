@@ -32,6 +32,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 ASSETS = REPO_ROOT / "docs" / "assets"
 DIAGRAMS = ASSETS / "diagrams"
+BRAND = ASSETS / "brand"
 
 # name pairs: <stem>.png is rendered from diagrams/<stem>.mmd (or ./<stem>.mmd)
 DIAGRAM_STEMS = [
@@ -41,13 +42,16 @@ DIAGRAM_STEMS = [
     "mcp-session",
     "security",
     "value-proposition",
+    "deployment-topology",
+    "provenance-lineage",
+    "release-supply-chain",
 ]
 
-SOCIAL_CARD = ASSETS / "knovaryn-social-card.png"
+SOCIAL_CARD = BRAND / "docs-social-preview.png"
 # Canonical Open Graph raster: 1200×630. (GitHub's *repository* social
-# preview suggests 1280×640, but this card is published as og:image via
-# overrides/main.html — the OG spec's 1200×630 is what every link
-# unfurler is built around.)
+# preview suggests 1280×640 — that is github-social-preview.png in the same
+# directory — but this card is published as og:image via overrides/main.html:
+# the OG spec's 1200×630 is what every link unfurler is built around.)
 SOCIAL_SIZE = (1200, 630)
 
 # Diagrams must be count-free and precision-honest (defects fixed in §6.2).
@@ -84,9 +88,9 @@ def check_alt_text() -> list[str]:
             if len(alt) < 8 or alt.lower() in {"image", "logo", "diagram"}:
                 problems.append(f"{rel}: weak alt text {alt!r} for {target}")
         for tag in html_img.finditer(text):
-            src_attr = re.compile(
-                r"""src\s*=\s*["']([^"']*)["']""", re.IGNORECASE
-            ).search(tag.group(0))
+            src_attr = re.compile(r"""src\s*=\s*["']([^"']*)["']""", re.IGNORECASE).search(
+                tag.group(0)
+            )
             if src_attr and src_attr.group(1).startswith(("http://", "https://")):
                 continue  # shield.io-style badges: short alt is conventional
             m = alt_attr.search(tag.group(0))
@@ -110,21 +114,13 @@ def check_sources_and_artifacts() -> list[str]:
     problems: list[str] = []
     for stem in DIAGRAM_STEMS:
         png = next(
-            (
-                p
-                for p in (ASSETS / f"{stem}.png", DIAGRAMS / f"{stem}.png")
-                if p.exists()
-            ),
+            (p for p in (ASSETS / f"{stem}.png", DIAGRAMS / f"{stem}.png") if p.exists()),
             None,
         )
         # sources live beside their renders: diagrams/<stem>.mmd for the
         # five architecture diagrams, assets/<stem>.mmd for pipeline-flow
         src = next(
-            (
-                p
-                for p in (DIAGRAMS / f"{stem}.mmd", ASSETS / f"{stem}.mmd")
-                if p.exists()
-            ),
+            (p for p in (DIAGRAMS / f"{stem}.mmd", ASSETS / f"{stem}.mmd") if p.exists()),
             None,
         )
         if src is not None and png is None:
@@ -159,7 +155,7 @@ def check_social_card() -> list[str]:
         text = override.read_text(encoding="utf-8")
         if "og:image" not in text:
             problems.append("overrides/main.html declares no og:image")
-        elif SOCIAL_CARD.name not in text:
+        elif f"assets/brand/{SOCIAL_CARD.name}" not in text:
             problems.append("overrides/main.html og:image does not reference the social card")
     else:
         problems.append("overrides/main.html missing — cannot assert social-card wiring")
@@ -175,13 +171,14 @@ def check_no_stale_claims() -> list[str]:
             m = pat.search(text)
             if m:
                 problems.append(f"{src.relative_to(REPO_ROOT)}: stale claim {m.group(0)!r}")
-    banner = ASSETS / "knovaryn-banner.svg"
-    if banner.is_file():
+    for banner in sorted(BRAND.glob("github-readme-banner*.svg")) + sorted(
+        BRAND.glob("*social-preview-source.svg")
+    ):
         text = banner.read_text(encoding="utf-8")
         for pat in _STALE_CLAIM_PATTERNS:
             m = pat.search(text)
             if m:
-                problems.append(f"knovaryn-banner.svg: stale claim {m.group(0)!r}")
+                problems.append(f"{banner.relative_to(REPO_ROOT)}: stale claim {m.group(0)!r}")
     return problems
 
 
@@ -192,11 +189,7 @@ def render_and_compare() -> list[str]:
         out = Path(td)
         for stem in DIAGRAM_STEMS:
             src = next(
-                (
-                    p
-                    for p in (DIAGRAMS / f"{stem}.mmd", ASSETS / f"{stem}.mmd")
-                    if p.is_file()
-                ),
+                (p for p in (DIAGRAMS / f"{stem}.mmd", ASSETS / f"{stem}.mmd") if p.is_file()),
                 None,
             )
             png = ASSETS / f"{stem}.png"

@@ -11,7 +11,7 @@ we are honest about the boundaries of the support we provide, and there is
 | How-to questions, best practices, "is this possible?" | **GitHub Discussions** | The right place for open-ended questions. Search before asking. |
 | Bug reports, feature requests, parser regressions, new-exporter requests | **GitHub Issues** — use the relevant [issue template](.github/ISSUE_TEMPLATE/) | Include reproduction, versions, and logs so we can act. |
 | Security vulnerabilities | **[SECURITY.md](SECURITY.md)** — private path only | Do **not** open a public issue for a vulnerability. |
-| Governance, roles, process questions | `maintainers@knovaryn.dev` or a Discussion | See [GOVERNANCE.md](GOVERNANCE.md). |
+| Governance, roles, process questions | a [Discussion](https://github.com/waalwalker1/knovaryn/discussions) | See [GOVERNANCE.md](GOVERNANCE.md). |
 
 ## What community support covers
 
