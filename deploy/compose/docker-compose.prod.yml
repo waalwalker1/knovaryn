@@ -30,7 +30,7 @@ x-knovaryn-common: &knovaryn-common
   # PIN PLACEHOLDER, not a published image — no official registry image
   # exists (§20 Path B). Build your own and edit this line to your registry
   # path/digest, or run the e2e file which builds locally. Never `latest` (K3).
-  image: ghcr.io/knovaryn/knovaryn:0.2.1
+  image: ghcr.io/knovaryn/knovaryn:0.2.2
   pull_policy: always
   environment: &common-env
     # Shared state: PostgreSQL instead of SQLite (K1 multi-worker safety)
@@ -109,7 +109,7 @@ services:
   # Job — Database.create_all is the shipped bootstrap mechanism (alembic
   # remains the upgrade path). api/worker start only after it succeeds.
   migrate:
-    image: ghcr.io/knovaryn/knovaryn:0.2.1   # PIN PLACEHOLDER — same as api/worker
+    image: ghcr.io/knovaryn/knovaryn:0.2.2   # PIN PLACEHOLDER — same as api/worker
     depends_on:
       postgres:
         condition: service_healthy

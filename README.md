@@ -1,4 +1,4 @@
-<!-- knovaryn-version: 0.2.1 -->
+<!-- knovaryn-version: 0.2.2 -->
 <!-- Current-release marker: kept equal to knovaryn.__version__ by
      scripts/check_version_sync.py. Update via `python scripts/check_version_sync.py --fix`. -->
 
@@ -21,7 +21,7 @@ MCP-capable agent can build, review, and export.
 > metadata, and a reproducible release bundle — so you can walk any example
 > back to the page, section, or chunk it came from, and prove it.
 
-**Status: self-hosted open-source alpha (`0.2.1`).** You run Knovaryn on your
+**Status: self-hosted open-source alpha (`0.2.2`).** You run Knovaryn on your
 own machine or infrastructure — there is **no hosted service**. The bundled
 demo runs entirely offline on a deterministic fake provider: **no API keys, no
 network**. Live model generation is an explicit opt-in. Maturity and

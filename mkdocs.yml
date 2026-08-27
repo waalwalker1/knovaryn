@@ -10,7 +10,7 @@ edit_uri: edit/main/docs/
 # knovaryn.__version__ by scripts/check_version_sync.py, enforced by
 # tests/public/test_version_sync.py.
 extra:
-  version: 0.2.1
+  version: 0.2.2
 
 theme:
   name: material

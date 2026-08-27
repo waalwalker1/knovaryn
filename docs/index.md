@@ -8,10 +8,10 @@ description: >-
 image: assets/brand/github-readme-banner.svg
 ---
 
-<!-- knovaryn-version: 0.2.1 -->
+<!-- knovaryn-version: 0.2.2 -->
 
 <div class="kn-hero">
-  <span class="kn-pill kn-pill--alpha">Alpha · 0.2.1</span>
+  <span class="kn-pill kn-pill--alpha">Alpha · 0.2.2</span>
   <h1 class="kn-hero__title">Knovaryn</h1>
   <p class="kn-hero__lead"><strong>Every training example, traced to its source.</strong></p>
   <p class="kn-hero__lead">
@@ -253,7 +253,7 @@ rot:
 <div class="kn-evidence">
 <div class="kn-metric">
   <div class="kn-metric__value"><span class="kn-pill kn-pill--alpha">Alpha</span></div>
-  <p class="kn-metric__label">Current release: <code>0.2.1</code> on PyPI — expect API changes until 1.0.</p>
+  <p class="kn-metric__label">Current release: <code>0.2.2</code> on PyPI — expect API changes until 1.0.</p>
   <p class="kn-metric__source"><a href="https://pypi.org/project/knovaryn/">PyPI</a> · <a href="https://github.com/waalwalker1/knovaryn/releases">Releases</a> · <a href="https://github.com/waalwalker1/knovaryn/blob/main/CHANGELOG/">Changelog</a></p>
 </div>
 <div class="kn-metric">
@@ -311,7 +311,7 @@ how the pieces work together as a product.
 - Deterministic heuristics do not prove general entailment;
   `certified-semantic` requires a configured judge, and unavailable judges
   fail closed.
-- This is alpha software (`0.2.1`): APIs are not stabilized, and there is no
+- This is alpha software (`0.2.2`): APIs are not stabilized, and there is no
   hosted service — you self-host.
 
 ## License

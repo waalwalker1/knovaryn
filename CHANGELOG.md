@@ -7,7 +7,7 @@ is approached but not guaranteed, and breaking changes are announced here with
 migration notes (see [ROADMAP.md](ROADMAP.md) for the maturity milestones).
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.2.2] - 2026-08-27
 
 ### Added
 - Original brand identity: Tracemark logo family, design tokens, and a
@@ -167,7 +167,8 @@ and the API/storage surface is not yet compatible-stable (see
   tool accepts a shell command; provider keys are never accepted through tool
   arguments and are redacted. See [SECURITY.md](SECURITY.md) and `docs/security/`.
 
-[Unreleased]: https://github.com/waalwalker1/knovaryn/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/waalwalker1/knovaryn/compare/v0.2.2...HEAD
+[0.2.2]: https://github.com/waalwalker1/knovaryn/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/waalwalker1/knovaryn/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/waalwalker1/knovaryn/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/waalwalker1/knovaryn/compare/v0.1.0...v0.1.1
