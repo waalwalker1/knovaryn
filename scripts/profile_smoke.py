@@ -31,8 +31,16 @@ from pathlib import Path
 
 # third-party modules each profile must be able to import
 THIRD_PARTY = {
-    "core": ["typer", "rich", "fastapi", "sqlalchemy", "aiosqlite", "alembic",
-             "httpx", "structlog"],
+    "core": [
+        "typer",
+        "rich",
+        "fastapi",
+        "sqlalchemy",
+        "aiosqlite",
+        "alembic",
+        "httpx",
+        "structlog",
+    ],
     "mcp": ["mcp"],
     "docling": ["docling"],
     "docetl": ["docetl"],
@@ -42,6 +50,7 @@ THIRD_PARTY = {
     "hub": ["huggingface_hub"],
     "ml": ["sklearn", "numpy"],
 }
+
 
 # knovaryn-side probes per profile; each returns a short human string.
 def _probe_core() -> str:
@@ -81,6 +90,7 @@ def _probe_s3() -> str:
 
 def _probe_parquet() -> str:
     import pyarrow  # noqa: F401
+
     import knovaryn.pipeline.export.exporters  # noqa: F401
 
     return "parquet exporter path imports"
@@ -110,8 +120,14 @@ PROBES = {
     "hub": [_probe_core, _probe_hub],
     "ml": [_probe_core, _probe_ml],
     "full": [
-        _probe_core, _probe_mcp, _probe_docling, _probe_litellm,
-        _probe_s3, _probe_parquet, _probe_hub, _probe_ml,
+        _probe_core,
+        _probe_mcp,
+        _probe_docling,
+        _probe_litellm,
+        _probe_s3,
+        _probe_parquet,
+        _probe_hub,
+        _probe_ml,
     ],
 }
 
@@ -148,9 +164,7 @@ def main() -> int:
 
     # the CLI that ships with THIS interpreter's installation — never PATH luck
     cli = Path(sys.executable).parent / ("knovaryn.exe" if os.name == "nt" else "knovaryn")
-    cp = subprocess.run(
-        [str(cli), "doctor", "--json"], capture_output=True, text=True
-    )
+    cp = subprocess.run([str(cli), "doctor", "--json"], capture_output=True, text=True)
     if cp.returncode != 0:
         failures.append(f"doctor --json exited {cp.returncode}: {cp.stderr[:300]}")
     else:
@@ -159,7 +173,9 @@ def main() -> int:
             if isinstance(payload, list) and payload:
                 # New list shape: [{component, ok, detail, optional}, ...]
                 # Summarize: all non-optional items must be ok
-                critical_fail = any(not item.get("ok", True) and not item.get("optional", False) for item in payload)
+                critical_fail = any(
+                    not item.get("ok", True) and not item.get("optional", False) for item in payload
+                )
                 status = "fail" if critical_fail else "ok"
                 print(f"  ok: doctor --json ({status})")
             else:

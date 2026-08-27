@@ -1,3 +1,10 @@
+---
+description: >-
+  Turn permitted PDFs into an SFT dataset: parse, chunk, generate,
+  gate, review, version, and export — every step traced to page-
+  level evidence.
+---
+
 # Guide — PDF to SFT dataset
 
 This guide walks a **PDF → SFT dataset** pipeline in Knovaryn: ingest permitted

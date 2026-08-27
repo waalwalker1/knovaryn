@@ -113,8 +113,9 @@ def _member_names(path: Path) -> list[str]:
 _FORBIDDEN_MEMBER_PATTERNS = [
     # private build/process material must never ship (defect 3.6 / §8.7)
     re.compile(r"(^|/)\.knovaryn-build"),
+    re.compile(r"(^|/)\.knovaryn-maintainer"),
     re.compile(r"build-report-39"),
-    re.compile(r"(^|/)docs/marketing/"),
+    re.compile(r"(^|/)docs/marketing/"),  # path retired; kept as a guard
     re.compile(r"knovaryn-private"),
     # tool state / local junk that is never part of a distribution
     re.compile(r"(^|/)\.git(/|$)"),
@@ -237,7 +238,22 @@ def _wheel_tests(py: str) -> None:
     regression in what the wheel contains fails here even though source-tree
     tests still pass.
     """
-    _run([py, "-m", "pip", "install", "--quiet", "--no-input", "pytest>=8"])
+    # The packaged-surface tests include the visual-asset governance gate,
+    # whose PNG privacy scan needs pillow (the `visuals` extra in the source
+    # dev env). Without it the gate fails closed in the clean wheel env; give
+    # the battery the same dependency set the source-tree test env has.
+    _run(
+        [
+            py,
+            "-m",
+            "pip",
+            "install",
+            "--quiet",
+            "--no-input",
+            "pytest>=8",
+            "pillow>=10.0",
+        ]
+    )
     cp = subprocess.run(
         [py, "-m", "pytest", str(ROOT / "tests" / "public"), "-q", "--no-header"],
         cwd=tempfile.gettempdir(),

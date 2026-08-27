@@ -98,13 +98,15 @@ def _command_tree() -> list[dict]:
         synopsis = " ".join(["knovaryn", *path])
         for pos in positionals:
             synopsis += f" {pos}"
-        rows.append({
-            "path": " ".join(path),
-            "synopsis": synopsis,
-            "short_help": (getattr(cmd, "short_help", "") or "").strip(),
-            "options": opts,
-            "usage": usage.strip(),
-        })
+        rows.append(
+            {
+                "path": " ".join(path),
+                "synopsis": synopsis,
+                "short_help": (getattr(cmd, "short_help", "") or "").strip(),
+                "options": opts,
+                "usage": usage.strip(),
+            }
+        )
 
     visit(root, [])
     return rows

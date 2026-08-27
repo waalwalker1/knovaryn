@@ -40,5 +40,5 @@ Knovaryn itself is licensed under the Apache License, Version 2.0:
 
 If you believe a dependency or bundled artifact is missing its required notice, or
 that Knovaryn includes material under an incompatible license, please open an issue
-(or, for urgent legal matters, contact the maintainers via `maintainers@knovaryn.dev`).
+(or, for urgent legal matters, contact the maintainer at `waalwalker12@gmail.com`).
 We will address license compliance promptly.

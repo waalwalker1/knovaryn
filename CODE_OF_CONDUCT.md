@@ -34,7 +34,7 @@ Examples of unacceptable behavior:
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be
 reported to the community leaders responsible for enforcement at
-`maintainers@knovaryn.dev`. All complaints will be reviewed and investigated
+`waalwalker12@gmail.com`. All complaints will be reviewed and investigated
 promptly and fairly.
 
 This Code of Conduct is adapted from the [Contributor Covenant][homepage],

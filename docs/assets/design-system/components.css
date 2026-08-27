@@ -1,0 +1,563 @@
+/* ==========================================================================
+   Knovaryn component classes — the site-facing implementation of the
+   vocabulary documented in docs/design-system/components.md. Every rule
+   consumes the tokens in tokens.css; nothing here hard-codes a color,
+   size, or duration. All components work without JavaScript, from the
+   keyboard, in light and dark scheme, and at 200% zoom.
+   ========================================================================== */
+
+/* ---- hero (§ components.md "Hero sections") ---------------------------- */
+.kn-hero {
+  padding: var(--kn-space-6) 0 var(--kn-space-5);
+  max-width: var(--kn-prose-max);
+}
+
+.kn-hero--wide {
+  max-width: none;
+}
+
+.kn-eyebrow {
+  display: inline-block;
+  font-size: var(--kn-text-caption);
+  font-weight: 600;
+  letter-spacing: var(--kn-tracking-overline);
+  text-transform: uppercase;
+  color: var(--kn-color-text-secondary);
+  margin-bottom: var(--kn-space-2);
+}
+
+.kn-hero__title {
+  font-size: var(--kn-text-display);
+  line-height: var(--kn-leading-tight);
+  font-weight: 700;
+  color: var(--kn-color-text-primary);
+  margin: 0 0 var(--kn-space-3);
+}
+
+.kn-hero__lead {
+  font-size: var(--kn-text-body);
+  line-height: var(--kn-leading-body);
+  color: var(--kn-color-text-secondary);
+  margin: 0 0 var(--kn-space-4);
+}
+
+@media (min-width: 640px) {
+  .kn-hero {
+    padding: var(--kn-space-7) 0 var(--kn-space-5);
+  }
+  .kn-hero__title {
+    font-size: var(--kn-text-display-lg);
+  }
+}
+
+/* ---- actions (§ "Primary and secondary actions") ------------------------ */
+.kn-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--kn-space-2);
+  align-items: center;
+  margin: 0 0 var(--kn-space-4);
+}
+
+.kn-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0 var(--kn-space-3);
+  border-radius: var(--kn-radius-sm);
+  border: var(--kn-border-width-strong) solid var(--kn-color-border-strong);
+  font-weight: 600;
+  font-size: var(--kn-text-body);
+  text-decoration: none;
+  transition: background-color var(--kn-dur-fast) var(--kn-ease-out-soft),
+    border-color var(--kn-dur-fast) var(--kn-ease-out-soft);
+}
+
+.kn-btn--primary {
+  background: var(--kn-color-brand-primary);
+  border-color: var(--kn-color-brand-primary);
+  color: var(--kn-color-surface);
+}
+
+.kn-btn--primary:hover {
+  background: var(--kn-color-link);
+  border-color: var(--kn-color-link);
+  color: var(--kn-color-surface);
+}
+
+.kn-btn--secondary {
+  background: transparent;
+  color: var(--kn-color-text-primary);
+}
+
+.kn-btn--secondary:hover {
+  border-color: var(--kn-color-brand-primary);
+  color: var(--kn-color-brand-primary);
+}
+
+.kn-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--kn-focus-ring);
+}
+
+/* ---- feature cards (§ "Feature cards") ----------------------------------- */
+.kn-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  gap: var(--kn-space-3);
+  margin: var(--kn-space-4) 0;
+}
+
+.kn-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--kn-space-2);
+  background: var(--kn-color-surface-elevated);
+  border: var(--kn-border-width) solid var(--kn-color-border);
+  border-radius: var(--kn-radius-md);
+  box-shadow: var(--kn-shadow-card);
+  padding: var(--kn-space-3);
+}
+
+.kn-card__title {
+  font-size: var(--kn-text-heading);
+  font-weight: 600;
+  color: var(--kn-color-text-primary);
+  margin: 0;
+}
+
+.kn-card__body {
+  font-size: var(--kn-text-secondary-size);
+  line-height: var(--kn-leading-snug);
+  color: var(--kn-color-text-secondary);
+  margin: 0;
+}
+
+.kn-card__scope {
+  font-size: var(--kn-text-caption);
+  color: var(--kn-color-text-secondary);
+  border-top: var(--kn-border-width) solid var(--kn-color-border);
+  padding-top: var(--kn-space-2);
+  margin-top: auto;
+}
+
+.kn-card__scope strong {
+  color: var(--kn-color-text-primary);
+}
+
+/* ---- maturity pills (§ "Maturity labels") -------------------------------- */
+.kn-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+  padding: 0.15em 0.8em;
+  border-radius: var(--kn-radius-pill);
+  border: var(--kn-border-width) solid var(--kn-color-border-strong);
+  font-size: var(--kn-text-caption);
+  font-weight: 600;
+  letter-spacing: var(--kn-tracking-overline);
+  text-transform: uppercase;
+  color: var(--kn-color-text-secondary);
+  vertical-align: middle;
+}
+
+.kn-pill::before {
+  content: "";
+  width: 0.55em;
+  height: 0.55em;
+  border-radius: 50%;
+  background: var(--kn-color-text-disabled);
+}
+
+.kn-pill--stable {
+  color: var(--kn-color-success);
+  border-color: var(--kn-color-success);
+}
+
+.kn-pill--stable::before {
+  background: var(--kn-color-success);
+}
+
+.kn-pill--alpha {
+  color: var(--kn-color-warning);
+  border-color: var(--kn-color-warning);
+}
+
+.kn-pill--alpha::before {
+  background: var(--kn-color-warning);
+}
+
+/* ---- version/maturity banner (overrides/main.html announce block) -------- */
+.kn-banner-version {
+  display: inline-block;
+  padding: 0.1em 0.6em;
+  border: 1px solid var(--kn-color-warning);
+  border-radius: 999px;
+  font-size: 0.75rem;
+  letter-spacing: 0.02em;
+}
+
+/* ---- links in running text (Lighthouse link-in-text-block, WCAG 1.4.1) ---
+   The Trace link color differs from body Ink by ~2.3:1, so color alone is
+   not a sufficient cue: underline links in prose. Boxed components (buttons,
+   task cards) already carry a border — a non-color cue — and stay clean. */
+.md-typeset a,
+.md-banner a {
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+
+.md-typeset .kn-btn,
+.md-typeset .kn-tasks a,
+.md-typeset .kn-pill,
+.md-typeset .kn-state,
+.md-typeset a.headerlink,
+.md-typeset .kn-figure > a {
+  text-decoration: none;
+}
+
+/* ---- tabs — radio-driven, arrow-key navigable, no JS --------------------- */
+.kn-tabs {
+  position: relative;
+  margin: var(--kn-space-4) 0;
+}
+
+.kn-tabs > input[type="radio"] {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+  /* stays keyboard-focusable; the ring lands on its label below */
+}
+
+.kn-tabs > label {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 var(--kn-space-3);
+  margin: 0;
+  font-size: var(--kn-text-secondary-size);
+  font-weight: 600;
+  color: var(--kn-color-text-secondary);
+  border: var(--kn-border-width) solid transparent;
+  border-bottom: var(--kn-border-width-strong) solid var(--kn-color-border);
+  cursor: pointer;
+  transition: color var(--kn-dur-fast) var(--kn-ease-out-soft),
+    border-color var(--kn-dur-fast) var(--kn-ease-out-soft);
+}
+
+.kn-tabs > label:hover {
+  color: var(--kn-color-brand-primary);
+}
+
+.kn-tabs > input:checked + label {
+  color: var(--kn-color-brand-primary);
+  border-bottom-color: var(--kn-color-brand-primary);
+}
+
+.kn-tabs > input:focus-visible + label {
+  outline: none;
+  box-shadow: var(--kn-focus-ring);
+  border-radius: var(--kn-radius-sm);
+}
+
+.kn-tabpanels {
+  border: var(--kn-border-width) solid var(--kn-color-border);
+  border-radius: var(--kn-radius-md);
+  background: var(--kn-color-surface-elevated);
+  padding: var(--kn-space-4);
+  margin-top: -1px;
+}
+
+.kn-tabpanels > .kn-panel {
+  display: none;
+}
+
+/* generic index pairing: Nth radio selects Nth panel */
+.kn-tabs > input:nth-of-type(1):checked ~ .kn-tabpanels > .kn-panel:nth-child(1),
+.kn-tabs > input:nth-of-type(2):checked ~ .kn-tabpanels > .kn-panel:nth-child(2),
+.kn-tabs > input:nth-of-type(3):checked ~ .kn-tabpanels > .kn-panel:nth-child(3),
+.kn-tabs > input:nth-of-type(4):checked ~ .kn-tabpanels > .kn-panel:nth-child(4),
+.kn-tabs > input:nth-of-type(5):checked ~ .kn-tabpanels > .kn-panel:nth-child(5),
+.kn-tabs > input:nth-of-type(6):checked ~ .kn-tabpanels > .kn-panel:nth-child(6),
+.kn-tabs > input:nth-of-type(7):checked ~ .kn-tabpanels > .kn-panel:nth-child(7),
+.kn-tabs > input:nth-of-type(8):checked ~ .kn-tabpanels > .kn-panel:nth-child(8),
+.kn-tabs > input:nth-of-type(9):checked ~ .kn-tabpanels > .kn-panel:nth-child(9),
+.kn-tabs > input:nth-of-type(10):checked ~ .kn-tabpanels > .kn-panel:nth-child(10),
+.kn-tabs > input:nth-of-type(11):checked ~ .kn-tabpanels > .kn-panel:nth-child(11),
+.kn-tabs > input:nth-of-type(12):checked ~ .kn-tabpanels > .kn-panel:nth-child(12) {
+  display: block;
+}
+
+/* ---- accordions (details/summary) ---------------------------------------- */
+.kn-details {
+  background: var(--kn-color-surface-elevated);
+  border: var(--kn-border-width) solid var(--kn-color-border);
+  border-radius: var(--kn-radius-md);
+  padding: 0 var(--kn-space-3);
+  margin: var(--kn-space-2) 0;
+}
+
+.kn-details > summary {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  font-weight: 600;
+  color: var(--kn-color-text-primary);
+  cursor: pointer;
+}
+
+.kn-details > summary:focus-visible {
+  outline: none;
+  box-shadow: var(--kn-focus-ring);
+  border-radius: var(--kn-radius-sm);
+}
+
+.kn-details[open] > summary {
+  border-bottom: var(--kn-border-width) solid var(--kn-color-border);
+  margin-bottom: var(--kn-space-2);
+}
+
+/* ---- architecture panels (§ "Architecture panels") ----------------------- */
+.kn-diagram {
+  border: var(--kn-border-width-strong) solid var(--kn-color-border-strong);
+  border-radius: var(--kn-radius-md);
+  background: var(--kn-color-surface-sunken);
+  padding: var(--kn-space-3);
+  margin: var(--kn-space-3) 0;
+}
+
+.kn-diagram .mermaid {
+  display: flex;
+  justify-content: center;
+  background: transparent;
+}
+
+.kn-diagram__caption {
+  font-size: var(--kn-text-secondary-size);
+  color: var(--kn-color-text-secondary);
+  margin: var(--kn-space-2) 0 0;
+}
+
+/* ---- trust / evidence cards (§ "Trust/evidence cards") ------------------- */
+.kn-evidence {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  gap: var(--kn-space-3);
+  margin: var(--kn-space-4) 0;
+}
+
+/* ---- metric cards (§ "Metric cards") -------------------------------------- */
+.kn-metric {
+  background: var(--kn-color-surface-elevated);
+  border: var(--kn-border-width) solid var(--kn-color-border);
+  border-radius: var(--kn-radius-md);
+  box-shadow: var(--kn-shadow-card);
+  padding: var(--kn-space-3);
+}
+
+.kn-metric__value {
+  font-size: var(--kn-text-title);
+  font-weight: 700;
+  color: var(--kn-color-text-primary);
+  line-height: var(--kn-leading-tight);
+}
+
+.kn-metric__label {
+  font-size: var(--kn-text-secondary-size);
+  color: var(--kn-color-text-secondary);
+  margin: var(--kn-space-1) 0;
+}
+
+.kn-metric__source {
+  font-size: var(--kn-text-caption);
+}
+
+/* ---- quality-gate states (§ "Quality-gate states") ------------------------ */
+.kn-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45em;
+  padding: 0.15em 0.7em;
+  border-radius: var(--kn-radius-sm);
+  font-size: var(--kn-text-secondary-size);
+  font-weight: 600;
+  border: var(--kn-border-width) solid var(--kn-color-border-strong);
+  color: var(--kn-color-text-secondary);
+}
+
+.kn-state::before {
+  content: "";
+  width: 0.6em;
+  height: 0.6em;
+  border-radius: 50%;
+  background: var(--kn-color-text-disabled);
+}
+
+.kn-state--accepted {
+  color: var(--kn-color-success);
+  border-color: var(--kn-color-success);
+}
+
+.kn-state--accepted::before {
+  background: var(--kn-color-success);
+}
+
+.kn-state--review {
+  color: var(--kn-color-warning);
+  border-color: var(--kn-color-warning);
+}
+
+.kn-state--review::before {
+  background: var(--kn-color-warning);
+  border-radius: 15%;
+  transform: rotate(45deg); /* diamond */
+}
+
+.kn-state--quarantined {
+  color: var(--kn-color-warning);
+  border-style: dashed;
+}
+
+.kn-state--quarantined::before {
+  background: transparent;
+  border: 2px solid var(--kn-color-warning);
+  border-radius: 2px;
+}
+
+.kn-state--rejected {
+  color: var(--kn-color-error);
+  border-color: var(--kn-color-error);
+}
+
+.kn-state--rejected::before {
+  background: var(--kn-color-error);
+  border-radius: 1px;
+  transform: rotate(45deg) scale(0.9);
+}
+
+.kn-state code {
+  font-size: var(--kn-text-caption);
+  color: inherit;
+  background: transparent;
+  padding: 0;
+  border: 0;
+}
+
+/* ---- provenance nodes (§ "Provenance nodes") ------------------------------- */
+.kn-lineage {
+  display: flex;
+  flex-direction: column;
+  gap: var(--kn-space-2);
+  border-left: var(--kn-border-width-strong) solid var(--kn-color-border-strong);
+  padding-left: var(--kn-space-3);
+  margin: var(--kn-space-3) 0;
+}
+
+.kn-lineage__node {
+  background: var(--kn-color-surface-elevated);
+  border: var(--kn-border-width) solid var(--kn-color-border);
+  border-radius: var(--kn-radius-sm);
+  padding: var(--kn-space-2) var(--kn-space-3);
+}
+
+.kn-lineage__node strong {
+  color: var(--kn-color-text-primary);
+}
+
+.kn-lineage__meta {
+  font-size: var(--kn-text-secondary-size);
+  color: var(--kn-color-text-secondary);
+}
+
+/* ---- figures / screenshots (§ "Screenshots and captions") ------------------ */
+.kn-figure {
+  margin: var(--kn-space-4) 0;
+  border: var(--kn-border-width) solid var(--kn-color-border);
+  border-radius: var(--kn-radius-md);
+  background: var(--kn-color-surface-elevated);
+  padding: var(--kn-space-2);
+  max-width: 100%;
+}
+
+.kn-figure img {
+  border-radius: var(--kn-radius-sm);
+  max-width: 100%;
+  height: auto;
+}
+
+.kn-figure figcaption {
+  font-size: var(--kn-text-secondary-size);
+  color: var(--kn-color-text-secondary);
+  padding: var(--kn-space-2) var(--kn-space-1) var(--kn-space-1);
+}
+
+/* ---- pipeline stage list (landing "How it works") -------------------------- */
+.kn-pipeline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--kn-space-1) var(--kn-space-2);
+  margin: var(--kn-space-3) 0;
+}
+
+.kn-pipeline__stage {
+  display: inline-flex;
+  align-items: center;
+  font-size: var(--kn-text-secondary-size);
+  font-weight: 600;
+  color: var(--kn-color-text-primary);
+  background: var(--kn-color-surface-elevated);
+  border: var(--kn-border-width) solid var(--kn-color-border);
+  border-radius: var(--kn-radius-sm);
+  padding: 0.3em 0.8em;
+}
+
+.kn-pipeline__arrow {
+  color: var(--kn-color-brand-primary);
+  font-weight: 700;
+}
+
+/* ---- task links (§11.11 task-oriented entry points) ------------------------ */
+.kn-tasks {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: var(--kn-space-2);
+  margin: var(--kn-space-3) 0;
+  padding: 0;
+  list-style: none;
+}
+
+.kn-tasks a {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  padding: var(--kn-space-1) var(--kn-space-2);
+  border: var(--kn-border-width) solid var(--kn-color-border);
+  border-radius: var(--kn-radius-sm);
+  color: var(--kn-color-text-primary);
+  font-weight: 600;
+  font-size: var(--kn-text-secondary-size);
+  text-decoration: none;
+}
+
+.kn-tasks a:hover {
+  border-color: var(--kn-color-brand-primary);
+  color: var(--kn-color-brand-primary);
+}
+
+.kn-tasks a:focus-visible {
+  outline: none;
+  box-shadow: var(--kn-focus-ring);
+}
+
+/* ---- comparison table restraint (§11.10) ------------------------------------ */
+.kn-table-wrap {
+  overflow-x: auto;
+}
+
+.kn-table-wrap table {
+  margin-bottom: 0;
+}

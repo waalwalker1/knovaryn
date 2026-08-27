@@ -1,3 +1,10 @@
+---
+description: >-
+  Generated CLI reference for knovaryn — every command, flag,
+  default, and exit path produced from the app itself, never hand-
+  written.
+---
+
 # Reference — CLI
 
 The `knovaryn` CLI exposes the same pipeline as the MCP server and the REST

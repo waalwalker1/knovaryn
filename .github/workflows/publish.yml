@@ -174,16 +174,29 @@ jobs:
           gh release upload "${GITHUB_REF_NAME}" \
             dist/*.whl dist/*.tar.gz dist/SHA256SUMS sbom.cdx.json --clobber
           gh release edit "${GITHUB_REF_NAME}" --notes-file release-notes.md
-      - name: Warn on non-prerelease 0.x (alpha maturity)
+      # §4.4 of the v0.2.2 contract: ENFORCEABLE prerelease policy —
+      #   0.x release + alpha/beta public label => GitHub prerelease MUST be true.
+      # A warning-only check existed before and was insufficient. On the 0.x
+      # line we SET the flag (idempotent) and then VERIFY the final state;
+      # a release that cannot be verified as a prerelease fails this job.
+      # Historical releases are NOT touched here — correcting the existing
+      # v0.2.1 release is a recorded one-time OWNER ACTION.
+      - name: Enforce prerelease status on 0.x releases
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           MAJOR="${VERSION%%.*}"
+          if [ "$MAJOR" = "0" ]; then
+            gh release edit "${GITHUB_REF_NAME}" --prerelease
+            echo "0.x line is alpha-maturity: marked ${GITHUB_REF_NAME} as a prerelease."
+          fi
           IS_PRERELEASE="$(gh release view "${GITHUB_REF_NAME}" --json isPrerelease --jq .isPrerelease)"
           if [ "$MAJOR" = "0" ] && [ "$IS_PRERELEASE" != "true" ]; then
-            echo "::warning::0.x releases are alpha-maturity; mark this GitHub Release as a prerelease (gh release edit ${GITHUB_REF_NAME} --prerelease) unless the stability commitment changed deliberately."
+            echo "::error::0.x releases must be GitHub prereleases while the public label is alpha/beta (see CHANGELOG.md maturity statement). Failed to mark ${GITHUB_REF_NAME}."
+            exit 1
           fi
+          echo "prerelease policy satisfied: ${GITHUB_REF_NAME} isPrerelease=${IS_PRERELEASE}"
 
   publish:
     name: Publish to PyPI (OIDC trusted publishing)

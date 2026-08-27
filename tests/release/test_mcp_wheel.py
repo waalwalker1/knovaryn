@@ -33,7 +33,7 @@ def _network_available() -> bool:
     backend) and the ``[mcp]`` dependency closure; when offline it cannot run its
     real assertions, so it is skipped rather than hard-failed in offline sandboxes.
     The offline clean-install path (build wheel locally + fresh venv) is verified
-    separately by the Phase 12 audit (see .knovaryn-build/INDEPENDENT_AUDIT_PROMPT.md).
+    separately by scripts/package_ci.py.
     """
     try:
         with socket.create_connection(("pypi.org", 443), timeout=3):

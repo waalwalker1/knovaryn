@@ -1,3 +1,10 @@
+---
+description: >-
+  Honest comparison of Knovaryn against the Docling SDK / Docling
+  MCP: parsing toolkits vs a full provenance-traced dataset
+  factory.
+---
+
 # Comparison — Knovaryn vs Docling SDK / Docling MCP
 
 _Factual capability comparison, reviewed 2026-08. Capabilities are "documented

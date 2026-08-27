@@ -1,3 +1,10 @@
+---
+description: >-
+  Hardening checklist for team deployments: bearer-token auth,
+  loopback binding, network policies, storage permissions, audit
+  retention, and backup hygiene.
+---
+
 # Security — Hardening Checklist
 
 Use this checklist when deploying Knovaryn to anything beyond a throwaway

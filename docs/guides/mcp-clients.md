@@ -1,3 +1,10 @@
+---
+description: >-
+  Connect any MCP client to knovaryn-mcp over stdio or
+  authenticated HTTP: example configs, tools/list health check,
+  and permission notes.
+---
+
 # Guides — MCP Client Setup
 
 Knovaryn's primary interface is a **Model Context Protocol** server with

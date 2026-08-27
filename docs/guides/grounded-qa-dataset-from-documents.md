@@ -1,3 +1,9 @@
+---
+description: >-
+  Generate grounded QA / evaluation datasets from documents, with
+  question-answer pairs pinned to page-level source evidence.
+---
+
 # Guide — Grounded QA dataset from documents
 
 This guide builds a **grounded question-answer (QA) dataset** from documents:

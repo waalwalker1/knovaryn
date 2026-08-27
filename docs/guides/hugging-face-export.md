@@ -1,3 +1,10 @@
+---
+description: >-
+  Export a validated dataset version to Hugging Face layout and
+  publish it — dry-run first, real upload only with explicit
+  authorization.
+---
+
 # Guide — Hugging Face export
 
 This guide covers getting Knovaryn datasets onto **Hugging Face**: exporting a

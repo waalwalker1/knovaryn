@@ -1,37 +1,60 @@
-%% Knovaryn — Durable job lifecycle (contract 6.3 #4)
-%% Atomic claim · heartbeat · checkpoint artifacts · cancellation polling
-%% crash reclaim · provider-call deduplication — no double cost.
+%% Knovaryn — Durable job lifecycle (contract §12.3)
+%% Three lanes left to right: normal execution · crash/recovery ·
+%% cancellation/budget. Shows atomic claim, heartbeat, lease expiry,
+%% checkpoint artifacts, replacement-worker reclaim, provider-call
+%% deduplication, cost-event deduplication, safe cancellation points,
+%% terminal state. Lane membership carries the transition: a lease that
+%% expires unrenewed moves a job from lane 1 into lane 2; a cancel flag
+%% (polled between stages, never mid-write) moves it into lane 3.
+%% Brand palette per docs/design-system/tokens.css (Trace/Ink/amber/slate).
+%%{init: {"theme": "base", "themeVariables": {"primaryColor": "#ffffff", "primaryBorderColor": "#909ea6", "primaryTextColor": "#1c2b33", "lineColor": "#4c5b61", "secondaryColor": "#e0f0ec", "tertiaryColor": "#f1efe8", "clusterBkg": "#f7f6f2", "clusterBorder": "#d3dadd", "fontFamily": "-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif", "fontSize": "15px"}, "flowchart": {"nodeSpacing": 28, "rankSpacing": 38}}}%%
 flowchart LR
-    A["Create job<br/>(idempotency key)"] --> B["Enqueue<br/>(queued state)"]
-    B --> C{"Atomic claim<br/>SELECT … FOR UPDATE SKIP LOCKED<br/>(one winner among N workers)"}
-
-    C -->|"won lease"| D["Run stage"]
-    D --> E["Persist checkpoint artifact<br/>(stage inputs/outputs, resumable)"]
-    E --> F["Heartbeat renews lease<br/>while work continues"]
-
-    F -->|"more stages"| D
-    F -->|"stages done"| G["Record cost events + result<br/>→ idempotent done state"]
-
-    E -->|"provider call"| H["Provider-call dedup cache<br/>(same prompt+model+seed = cached)"]
-    H --> D
-
-    subgraph CANCEL["Cancellation (polled, never mid-write)"]
-        X1["cancel requested"] --> X2{"safe point?<br/>between stages"}
-        X2 -- "yes" --> X3["Cancel with cost audit<br/>partial state preserved"]
-        X2 -- "no" --> X4["finish current stage,<br/>then cancel"]
-        X4 --> X3
-    end
-    F -.->|"poll cancel flag"| X1
-
-    subgraph CRASH["Crash / kill / timeout"]
-        K1["lease expires unrenewed"] --> K2["re-lease to any worker"]
-        K2 --> K3["resume from last<br/>checkpoint artifact"]
-        K3 --> D
+    subgraph NORMAL["1 · Normal execution"]
+        direction TB
+        N0["Job created<br/>(idempotency key)"]
+        N1{"Atomic claim<br/><code>SKIP LOCKED</code><br/>one winner among N workers"}
+        N2["Run stage"]
+        N3["Persist checkpoint artifact<br/>(stage inputs/outputs — resumable)"]
+        N4["Heartbeat renews the lease<br/>while work continues"]
+        N5["<b>Terminal: done</b> — cost events +<br/>result recorded idempotently<br/>(cost-event dedup: a replayed<br/>stage bills once)"]
+        N0 --> N1
+        N1 -- "won lease" --> N2
+        N2 --> N3 --> N4
+        N4 -- "more stages" --> N2
+        N4 -- "stages done" --> N5
     end
 
-    style C fill:#e8f0fe,stroke:#1a73e8
-    style E fill:#fef7e0,stroke:#b06000
-    style K1 fill:#fce8e6,stroke:#c5221f
-    style K3 fill:#e6f4ea,stroke:#188038
-    style X3 fill:#fce8e6,stroke:#c5221f
-    style H fill:#e6f4ea,stroke:#188038
+    subgraph CRASH["2 · Crash / kill / timeout"]
+        direction TB
+        K1["Lease expires unrenewed<br/>(worker died mid-stage)"]
+        K2["Re-lease to any worker<br/>(replacement-worker reclaim)"]
+        K3["Resume from last checkpoint artifact<br/>completed stages are not repeated —<br/>provider-call dedup prevents double spend"]
+        K3 --> N2B["Rejoins the run stage loop"]
+        K1 --> K2 --> K3
+    end
+
+    subgraph CANCEL["3 · Cancellation / budget stop"]
+        direction TB
+        X1["Cancel requested<br/>(or budget cap hit)"]
+        X2{"Safe point?<br/>between stages"}
+        X3["<b>Cancel with cost audit</b><br/>partial state preserved"]
+        X4["Finish current stage first,<br/>then cancel"]
+        X1 --> X2
+        X2 -- "yes" --> X3
+        X2 -- "no" --> X4 --> X3
+    end
+
+    NORMAL ~~~ CRASH ~~~ CANCEL
+
+    classDef start fill:#e0f0ec,stroke:#0e7c6b,color:#1c2b33
+    classDef core fill:#ffffff,stroke:#909ea6,color:#1c2b33
+    classDef plain fill:#ffffff,stroke:#909ea6,color:#1c2b33
+    classDef done fill:#e0f0ec,stroke:#0e7c6b,color:#1c2b33
+    classDef crash fill:#fdeedd,stroke:#b45309,color:#1c2b33
+    classDef canc fill:#fbe3e3,stroke:#b3261e,color:#1c2b33
+    class N0 start
+    class N2,N3,N4,K3,N2B core
+    class N1,X2 plain
+    class N5,K2 done
+    class K1,X1 crash
+    class X3,X4 canc

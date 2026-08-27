@@ -1,3 +1,11 @@
+---
+description: >-
+  Knovaryn's layered-hexagon architecture: framework-free domain
+  core, explicit ports, and swappable infrastructure/interface
+  adapters explained layer by layer.
+title: "Architecture overview"
+---
+
 # Architecture — Overview
 
 Knovaryn is built as a **layered hexagon**: a framework-free domain in the
@@ -51,6 +59,7 @@ ports and are selected by configuration.
 ## Context diagram
 
 ```mermaid
+%%{init: {"theme": "base", "themeVariables": {"primaryColor": "#ffffff", "primaryBorderColor": "#909ea6", "primaryTextColor": "#1c2b33", "lineColor": "#4c5b61", "clusterBkg": "#f7f6f2", "clusterBorder": "#d3dadd", "fontFamily": "-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif"}}}%%
 flowchart LR
     subgraph Clients
         A["MCP client / agent"]

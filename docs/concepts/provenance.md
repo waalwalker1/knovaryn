@@ -1,3 +1,10 @@
+---
+description: >-
+  Provenance and the canonical data model: hashes, spans,
+  locations, precision guarantees per format, and how every
+  artifact references its evidence.
+---
+
 # Concepts — Provenance and the Canonical Data Model
 
 Provenance is the reason Knovaryn exists. Every accepted training example can
@@ -24,6 +31,12 @@ Example → candidate → chunk → parsed doc → source doc → original page/
 
 Each hop is persisted as its own entity with stable identifiers, so the chain
 is *walkable* and *verifiable*, not decorative.
+
+![Knovaryn provenance lineage — exported example back through candidate, chunk, source span, parsed document, and source document, with hashes and location precision](../assets/provenance-lineage.png){: width="100%" }
+
+The rendered chain above is generated from
+[`docs/assets/provenance-lineage.mmd`](https://github.com/waalwalker1/knovaryn/blob/main/docs/assets/provenance-lineage.mmd);
+`knovaryn lineage` walks it for any example you select.
 
 ## Entities and the evidence contract
 

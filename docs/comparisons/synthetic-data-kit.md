@@ -1,3 +1,10 @@
+---
+description: >-
+  Honest comparison of Knovaryn against Meta's Synthetic Data Kit:
+  scope, provenance, quality gating, licensing awareness, and
+  export layouts.
+---
+
 # Comparison — Knovaryn vs Meta's Synthetic Data Kit
 
 _Factual capability comparison, reviewed 2026-08. Capabilities are "documented

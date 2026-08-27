@@ -1,3 +1,9 @@
+---
+description: >-
+  When to opt into the DocETL advanced processing profile, what it
+  changes in the pipeline, and why it is optional.
+---
+
 # ADR 0004 — DocETL as optional advanced profile
 
 - **Date:** 2026-08-07 · **Status:** Accepted

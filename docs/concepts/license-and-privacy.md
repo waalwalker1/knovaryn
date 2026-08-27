@@ -1,3 +1,10 @@
+---
+description: >-
+  License- and privacy-aware curation: declared-source licenses,
+  privacy classifications, and redaction before anything enters a
+  generation run.
+---
+
 # Concepts — License- and Privacy-Aware Dataset Curation
 
 Knovaryn is designed for **license-aware** and **privacy-aware** training-data

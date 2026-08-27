@@ -7,7 +7,7 @@
   "description": "Open, MCP-native training-data foundry: turn permitted documents into traceable, quality-gated SFT and preference datasets.",
   "license": "https://spdx.org/licenses/Apache-2.0",
   "codeRepository": "https://github.com/waalwalker1/knovaryn",
-  "datePublished": "2026-08-07",
+  "datePublished": "2026-08-25",
   "programmingLanguage": {
     "@type": "ComputerLanguage",
     "name": "Python",

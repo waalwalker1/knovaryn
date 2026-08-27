@@ -1,3 +1,10 @@
+---
+description: >-
+  Configuration reference: profile files, environment variables,
+  storage settings, provider gateway options, budget caps, and
+  defaults per deployment scale.
+---
+
 # Reference — Configuration
 
 Knovaryn configuration is immutable once resolved. Values come from (highest to

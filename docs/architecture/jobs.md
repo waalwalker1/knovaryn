@@ -1,3 +1,10 @@
+---
+description: >-
+  The durable job engine: leased workers, checkpoints, resume
+  semantics, spend caps, and exactly-once progression from
+  accepted run to finished dataset.
+---
+
 # Architecture — Durable Job Engine
 
 Knovaryn's value depends on long, expensive generation jobs surviving crashes,
@@ -17,6 +24,7 @@ engine is the subsystem that makes that true.
 ## Job lifecycle and state machine
 
 ```mermaid
+%%{init: {"theme": "base", "themeVariables": {"primaryColor": "#ffffff", "primaryBorderColor": "#909ea6", "primaryTextColor": "#1c2b33", "lineColor": "#4c5b61", "clusterBkg": "#f7f6f2", "clusterBorder": "#d3dadd", "fontFamily": "-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif"}}}%%
 stateDiagram-v2
     [*] --> queued
     queued --> leased: worker claims

@@ -1,0 +1,228 @@
+/* ==========================================================================
+   Knovaryn design tokens — single source of truth for the docs site.
+   Consumed by MkDocs Material (`extra_css`) and by every visual generator
+   under scripts/visuals/. Values mirror docs/design-system/color.md,
+   typography.md, spacing-and-layout.md and motion.md; change them together.
+   ========================================================================== */
+
+:root {
+  /* ---- brand ---------------------------------------------------------- */
+  --kn-color-brand-primary: #0e7c6b;   /* Trace — provenance route, verification */
+  --kn-color-brand-secondary: #1c2b33; /* Ink — structure, text, marks */
+  --kn-color-accent: #2eb39a;          /* Trace-bright — highlights on dark */
+
+  /* ---- surfaces & text (light scheme defaults) ------------------------ */
+  --kn-color-surface: #fbfaf7;         /* Paper */
+  --kn-color-surface-elevated: #ffffff;
+  --kn-color-surface-sunken: #f1efe8;
+  --kn-color-text-primary: #1c2b33;
+  --kn-color-text-secondary: #4c5b61;
+  --kn-color-text-disabled: #909ea6;
+  --kn-color-border: #d3dadd;
+  --kn-color-border-strong: #909ea6;
+  --kn-color-link: #0b6b5d;
+
+  /* ---- neutral scale (cool slate ramp; step 900 equals Ink) ----------- */
+  --kn-gray-0: #ffffff;
+  --kn-gray-50: #f5f7f7;
+  --kn-gray-100: #e8eced;
+  --kn-gray-200: #d3dadd;
+  --kn-gray-300: #b4bfc4;
+  --kn-gray-400: #909ea6;
+  --kn-gray-500: #6f7e87;
+  --kn-gray-600: #55636c;
+  --kn-gray-700: #404d55;
+  --kn-gray-800: #2c3a42;
+  --kn-gray-900: #1c2b33;
+
+  /* ---- semantic status ------------------------------------------------- */
+  --kn-color-success: #0e7c6b;         /* verification green = brand trace */
+  --kn-color-warning: #b45309;         /* Signal amber — review/quarantine  */
+  --kn-color-error: #b3261e;
+  --kn-color-info: #404d55;
+
+  /* dark-scheme status variants are re-declared on [data-md-color-scheme] */
+
+  /* ---- typography ------------------------------------------------------ */
+  --kn-font-body: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue",
+    Arial, sans-serif;
+  --kn-font-display: var(--kn-font-body);
+  --kn-font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas,
+    "Liberation Mono", monospace;
+
+  --kn-text-scale-ratio: 1.25;
+  --kn-text-display-lg: 2.75rem;  /* 44px — landing hero only */
+  --kn-text-display: 2rem;        /* 32px — page heroes */
+  --kn-text-title: 1.5rem;        /* 24px — section titles */
+  --kn-text-heading: 1.25rem;     /* 20px — subsections */
+  --kn-text-body: 1rem;           /* 16px */
+  --kn-text-secondary-size: 0.875rem; /* 14px — captions, metadata */
+  --kn-text-caption: 0.75rem;     /* 12px — overlines, footnotes */
+
+  --kn-leading-tight: 1.15;
+  --kn-leading-snug: 1.35;
+  --kn-leading-body: 1.6;
+  --kn-tracking-overline: 0.08em;
+
+  /* ---- spacing (4px base grid) ----------------------------------------- */
+  --kn-space-1: 0.25rem;  /*  4px */
+  --kn-space-2: 0.5rem;   /*  8px */
+  --kn-space-3: 1rem;     /* 16px */
+  --kn-space-4: 1.5rem;   /* 24px */
+  --kn-space-5: 2rem;     /* 32px */
+  --kn-space-6: 3rem;     /* 48px */
+  --kn-space-7: 4rem;     /* 64px */
+  --kn-space-8: 6rem;     /* 96px */
+
+  /* ---- layout ------------------------------------------------------------ */
+  --kn-content-max: 76rem;      /* 1216px — full layout width   */
+  --kn-prose-max: 46rem;        /*  736px — reading measure     */
+  --kn-gutter: var(--kn-space-4);
+  --kn-grid-columns: 12;
+
+  /* ---- borders, radii, elevation ----------------------------------------- */
+  --kn-border-width: 1px;
+  --kn-border-width-strong: 2px;
+  --kn-radius-sm: 6px;
+  --kn-radius-md: 12px;
+  --kn-radius-lg: 20px;
+  --kn-radius-pill: 999px;
+
+  --kn-shadow-card: 0 1px 2px rgba(28, 43, 51, 0.06),
+    0 4px 16px rgba(28, 43, 51, 0.08);
+  --kn-shadow-elevated: 0 2px 4px rgba(28, 43, 51, 0.08),
+    0 12px 32px rgba(28, 43, 51, 0.14);
+
+  /* ---- focus ------------------------------------------------------------- */
+  --kn-focus-ring-color: var(--kn-color-brand-primary);
+  --kn-focus-ring: 0 0 0 2px var(--kn-color-surface),
+    0 0 0 4px var(--kn-focus-ring-color);
+
+  /* ---- motion -------------------------------------------------------------- */
+  --kn-dur-fast: 120ms;
+  --kn-dur-base: 180ms;
+  --kn-dur-slow: 280ms;
+  --kn-ease-out-soft: cubic-bezier(0.2, 0, 0, 1);
+  --kn-ease-inout-soft: cubic-bezier(0.4, 0, 0.2, 1);
+
+  color-scheme: light;
+}
+
+/* ==========================================================================
+   Dark scheme (MkDocs Material "slate"). Only the tokens that change are
+   re-declared; structure, spacing, radii and motion are identical.
+   ========================================================================== */
+[data-md-color-scheme="slate"] {
+  --kn-color-surface: #0f1b21;         /* Ink-deep ground */
+  --kn-color-surface-elevated: #16242c;
+  --kn-color-surface-sunken: #0a1318;
+  --kn-color-text-primary: #ecf2ef;    /* Paper-text */
+  --kn-color-text-secondary: #a9bfbb;
+  --kn-color-text-disabled: #6f7e87;
+  --kn-color-border: #24363f;
+  --kn-color-border-strong: #55636c;
+  --kn-color-link: #2eb39a;
+
+  --kn-gray-0: #0f1b21;
+  --kn-gray-50: #16242c;
+  --kn-gray-100: #1d2e37;
+  --kn-gray-200: #24363f;
+  --kn-gray-300: #31454f;
+  --kn-gray-400: #4c626c;
+  --kn-gray-500: #6f838d;
+  --kn-gray-600: #94a7ae;
+  --kn-gray-700: #b4c5ca;
+  --kn-gray-800: #cfdde0;
+  --kn-gray-900: #ecf2ef;
+
+  --kn-color-brand-primary: #2eb39a;   /* Trace reads brighter on dark */
+  --kn-color-accent: #3fd0b4;
+  --kn-color-success: #2eb39a;
+  --kn-color-warning: #d97706;
+  --kn-color-error: #ff8a80;
+  --kn-color-info: #a9bfbb;
+
+  --kn-shadow-card: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 16px rgba(0, 0, 0, 0.35);
+  --kn-shadow-elevated: 0 2px 4px rgba(0, 0, 0, 0.45),
+    0 12px 32px rgba(0, 0, 0, 0.5);
+
+  --kn-focus-ring-color: var(--kn-color-accent);
+
+  color-scheme: dark;
+}
+
+/* ==========================================================================
+   Reduced motion: any animation/transition built on these tokens collapses
+   instantly (motion.md rule M5). Durations stay defined so layout never
+   depends on animation state.
+   ========================================================================== */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ==========================================================================
+   Base application — typography and focus on Knovaryn tokens. Component
+   classes land with the Pages redesign (§11) in components.css.
+   ========================================================================== */
+body {
+  font-family: var(--kn-font-body);
+  font-size: var(--kn-text-body);
+  line-height: var(--kn-leading-body);
+  color: var(--kn-color-text-primary);
+  background-color: var(--kn-color-surface);
+}
+
+:focus-visible {
+  outline: none;
+  box-shadow: var(--kn-focus-ring);
+  border-radius: var(--kn-radius-sm);
+}
+
+/* ==========================================================================
+   MkDocs Material variable remap — `primary: custom` / `accent: custom` in
+   mkdocs.yml hand the theme chrome to these tokens, so header, links, code
+   blocks and footer all speak the brand palette.
+   ========================================================================== */
+[data-md-color-scheme="default"] {
+  --md-primary-fg-color: #1c2b33;            /* Ink header */
+  --md-primary-fg-color--light: #404d55;
+  --md-primary-fg-color--dark: #0f1b21;
+  --md-primary-bg-color: #fbfaf7;            /* text on the Ink header */
+  --md-primary-bg-color--light: rgba(251, 250, 247, 0.54);
+  --md-accent-fg-color: #0e7c6b;             /* Trace */
+  --md-accent-fg-color--transparent: rgba(14, 124, 107, 0.1);
+  --md-typeset-a-color: #0b6b5d;             /* link token */
+  --md-default-bg-color: #fbfaf7;            /* Paper page ground */
+  --md-code-bg-color: #f1efe8;               /* sunken code blocks */
+  --md-code-fg-color: #1c2b33;
+  --md-footer-bg-color: #0f1b21;
+  --md-footer-fg-color: #ecf2ef;
+  --md-footer-fg-color--light: #a9bfbb;
+  --md-typeset-table-color: #d3dadd;
+  --md-admonition-bg-color: transparent;
+}
+
+[data-md-color-scheme="slate"] {
+  --md-primary-fg-color: #0f1b21;            /* Ink-deep header */
+  --md-primary-fg-color--light: #16242c;
+  --md-primary-fg-color--dark: #0a1318;
+  --md-primary-bg-color: #ecf2ef;
+  --md-primary-bg-color--light: rgba(236, 242, 239, 0.54);
+  --md-accent-fg-color: #2eb39a;
+  --md-accent-fg-color--transparent: rgba(46, 179, 154, 0.12);
+  --md-typeset-a-color: #2eb39a;
+  --md-default-bg-color: #0f1b21;
+  --md-code-bg-color: #0a1318;
+  --md-code-fg-color: #ecf2ef;
+  --md-footer-bg-color: #0a1318;
+  --md-footer-fg-color: #ecf2ef;
+  --md-footer-fg-color--light: #6f838d;
+  --md-typeset-table-color: #24363f;
+}

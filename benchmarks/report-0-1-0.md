@@ -1,8 +1,17 @@
 # Knovaryn Benchmark Report 0.1.0
 
+> **⚠️ HISTORICAL REPORT — superseded by [report-0-2-1.md](report-0-2-1.md).**
+> This report measures the **old v0.1.0 framework** as it stood on 2026-08-13.
+> It used a **deterministic fake provider**: it did **not** test live model
+> quality, generation throughput, or cost, and makes no such claim.
+> **It is not the current release benchmark.** Its bundle-size variation
+> between runs is historical: v0.1.0 predated the release-reproducibility
+> guarantee, so those values must **not** be read as current reproducibility
+> evidence. Measured values below are preserved exactly as recorded.
+
 - **Report ID / date:** knovaryn-bench-0.1.0 / 2026-08-13
-- **Benchmark author(s):** Knovaryn maintainers
-- **Methodology version:** `docs/marketing/benchmark-methodology.md` (§"Report template & Methodology")
+- **Methodology:** inline v0.1.0-era methodology; superseded by the canonical
+  [benchmark methodology](../docs/reference/benchmark-methodology.md) (v2)
 - **Full reproducibility:** corpus manifest at `benchmarks/corpus/README.md`; runner at
   `benchmarks/bench_suite.py`; corpus bytes under `tests/fixtures/intake/`. No network, no keys.
 

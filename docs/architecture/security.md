@@ -1,3 +1,10 @@
+---
+description: >-
+  Security architecture: fail-closed intake preflight of untrusted
+  documents, authorization boundaries, audit trails, and release
+  integrity checks.
+---
+
 # Architecture — Security
 
 Knovaryn handles documents that are treated as **untrusted input** and exposes
@@ -87,4 +94,4 @@ reducing the default install's attack surface.
 - Threat model assumption "source documents are untrusted": this page +
   [hardening checklist](../security/hardening.md).
 - License/privacy gating details: [privacy-licensing](../security/privacy-licensing.md).
-- Reporting a vulnerability: see root `SECURITY.md` (`security@knovaryn.dev`).
+- Reporting a vulnerability: see root `SECURITY.md` (GitHub private vulnerability reporting).

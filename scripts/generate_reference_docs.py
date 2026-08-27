@@ -46,6 +46,7 @@ def _end(tag: str) -> str:
 
 # ---------------------------------------------------------------- surfaces --
 
+
 def render_rest_api() -> str:
     from knovaryn.interfaces.rest.app import app as rest_app
 
@@ -87,8 +88,13 @@ def render_mcp_catalogue() -> str:
         return await server.list_tools()
 
     tools = asyncio.run(_tools())
-    rows = sorted(((t.name, (t.description or "").strip().splitlines()[0]
-                    if (t.description or "").strip() else "—") for t in tools))
+    rows = sorted(
+        (
+            t.name,
+            (t.description or "").strip().splitlines()[0] if (t.description or "").strip() else "—",
+        )
+        for t in tools
+    )
     out = [
         "# Reference — MCP tools",
         "",
@@ -252,78 +258,161 @@ def render_config_defaults() -> str:
 def render_claim_matrix() -> str:
     """Contract §10: public claim → maturity → code → evidence → limitation."""
     rows = [
-        ("CLI lifecycle commands", "stable",
-         "src/knovaryn/interfaces/cli/", "tests/test_cli_conformance.py (tree snapshot + docs scan)",
-         "Local `run` drives one job in-process; durable multi-worker mode uses `worker`."),
-        ("REST API + web console", "stable",
-         "src/knovaryn/interfaces/rest/", "tests/test_rest_api.py, tests/test_rest_webconsole.py",
-         "Bearer-token auth only when KNOVARYN_API_TOKEN is set."),
-        ("Python SDK (Workspace)", "stable",
-         "src/knovaryn/application/workspace.py", "tests/test_workspace_control.py",
-         "APIs may still gain parameters within the 0.x line."),
-        ("MCP stdio server", "experimental",
-         "src/knovaryn/interfaces/mcp/server.py",
-         "tests/mcp/, scripts/mcp_acceptance_matrix.py",
-         "Tool surface may be reshaped before 1.0."),
-        ("MCP streamable HTTP (authenticated)", "experimental",
-         "src/knovaryn/interfaces/mcp/server.py",
-         "scripts/mcp_acceptance_matrix.py (both SDK lines)",
-         "Deploy behind the bearer-token guard; not exposed by default."),
-        ("Provenance lineage + location precision", "stable",
-         "src/knovaryn/application/, src/knovaryn/pipeline/export/gate.py",
-         "tests/provenance/",
-         "Precision reflects the parser: markdown/text caps at section/chunk."),
-        ("Docling parsing (bounding-box spans)", "optional",
-         "src/knovaryn/infrastructure/docling/",
-         "tests marked `docling`; ADR-0003 resource guard",
-         "Requires the `docling` extra and its runtime dependencies."),
-        ("Offline semantic validation (`offline-fast`)", "stable",
-         "src/knovaryn/pipeline/quality/validators.py", "tests/semantic/",
-         "Deterministic checks catch specific contradiction classes only."),
-        ("Certified semantic validation (`certified-semantic`)", "optional",
-         "src/knovaryn/pipeline/quality/profiles.py", "tests/semantic/ benchmark corpus",
-         "Needs a reachable judge provider; unavailable judge ⇒ *unverified*."),
-        ("Preference pairs + `certified-pairwise` profile", "alpha",
-         "src/knovaryn/pipeline/quality/validators.py", "tests/preference/",
-         "Judge-based certification inherits provider limitations."),
-        ("Information-gain / preference-signal gates", "alpha",
-         "src/knovaryn/pipeline/quality/", "tests/test_validators.py",
-         "Heuristic scoring; not a quality guarantee."),
-        ("Durable jobs (claim/heartbeat/checkpoint/resume)", "stable",
-         "src/knovaryn/pipeline/jobs/, src/knovaryn/infrastructure/database/",
-         "tests/chaos/, tests/deployment/",
-         "SQLite mode is single-writer; concurrent workers need PostgreSQL."),
-        ("PostgreSQL multi-worker queue", "optional",
-         "src/knovaryn/infrastructure/database/repositories.py (SKIP LOCKED)",
-         "tests/deployment/test_compose_e2e.py claim-exclusivity race",
-         "Requires a deployed Postgres; SQLite dialect ignores FOR UPDATE."),
-        ("S3-compatible artifact storage", "optional",
-         "src/knovaryn/infrastructure/artifacts/s3.py", "tests marked `s3`",
-         "Requires the `s3` extra and object-store credentials."),
-        ("Hugging Face publishing", "optional",
-         "src/knovaryn/infrastructure/publish/hf.py", "publication-gate tests (dry-run default)",
-         "Never automatic; license/privacy gate plus explicit confirmation."),
-        ("PyPI installation", "stable",
-         ".github/workflows/publish.yml (OIDC trusted publishing)",
-         "scripts/package_ci.py clean-env battery",
-         "First-time setup of PyPI trusted publisher is an owner action."),
-        ("Release integrity (checksums, SBOM, notes)", "stable",
-         "scripts/release_governance.py, src/knovaryn/pipeline/export/verify_release.py",
-         "tests/test_release_governance.py, tests/test_release_integrity.py",
-         "GitHub-side settings (labels, environments) are owner actions."),
-        ("Docker Compose topology", "stable",
-         "deploy/docker/", ".github/workflows/deploy-e2e.yml exact-SHA suite",
-         "Weekly/dispatch execution; always runs at release time."),
-        ("Kubernetes manifests", "alpha",
-         "deploy/kubernetes/", "kustomize build in CI lint path",
-         "No automated cluster E2E yet; backup/restore documented as runbook."),
-        ("Documentation site & search metadata", "stable",
-         "mkdocs.yml, overrides/, docs/", "ci.yml docs job (strict build + links + assets)",
-         "Search-engine indexing itself is an owner action (§7.2)."),
-        ("Benchmarks (methodology + CIs)", "alpha",
-         "benchmarks/bench_suite.py, benchmarks/bench_pipeline.py",
-         "benchmarks/report-0-1-0.md (methodology + CIs committed)",
-         "Fake-provider throughput ≠ generation throughput; reproduce before relying."),
+        (
+            "CLI lifecycle commands",
+            "stable",
+            "src/knovaryn/interfaces/cli/",
+            "tests/test_cli_conformance.py (tree snapshot + docs scan)",
+            "Local `run` drives one job in-process; durable multi-worker mode uses `worker`.",
+        ),
+        (
+            "REST API + web console",
+            "stable",
+            "src/knovaryn/interfaces/rest/",
+            "tests/test_rest_api.py, tests/test_rest_webconsole.py",
+            "Bearer-token auth only when KNOVARYN_API_TOKEN is set.",
+        ),
+        (
+            "Python SDK (Workspace)",
+            "stable",
+            "src/knovaryn/application/workspace.py",
+            "tests/test_workspace_control.py",
+            "APIs may still gain parameters within the 0.x line.",
+        ),
+        (
+            "MCP stdio server",
+            "experimental",
+            "src/knovaryn/interfaces/mcp/server.py",
+            "tests/mcp/, scripts/mcp_acceptance_matrix.py (4 cells: mcp 1.28.0–2.1.0), ADR-0007",
+            "Tool surface may be reshaped before 1.0.",
+        ),
+        (
+            "MCP streamable HTTP (authenticated)",
+            "experimental",
+            "src/knovaryn/interfaces/mcp/server.py",
+            "scripts/mcp_acceptance_matrix.py (both SDK majors, 4 pins), ADR-0007",
+            "Deploy behind the bearer-token guard; not exposed by default.",
+        ),
+        (
+            "Provenance lineage + location precision",
+            "stable",
+            "src/knovaryn/application/, src/knovaryn/pipeline/export/gate.py",
+            "tests/provenance/",
+            "Precision reflects the parser: markdown/text caps at section/chunk.",
+        ),
+        (
+            "Docling parsing (bounding-box spans)",
+            "optional",
+            "src/knovaryn/infrastructure/docling/",
+            "tests marked `docling`; ADR-0003 resource guard",
+            "Requires the `docling` extra and its runtime dependencies.",
+        ),
+        (
+            "Offline semantic validation (`offline-fast`)",
+            "stable",
+            "src/knovaryn/pipeline/quality/validators.py",
+            "tests/semantic/",
+            "Deterministic checks catch specific contradiction classes only.",
+        ),
+        (
+            "Certified semantic validation (`certified-semantic`)",
+            "optional",
+            "src/knovaryn/pipeline/quality/profiles.py",
+            "tests/semantic/ benchmark corpus",
+            "Needs a reachable judge provider; unavailable judge ⇒ *unverified*.",
+        ),
+        (
+            "Preference pairs + `certified-pairwise` profile",
+            "alpha",
+            "src/knovaryn/pipeline/quality/validators.py",
+            "tests/preference/",
+            "Judge-based certification inherits provider limitations.",
+        ),
+        (
+            "Information-gain / preference-signal gates",
+            "alpha",
+            "src/knovaryn/pipeline/quality/",
+            "tests/test_validators.py",
+            "Heuristic scoring; not a quality guarantee.",
+        ),
+        (
+            "Durable jobs (claim/heartbeat/checkpoint/resume)",
+            "stable",
+            "src/knovaryn/pipeline/jobs/, src/knovaryn/infrastructure/database/",
+            "tests/chaos/, tests/deployment/",
+            "SQLite mode is single-writer; concurrent workers need PostgreSQL.",
+        ),
+        (
+            "PostgreSQL multi-worker queue",
+            "optional",
+            "src/knovaryn/infrastructure/database/repositories.py (SKIP LOCKED)",
+            "tests/deployment/test_compose_e2e.py claim-exclusivity race",
+            "Requires a deployed Postgres; SQLite dialect ignores FOR UPDATE.",
+        ),
+        (
+            "S3-compatible artifact storage",
+            "optional",
+            "src/knovaryn/infrastructure/artifacts/s3.py",
+            "tests marked `s3`",
+            "Requires the `s3` extra and object-store credentials.",
+        ),
+        (
+            "Hugging Face publishing",
+            "optional",
+            "src/knovaryn/infrastructure/publish/hf.py",
+            "publication-gate tests (dry-run default)",
+            "Never automatic; license/privacy gate plus explicit confirmation.",
+        ),
+        (
+            "PyPI installation",
+            "stable",
+            ".github/workflows/publish.yml (OIDC trusted publishing)",
+            "scripts/package_ci.py clean-env battery",
+            "First-time setup of PyPI trusted publisher is an owner action.",
+        ),
+        (
+            "Release integrity (checksums, SBOM, notes)",
+            "stable",
+            "scripts/release_governance.py, src/knovaryn/pipeline/export/verify_release.py",
+            "tests/test_release_governance.py, tests/test_release_integrity.py",
+            "GitHub-side settings (labels, environments) are owner actions.",
+        ),
+        (
+            "Docker Compose topology",
+            "stable",
+            "deploy/docker/",
+            ".github/workflows/deploy-e2e.yml exact-SHA suite",
+            "Weekly/dispatch execution; always runs at release time.",
+        ),
+        (
+            "Kubernetes manifests",
+            "alpha",
+            "deploy/kubernetes/",
+            "kustomize build in CI lint path",
+            "No automated cluster E2E yet; backup/restore documented as runbook.",
+        ),
+        (
+            "Documentation site & search metadata",
+            "stable",
+            "mkdocs.yml, overrides/, docs/",
+            "ci.yml docs job (strict build + links + assets)",
+            "Search-engine indexing itself is an owner action (§7.2).",
+        ),
+        (
+            "Benchmarks (canonical methodology + current report)",
+            "alpha",
+            "benchmarks/run_report.py, docs/reference/benchmark-methodology.md",
+            "benchmarks/results/0.2.1/ (3 runs, checksums, H(R1)=H(R2)=H(R3) digest equality)",
+            "Offline fake-provider framework metrics ≠ generation throughput or model quality; "
+            "live-provider evidence not measured.",
+        ),
+        (
+            "Release-bundle reproducibility (reproducible mode)",
+            "alpha",
+            "src/knovaryn/domain/ids.py (seeded IdGenerator), benchmarks/run_report.py",
+            "tests/test_reproducible_release_digest.py; results/0.2.1/aggregate.json digest equality",
+            "Requires seeded IDs (reproducible mode); production IDs stay unguessable UUIDv7s.",
+        ),
     ]
     allowed = {"stable", "alpha", "experimental", "optional", "owner action", "not implemented"}
     out = [
@@ -361,34 +450,91 @@ def _replace_block(text: str, begin: str, end: str, rendered: str, target_desc: 
     return text.rstrip("\n") + "\n\n" + body + "\n"
 
 
+def _with_front_matter(description: str, rendered: str) -> str:
+    """Prepend the page's YAML front matter (docs/meta descriptions, §17).
+
+    The render functions emit the page body only; the committed files carry
+    a `description:` front matter block used for <meta name=description> and
+    asserted unique by the SEO tests. The description is stored as the exact
+    two-space-indented multi-line YAML body so generator output stays
+    byte-identical to the committed pages.
+    """
+    fm = "---\ndescription: >-\n" + description + "\n---\n\n"
+    return fm + rendered
+
+
+# description per generated full-file page. Stored as the EXACT indented,
+# line-wrapped YAML body (what follows "description: >-" in the committed
+# file) so generator output stays byte-identical to the committed pages.
+_PAGE_DESCRIPTIONS = {
+    "rest-api.md": (
+        "  Generated REST API reference: endpoints, auth scopes, status\n"
+        "  codes, pagination, and error shapes for the control plane behind\n"
+        "  CLI, console, and MCP."
+    ),
+    "mcp-tools.md": (
+        "  Generated MCP tools reference: the full knovaryn_* tool\n"
+        "  catalogue with parameters, dry-run semantics, and authorization\n"
+        "  requirements, generated from server registration."
+    ),
+    "quality-gates.md": (
+        "  Generated quality-gate reference: each gate's inputs, verdict\n"
+        "  semantics, quarantine behavior, and configuration knobs,\n"
+        "  produced from the code."
+    ),
+    "profiles.md": (
+        "  Validation profiles: preset policy bundles (groundedness floors,\n"
+        "  schema strictness, review requirements) and how to author custom\n"
+        "  profiles."
+    ),
+    "claim-matrix.md": (
+        "  The claim matrix: every public claim Knovaryn makes, mapped to\n"
+        "  the test, script, or report that proves it — with no unsupported\n"
+        "  exact-page claims."
+    ),
+}
+
+
 def build_all() -> dict[Path, str]:
     """Path → final file content for every generated surface."""
     files: dict[Path, str] = {}
-    files[DOCS / "rest-api.md"] = render_rest_api()
-    files[DOCS / "mcp-tools.md"] = render_mcp_catalogue()
-    files[DOCS / "quality-gates.md"] = render_quality_gates()
-    files[DOCS / "profiles.md"] = render_profiles()
-    files[DOCS / "claim-matrix.md"] = render_claim_matrix()
+    raw_full_pages: dict[str, str] = {
+        "rest-api.md": render_rest_api(),
+        "mcp-tools.md": render_mcp_catalogue(),
+        "quality-gates.md": render_quality_gates(),
+        "profiles.md": render_profiles(),
+        "claim-matrix.md": render_claim_matrix(),
+    }
+    for name, body in raw_full_pages.items():
+        files[DOCS / name] = _with_front_matter(_PAGE_DESCRIPTIONS[name], body)
 
     exp_path = DOCS / "exporters.md"
-    exp_text = _replace_block(
-        exp_path.read_text(encoding="utf-8"),
-        _begin("EXPORT FORMATS"),
-        _end("EXPORT FORMATS"),
-        render_export_formats(),
-        str(exp_path.relative_to(REPO_ROOT)),
-    ) if exp_path.exists() else None
+    exp_text = (
+        _replace_block(
+            exp_path.read_text(encoding="utf-8"),
+            _begin("EXPORT FORMATS"),
+            _end("EXPORT FORMATS"),
+            render_export_formats(),
+            str(exp_path.relative_to(REPO_ROOT)),
+        )
+        if exp_path.exists()
+        else None
+    )
     if exp_text is not None:
         files[exp_path] = exp_text
 
     cfg_path = DOCS / "config.md"
-    cfg_text = _replace_block(
-        cfg_path.read_text(encoding="utf-8"),
-        _begin("CONFIG DEFAULTS"),
-        _end("CONFIG DEFAULTS"),
-        render_config_defaults(),
-        str(cfg_path.relative_to(REPO_ROOT)),
-    ) if cfg_path.exists() else None
+    cfg_text = (
+        _replace_block(
+            cfg_path.read_text(encoding="utf-8"),
+            _begin("CONFIG DEFAULTS"),
+            _end("CONFIG DEFAULTS"),
+            render_config_defaults(),
+            str(cfg_path.relative_to(REPO_ROOT)),
+        )
+        if cfg_path.exists()
+        else None
+    )
     if cfg_text is not None:
         files[cfg_path] = cfg_text
     return files

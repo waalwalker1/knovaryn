@@ -52,5 +52,5 @@ states explicitly when a metric is gated on that extra.
 - Corpus is committed to the repo under `tests/fixtures/intake/` — the bytes are
   fixed by the recorded SHA-256.
 - Benchmark commands, environment, and interpretation rules: see
-  `docs/marketing/benchmark-methodology.md`.
+  `docs/reference/benchmark-methodology.md`.
 - Deterministic seed + fake provider: see `benchmarks/bench_suite.py`.

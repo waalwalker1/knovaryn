@@ -1,3 +1,10 @@
+---
+description: >-
+  The storage decision: local SQLite + filesystem by default,
+  PostgreSQL + S3-compatible object storage as a team-scale
+  configuration change.
+---
+
 # ADR 0006 — Storage backends
 
 - **Date:** 2026-08-07 · **Status:** Accepted

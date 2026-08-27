@@ -1,3 +1,10 @@
+---
+description: >-
+  Go beyond the demo: pick a permitted corpus, configure providers
+  and budgets, plan review, and ship a first real project end-to-
+  end.
+---
+
 # Guides — Your First Real Project
 
 The quickstart runs on the deterministic fake provider. This guide walks a
@@ -96,6 +103,9 @@ Examples that failed policy already landed in quarantine with reason codes and
 are excluded from export. Human review refines the remainder; every decision
 is recorded as a new revision — nothing is mutated in place.
 
+![Web console review: an approval on the kto example creates revision 2 with parent revision 1 — the immutable revision chain, not an in-place edit](../assets/screenshots/preference-review.png)
+*The same review applied from the console: a new immutable revision (2, parent 1) records the decision.*
+
 ## 7. Version and export
 
 ```bash
@@ -119,6 +129,9 @@ returning the full walk example → generation candidate → chunk → parsed
 document → source document, with each span's machine-reported location
 precision. The exported release bundle includes the dataset card, manifest,
 and reports.
+
+![Web console lineage view: the examples list shows one kto example, and the lineage panel traces it to its source document id and span id with location precision "section" — pages and bounding boxes are empty because the demo sources are markdown](../assets/screenshots/provenance-lineage.png)
+*The same lineage in the web console (§6–8 of this guide, driven through the browser).*
 
 ## Notes and honesty
 

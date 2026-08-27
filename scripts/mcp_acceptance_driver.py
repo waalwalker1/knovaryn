@@ -62,9 +62,7 @@ def _streams_pair(streams: Any) -> tuple[Any, Any]:
 
 
 def _text_of(result: Any) -> str:
-    return "\n".join(
-        t for b in result.content if (t := (getattr(b, "text", None)))
-    )
+    return "\n".join(t for b in result.content if (t := (getattr(b, "text", None))))
 
 
 def _payload(result: Any) -> dict[str, Any]:
@@ -92,107 +90,103 @@ def phase_stdio(database_url: str) -> dict[str, Any]:
 
         from mcp.client.stdio import stdio_client
 
-        async with stdio_client(params) as (read, write):
-            async with ClientSession(read, write) as session:
-                await session.initialize()
-                out["initialized"] = True
+        async with stdio_client(params) as (read, write), ClientSession(read, write) as session:
+            await session.initialize()
+            out["initialized"] = True
 
-                tools = await session.list_tools()
-                names = {t.name for t in tools.tools}
-                out["tool_count"] = len(names)
-                required = {
-                    "health",
-                    "knovaryn_create_project",
-                    "knovaryn_add_source",
-                    "knovaryn_start_pipeline",
-                    "knovaryn_run_job",
-                    "knovaryn_get_job",
-                    "knovaryn_preview_examples",
-                    "knovaryn_lineage",
-                }
-                missing = required - names
-                assert not missing, f"missing tools: {sorted(missing)}"
+            tools = await session.list_tools()
+            names = {t.name for t in tools.tools}
+            out["tool_count"] = len(names)
+            required = {
+                "health",
+                "knovaryn_create_project",
+                "knovaryn_add_source",
+                "knovaryn_start_pipeline",
+                "knovaryn_run_job",
+                "knovaryn_get_job",
+                "knovaryn_preview_examples",
+                "knovaryn_lineage",
+            }
+            missing = required - names
+            assert not missing, f"missing tools: {sorted(missing)}"
 
-                rts = await session.list_resource_templates()
-                tmpl_attr = next(
-                    (a for a in ("resource_templates", "resourceTemplates")
-                     if hasattr(rts, a)), None
-                )
-                templates = getattr(rts, tmpl_attr) if tmpl_attr else []
-                out["resource_templates"] = len(templates)
-                assert len(templates) >= 6, "expected the knovaryn:// resource templates"
+            rts = await session.list_resource_templates()
+            tmpl_attr = next(
+                (a for a in ("resource_templates", "resourceTemplates") if hasattr(rts, a)), None
+            )
+            templates = getattr(rts, tmpl_attr) if tmpl_attr else []
+            out["resource_templates"] = len(templates)
+            assert len(templates) >= 6, "expected the knovaryn:// resource templates"
 
-                # project creation
-                res = await session.call_tool(
-                    "knovaryn_create_project",
-                    {"slug": "acceptance-matrix", "display_name": "Acceptance Matrix"},
-                )
-                proj = _payload(res)
-                assert "project_id" in proj, f"create_project failed: {proj}"
-                project_id = proj["project_id"]
+            # project creation
+            res = await session.call_tool(
+                "knovaryn_create_project",
+                {"slug": "acceptance-matrix", "display_name": "Acceptance Matrix"},
+            )
+            proj = _payload(res)
+            assert "project_id" in proj, f"create_project failed: {proj}"
+            project_id = proj["project_id"]
 
-                # source addition
-                res = await session.call_tool(
-                    "knovaryn_add_source",
-                    {
-                        "project_id": project_id,
-                        "original_name": "acceptance.md",
-                        "content": (
-                            "# Widgets\n## Assembly\nA widget is a base plate plus a lid.\n"
-                            "The lid must be torqued to 5 N·m.\n## Inspection\n"
-                            "Each unit is inspected for cracks before shipping.\n"
-                        ),
-                        "media_type": "text/markdown",
-                    },
-                )
-                src = _payload(res)
-                assert src.get("status") == "ok", f"add_source failed: {src}"
+            # source addition
+            res = await session.call_tool(
+                "knovaryn_add_source",
+                {
+                    "project_id": project_id,
+                    "original_name": "acceptance.md",
+                    "content": (
+                        "# Widgets\n## Assembly\nA widget is a base plate plus a lid.\n"
+                        "The lid must be torqued to 5 N·m.\n## Inspection\n"
+                        "Each unit is inspected for cracks before shipping.\n"
+                    ),
+                    "media_type": "text/markdown",
+                },
+            )
+            src = _payload(res)
+            assert src.get("status") == "ok", f"add_source failed: {src}"
 
-                # pipeline lifecycle: queue, execute offline, poll to terminal
-                res = await session.call_tool(
-                    "knovaryn_start_pipeline",
-                    {
-                        "project_id": project_id,
-                        "task_fam_families": "factual_explanation:1.0",
-                    },
-                )
-                started = _payload(res)
-                assert "job_id" in started, f"start_pipeline failed: {started}"
-                job_id = started["job_id"]
+            # pipeline lifecycle: queue, execute offline, poll to terminal
+            res = await session.call_tool(
+                "knovaryn_start_pipeline",
+                {
+                    "project_id": project_id,
+                    "task_fam_families": "factual_explanation:1.0",
+                },
+            )
+            started = _payload(res)
+            assert "job_id" in started, f"start_pipeline failed: {started}"
+            job_id = started["job_id"]
 
-                res = await session.call_tool("knovaryn_run_job", {"job_id": job_id})
-                ran = _payload(res)
-                state = ran.get("state") or ran.get("job", {}).get("state")
-                assert state in ("succeeded", "completed"), f"run_job state: {ran}"
+            res = await session.call_tool("knovaryn_run_job", {"job_id": job_id})
+            ran = _payload(res)
+            state = ran.get("state") or ran.get("job", {}).get("state")
+            assert state in ("succeeded", "completed"), f"run_job state: {ran}"
 
-                res = await session.call_tool(
-                    "knovaryn_get_job", {"job_id": job_id}
-                )
-                job = _payload(res)
-                assert job.get("state") in ("succeeded", "completed") or (
-                    job.get("job", {}) or {}
-                ).get("state") in ("succeeded", "completed"), f"get_job: {job}"
+            res = await session.call_tool("knovaryn_get_job", {"job_id": job_id})
+            job = _payload(res)
+            assert job.get("state") in ("succeeded", "completed") or (job.get("job", {}) or {}).get(
+                "state"
+            ) in ("succeeded", "completed"), f"get_job: {job}"
 
-                # bounded preview
-                res = await session.call_tool(
-                    "knovaryn_preview_examples",
-                    {"project_id": project_id, "limit": 5},
-                )
-                preview = _payload(res)
-                examples = preview.get("examples") or []
-                out["example_count"] = len(examples)
-                assert examples, f"no examples produced: {list(preview)[:6]}"
+            # bounded preview
+            res = await session.call_tool(
+                "knovaryn_preview_examples",
+                {"project_id": project_id, "limit": 5},
+            )
+            preview = _payload(res)
+            examples = preview.get("examples") or []
+            out["example_count"] = len(examples)
+            assert examples, f"no examples produced: {list(preview)[:6]}"
 
-                # lineage retrieval
-                example_id = examples[0].get("id") if isinstance(examples[0], dict) else examples[0]
-                res = await session.call_tool(
-                    "knovaryn_lineage",
-                    {"project_id": project_id, "example_id": example_id},
-                )
-                lineage = _payload(res)
-                assert lineage.get("example_id") == example_id, f"lineage: {lineage}"
-                assert lineage.get("source_span_ids"), "lineage lacks span ids"
-                out["lineage_ok"] = True
+            # lineage retrieval
+            example_id = examples[0].get("id") if isinstance(examples[0], dict) else examples[0]
+            res = await session.call_tool(
+                "knovaryn_lineage",
+                {"project_id": project_id, "example_id": example_id},
+            )
+            lineage = _payload(res)
+            assert lineage.get("example_id") == example_id, f"lineage: {lineage}"
+            assert lineage.get("source_span_ids"), "lineage lacks span ids"
+            out["lineage_ok"] = True
 
         # clean shutdown: no leaked non-daemon threads
         deadline = time.monotonic() + 10.0
@@ -228,10 +222,10 @@ def phase_http(port: int, token: str) -> dict[str, Any]:
             try:
                 with socket.create_connection(("127.0.0.1", port), timeout=1.0):
                     break
-            except OSError:
+            except OSError as err:
                 if proc.poll() is not None:
                     tail = (proc.stdout.read() if proc.stdout else b"").decode()[-800:]
-                    raise AssertionError(f"http server died early: {tail}")
+                    raise AssertionError(f"http server died early: {tail}") from err
                 time.sleep(0.3)
         else:
             raise AssertionError("http server never opened its port")

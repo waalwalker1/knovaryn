@@ -1,3 +1,10 @@
+---
+description: >-
+  Quality, acceptance, and quarantine: the scoring model, policy
+  floors, threshold semantics, and what happens to examples that
+  miss the bar.
+---
+
 # Concepts — Quality, Acceptance, and Quarantine
 
 Knovaryn's job is to make the quality judgment *visible and accountable*, not to

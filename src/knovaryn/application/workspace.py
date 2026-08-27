@@ -637,7 +637,7 @@ class Workspace:
         self,
         *,
         example_id: str,
-        revision_id: int,
+        revision_id: int | None,
         reviewer: str,
         decision: str,
         note: str = "",
@@ -648,12 +648,19 @@ class Workspace:
 
         ``decision`` is ``approve`` / ``reject`` / ``needs_work``. A stale
         ``concurrency_token`` or base ``revision_id`` raises ``ConcurrencyError``
-        (409). Returns the new revision + the persisted decision record.
+        (409). ``revision_id=None`` resolves the example's latest revision —
+        the same default the CLI review command uses — so clients that do not
+        track revision chains can still review an example more than once.
+        Returns the new revision + the persisted decision record.
         """
         from ..domain.schemas import ReviewDecision
         from ..pipeline.review.review import ReviewService
 
         decision_enum = ReviewDecision(decision)
+        if revision_id is None:
+            async with self._db.session() as session:
+                latest = await RevisionRepository(session).latest(example_id)
+            revision_id = latest.revision_id if latest is not None else 1
         async with self._db.session() as session, session.begin():
             svc = ReviewService(
                 ids=self._ids,

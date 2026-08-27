@@ -1,3 +1,10 @@
+---
+description: >-
+  The Knovaryn MCP ecosystem overview: how knovaryn-mcp, the CLI,
+  the REST API, and the web console compose into one provenance-
+  traced training-data factory agents can drive.
+---
+
 # Knovaryn MCP — ecosystem overview
 
 > **From unstructured documents to trainer-ready datasets — over the Model
@@ -31,12 +38,16 @@ Source documents ──▶ Parse ──▶ Split & chunk ──▶ Generate ─�
 
 ## How the whole system works
 
-A high-level view of the end-to-end architecture. Six fully annotated diagrams —
-**system architecture**, **pipeline flow**, **durable jobs**, **MCP session**,
-**security**, and **value proposition** — plus their raw Mermaid source live on
+A high-level view of the end-to-end architecture. Switch among eight
+interactive views — **system architecture**, **pipeline flow**, **durable
+jobs**, **provenance chain**, **MCP session**, **security boundaries**,
+**deployment topology**, and the **release supply chain** — in the
+[architecture explorer](architecture/explorer.md), or browse every diagram
+with its raw Mermaid source on
 [Architecture at a glance](architecture/readme-diagrams.md).
 
 ```mermaid
+%%{init: {"theme": "base", "themeVariables": {"primaryColor": "#ffffff", "primaryBorderColor": "#909ea6", "primaryTextColor": "#1c2b33", "lineColor": "#4c5b61", "clusterBkg": "#f7f6f2", "clusterBorder": "#d3dadd", "fontFamily": "-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif"}}}%%
 flowchart LR
     subgraph AGENTS["Host agents"]
         MCPAG["Claude Desktop · Cursor · any MCP client"]

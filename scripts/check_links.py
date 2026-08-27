@@ -190,7 +190,94 @@ def check(root: Path, site: Path | None) -> tuple[list[str], int]:
             targets += rx.findall(body)
         image_targets = _MD_IMAGE.findall(body)
 
-        def check_target(t: str, *, kind: str) -> None:
+        # Raw HTML inside markdown is copied through verbatim by MkDocs —
+        # href=/src= attributes there are NOT path-rewritten. They must be
+        # checked against the BUILT URL space (see below), because a raw
+        # `href="guides/x.md"` or a wrong `../assets/...` depth slips past
+        # the markdown-level checks yet breaks on the deployed site.
+        html_parser = _HTMLLinks()
+        try:
+            html_parser.feed(body)
+        except Exception:
+            html_parser = None  # malformed raw HTML: site-mode scan still covers it
+        if html_parser is not None and (html_parser.hrefs or html_parser.srcs):
+            docs_root = root / "docs"
+            try:
+                page_dir = md.parent.relative_to(docs_root)
+            except ValueError:
+                page_dir = None  # markdown outside docs/ (llms.txt etc.)
+            raw_targets = list(html_parser.hrefs) + list(html_parser.srcs)
+
+            def check_raw(
+                t: str,
+                *,
+                md: Path = md,
+                page_dir: Path | None = page_dir,
+            ) -> None:
+                nonlocal external
+                t = t.strip()
+                if not t or t.startswith(("#", "mailto:", "{{")) or re.match(r"^https?://", t):
+                    if re.match(r"^https?://", t):
+                        external += 1
+                    return
+                if re.match(r"^https?://", t):
+                    external += 1
+                    return
+                # built URL space: with use_directory_urls a page
+                # <page_dir>/<stem>.md is served at <page_dir>/<stem>/
+                # (index.md collapses to <page_dir>/). Resolve the target
+                # relative to that directory.
+                if page_dir is None:
+                    return  # non-docs markdown: no deterministic built URL
+                stem = md.stem
+                depth_parts = list(page_dir.parts) if page_dir != Path(".") else []
+                if stem != "index":
+                    depth_parts.append(stem)
+                resolved_dir = root / "docs"
+                for part in depth_parts:
+                    resolved_dir /= part
+                path_part, _, frag = t.partition("#")
+                candidate = (resolved_dir / path_part).resolve()
+                if not candidate.exists():
+                    # Target written in BUILT-URL form (<name>/): accept its
+                    # markdown source <name>.md (or <name>/index.md) — that is
+                    # what MkDocs will serve at that URL.
+                    md_source = None
+                    url_stem = (resolved_dir / path_part.rstrip("/")).resolve()
+                    for alt in (
+                        url_stem.with_suffix(".md"),
+                        url_stem / "index.md",
+                    ):
+                        if alt.exists():
+                            md_source = alt
+                            break
+                    if md_source is not None:
+                        return  # resolves to a real markdown source → valid URL
+                    elif site is not None and ((site / Path(*depth_parts) / path_part).exists()):
+                        return  # exists in the built site; fine
+                    else:
+                        problems.append(
+                            f"{md.relative_to(root)}: raw-HTML link does not "
+                            f"resolve in built URL space: {t}"
+                        )
+                        return
+                # .md targets in raw HTML are a defect by themselves: MkDocs
+                # never rewrites them, so they 404 on the deployed site.
+                if candidate.suffix == ".md":
+                    problems.append(
+                        f"{md.relative_to(root)}: raw-HTML href points at a .md "
+                        f"source (never rewritten by MkDocs): {t}"
+                    )
+
+            for t in raw_targets:
+                check_raw(t)
+
+        def check_target(
+            t: str,
+            *,
+            kind: str,
+            md: Path = md,
+        ) -> None:
             nonlocal external
             t = t.strip()
             if not t or t.startswith(("<", "mailto:", "{{")):
@@ -208,13 +295,17 @@ def check(root: Path, site: Path | None) -> tuple[list[str], int]:
             if resolved is None:
                 problems.append(f"{md.relative_to(root)}: {kind} target not found: {t}")
                 return
-            if frag:
-                if resolved.suffix == ".html":
-                    if frag not in _html_ids(resolved):
-                        problems.append(f"{md.relative_to(root)}: #{frag} missing in {t}")
-                elif resolved.suffix == ".md":
-                    if frag not in _md_heading_slugs(resolved):
-                        problems.append(f"{md.relative_to(root)}: #{frag} missing in {t}")
+            # fragment presence depends on the target kind: HTML ids for
+            # built pages, GitHub-style slugs for markdown sources
+            frag_ok = (
+                (frag in _html_ids(resolved))
+                if (frag and resolved.suffix == ".html")
+                else (frag in _md_heading_slugs(resolved))
+                if (frag and resolved.suffix == ".md")
+                else True
+            )
+            if not frag_ok:
+                problems.append(f"{md.relative_to(root)}: #{frag} missing in {t}")
 
         for t in targets:
             check_target(t, kind="link")
@@ -232,7 +323,13 @@ def check(root: Path, site: Path | None) -> tuple[list[str], int]:
                 continue
             page_ids = parser.ids
 
-            def check_html(t: str, *, kind: str) -> None:
+            def check_html(
+                t: str,
+                *,
+                kind: str,
+                html: Path = html,
+                page_ids: set[str] = page_ids,
+            ) -> None:
                 nonlocal external
                 if t.startswith(("http://", "https://", "mailto:", "#!", "javascript:", "{{")):
                     if t.startswith(("http://", "https://")):

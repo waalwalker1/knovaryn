@@ -1,3 +1,10 @@
+---
+description: >-
+  Quality gates and fail-closed validation: groundedness, schema,
+  and policy checks that quarantine bad examples instead of
+  silently exporting them.
+---
+
 # Concepts — Quality Gates and Fail-Closed Validation
 
 **Quality gates** are the automated checks every generated example must pass

@@ -185,6 +185,51 @@ def test_rest_review_is_real_not_fake(client):
     assert r.status_code == 422
 
 
+def test_rest_review_without_revision_targets_latest(client):
+    """An omitted ``revision_id`` targets the example's latest revision (CLI
+    parity): a client that does not track revision chains can review the same
+    example repeatedly instead of hitting a permanent 409 after the first
+    decision (the route used to coerce the omission to base revision 1)."""
+    proj = client.post("/v1/projects", json={"slug": "rev2", "display_name": "Rev2"}).json()
+    CONTENT = (
+        "# Gears\n## Lubrication\n"
+        "Gears are lubricated with a light mineral oil. Re-lubricate every "
+        "four hundred operating hours to prevent premature wear.\n"
+    )
+    client.post(
+        f"/v1/projects/{proj['id']}/sources",
+        json={"original_name": "g.md", "media_type": "text/markdown", "content": CONTENT},
+    )
+    job = client.post(
+        f"/v1/projects/{proj['id']}/pipeline",
+        json={"task_family_proportions": {"factual_explanation": 1.0}},
+    ).json()
+    client.post(f"/v1/jobs/{job['id']}/run")
+    target = client.get(f"/v1/projects/{proj['id']}/examples").json()["examples"][0]["id"]
+
+    r1 = client.post(
+        f"/v1/projects/{proj['id']}/examples/{target}/review",
+        json={"decision": "approve", "note": "first pass"},
+    )
+    assert r1.status_code == 200, r1.text
+    assert r1.json()["revision"]["revision_id"] >= 1
+
+    # second review with NO revision_id: must resolve latest, not 409 forever
+    r2 = client.post(
+        f"/v1/projects/{proj['id']}/examples/{target}/review",
+        json={"decision": "needs_work", "note": "second pass"},
+    )
+    assert r2.status_code == 200, r2.text
+    assert r2.json()["revision"]["revision_id"] == r1.json()["revision"]["revision_id"] + 1
+
+    # an explicit stale revision_id still 409s — the gate itself is intact
+    r3 = client.post(
+        f"/v1/projects/{proj['id']}/examples/{target}/review",
+        json={"decision": "approve", "revision_id": 1},
+    )
+    assert r3.status_code == 409, r3.text
+
+
 def test_example_lineage_endpoint(client):
     """Defect 3.7: per-example provenance is machine-verifiable — the lineage
     endpoint returns document/group/span ids plus per-span location precision."""

@@ -1,3 +1,10 @@
+---
+description: >-
+  Honest comparison of Knovaryn against Distilabel (Argilla):
+  generation frameworks vs a provenance-first foundry — where each
+  fits, with sources cited.
+---
+
 # Comparison — Knovaryn vs Distilabel (Argilla)
 
 _Factual capability comparison, reviewed 2026-08. Capabilities are "documented

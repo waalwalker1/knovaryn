@@ -1,3 +1,10 @@
+---
+description: >-
+  Preference data concepts for DPO and KTO: pair construction,
+  winner/loser grounding, gate semantics on chosen and rejected
+  sides, and pitfalls avoided.
+---
+
 # Concepts — Preference Data (DPO / KTO)
 
 Preference (DPO-style) data is harder to generate well than SFT data, and its

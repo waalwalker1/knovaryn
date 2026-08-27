@@ -16,7 +16,7 @@ before a fix can ship, which is exactly what we want to avoid.
 
 Report security vulnerabilities privately to the Knovaryn security maintainers:
 
-- **Email:** `security@knovaryn.dev`
+- **Private report:** GitHub Security tab → "Report a vulnerability" (see SECURITY.md)
 - **GitHub private vulnerability reporting:** use the repository's private
   security-advisory path once it is enabled (repository → Security → Report a
   vulnerability).
